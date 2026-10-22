@@ -1,0 +1,20 @@
+{
+  "name": "@yamboka/shared",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Contrats partagés (schémas Zod, constantes) entre l'API et les applications Next.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

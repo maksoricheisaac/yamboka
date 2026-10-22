@@ -4,6 +4,7 @@ import {
   VersioningType,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -20,6 +21,8 @@ export function configureApp(app: INestApplication): void {
   ];
 
   app.useLogger(app.get(Logger));
+  const proxies = config.get('TRUST_PROXY', { infer: true });
+  if (proxies > 0) (app as NestExpressApplication).set('trust proxy', proxies);
   app.use(helmet());
   app.use(cookieParser());
   app.enableCors({ origin: origins, credentials: true });

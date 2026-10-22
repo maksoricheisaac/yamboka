@@ -12,7 +12,9 @@
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "test": "pnpm -r --if-present test",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "postinstall": "pnpm --filter @yamboka/shared build",
+    "build:shared": "pnpm --filter @yamboka/shared build"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1"

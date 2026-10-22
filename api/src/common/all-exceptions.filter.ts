@@ -42,7 +42,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
           : typeof obj.message === 'string'
             ? obj.message
             : exception.message,
-        ...(isList ? { details: obj.message } : {}),
+        ...(isList
+          ? { details: obj.message }
+          : obj.details !== undefined
+            ? { details: obj.details }
+            : {}),
       };
       res.status(status).json(body);
       return;

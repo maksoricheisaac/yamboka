@@ -13,6 +13,15 @@ const envSchema = z.object({
   APP_URL: z.string().url().default('http://localhost:3001'),
   WEB_URL: z.string().url().default('http://localhost:3000'),
   API_URL: z.string().url().default('http://localhost:4000'),
+  SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  /** Domaine du cookie de session (ex. .yamboka.com) ; vide en local. */
+  COOKIE_DOMAIN: z.string().optional(),
+  /** Nombre de proxys de confiance devant l'API (pour l'adresse IP réelle). */
+  TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_CALLBACK_URL: z.string().url().optional(),
+  EMAIL_FROM: z.string().default('Yamboka <no-reply@yamboka.local>'),
   // Phase 1 : fournisseurs simulés uniquement.
   PAYMENT_PROVIDER: z.enum(['mock']).default('mock'),
   GENERATION_PROVIDER: z.enum(['mock']).default('mock'),
