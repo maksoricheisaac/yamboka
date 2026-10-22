@@ -1,0 +1,14 @@
+{
+  "name": "yamboka",
+  "private": true,
+  "packageManager": "pnpm@12.14.0",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev:api": "pnpm --filter api start:dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:app": "pnpm --filter app dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r --if-present test"
+  }
+}

@@ -1,0 +1,10 @@
+packages:
+  - api
+  - web
+  - app
+  - packages/*
+
+allowBuilds:
+  '@parcel/watcher': true
+  unrs-resolver: true
+  sharp: false
