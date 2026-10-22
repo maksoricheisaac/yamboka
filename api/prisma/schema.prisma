@@ -1,0 +1,541 @@
+// Schéma Yamboka — voir docs/02 (Offre technique) §4 et docs/04.
+// Montants en entiers (FCFA, crédits). Le registre CreditLedger est en ajout seul :
+// un trigger SQL (migration "ledger_immutability") interdit UPDATE et DELETE.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────── Énumérations ─────────────
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum EmailTokenType {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+enum CreditTxType {
+  PURCHASE
+  BONUS
+  WELCOME
+  RESERVE
+  CAPTURE
+  REFUND
+  ADJUSTMENT
+  EXPIRE
+}
+
+enum PaymentStatus {
+  INITIATED
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum MobileOperator {
+  MTN
+  AIRTEL
+}
+
+enum GenerationStatus {
+  PENDING
+  SUBMITTED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum BillingUnit {
+  SECOND
+  IMAGE
+}
+
+enum ProductPhase {
+  MVP
+  PHASE_2
+}
+
+enum PresetType {
+  MOTION
+  LOOK
+  OBJECT_SWAP
+}
+
+enum MediaRole {
+  INPUT_VIDEO
+  INPUT_IMAGE
+  OUTPUT_VIDEO
+  OUTPUT_IMAGE
+  THUMBNAIL
+  PRESET_THUMBNAIL
+  PRESET_EXAMPLE_VIDEO
+  PRESET_REFERENCE_IMAGE
+}
+
+enum MediaBucket {
+  INPUTS
+  OUTPUTS
+  PRESETS
+}
+
+enum ReportStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+enum ModerationActionType {
+  WARN
+  SUSPEND
+  BAN
+  REACTIVATE
+  HIDE_CREATION
+  DELETE_CREATION
+  VERIFY_CREATION
+}
+
+enum LegalDocType {
+  CGU
+  CHARTE
+  CONFIDENTIALITE
+}
+
+enum NotificationType {
+  GENERATION_READY
+  GENERATION_FAILED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  DELETION_REMINDER
+  MODERATION
+  SYSTEM
+}
+
+// ───────────── Utilisateurs et authentification ─────────────
+
+model User {
+  id               String     @id @default(uuid()) @db.Uuid
+  firstName        String
+  lastName         String
+  email            String     @unique // toujours en minuscules (normalisé par l'API)
+  emailVerifiedAt  DateTime?
+  passwordHash     String? // null pour un compte Google uniquement
+  avatarUrl        String?
+  phone            String? // format international 242XXXXXXXXX, non vérifié
+  role             Role       @default(USER)
+  status           UserStatus @default(ACTIVE)
+  signupIp         String?
+  welcomeGrantedAt DateTime?
+  deletedAt        DateTime? // suppression de compte : anonymisation, traces conservées (RG-34)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  sessions         Session[]
+  oauthAccounts    OAuthAccount[]
+  emailTokens      EmailToken[]
+  legalAcceptances LegalAcceptance[]
+  ledger           CreditLedger[]     @relation("LedgerOwner")
+  ledgerCreated    CreditLedger[]     @relation("LedgerCreator")
+  payments         Payment[]
+  generations      Generation[]
+  mediaFiles       MediaFile[]
+  reportsFiled     Report[]           @relation("ReportReporter")
+  reportsHandled   Report[]           @relation("ReportHandler")
+  moderationTarget ModerationAction[] @relation("ModerationTarget")
+  moderationActor  ModerationAction[] @relation("ModerationActor")
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  topUps           ProviderTopUp[]
+  payouts          PayoutRecord[]
+  settingsUpdated  Setting[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([signupIp, createdAt])
+}
+
+model Session {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique // le jeton brut n'est jamais stocké
+  ip        String?
+  userAgent String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model OAuthAccount {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @db.Uuid
+  provider          String // "google"
+  providerAccountId String
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model EmailToken {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @db.Uuid
+  type      EmailTokenType
+  tokenHash String         @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+// ───────────── Textes légaux ─────────────
+
+model LegalDocument {
+  id          String       @id @default(uuid()) @db.Uuid
+  type        LegalDocType
+  version     Int
+  content     String
+  major       Boolean      @default(false) // une version majeure impose une nouvelle acceptation
+  publishedAt DateTime     @default(now())
+
+  acceptances LegalAcceptance[]
+
+  @@unique([type, version])
+}
+
+model LegalAcceptance {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  documentId String   @db.Uuid
+  acceptedAt DateTime @default(now())
+  ip         String?
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  document LegalDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, documentId])
+}
+
+// ───────────── Offre : packs, devises, produits, presets ─────────────
+
+model CurrencySetting {
+  currency    String  @id // ISO 4217, "XAF" au lancement
+  creditValue Int // valeur d'un crédit dans cette devise (XAF = 25)
+  active      Boolean @default(true)
+}
+
+model CreditPack {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  country      String   @default("CG") // ISO 3166-1
+  currency     String   @default("XAF")
+  price        Int // dans la devise
+  credits      Int // crédits de base, hors bonus
+  bonusPercent Int      @default(0)
+  sortOrder    Int      @default(0)
+  featured     Boolean  @default(false)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  payments Payment[]
+
+  @@unique([country, name])
+}
+
+model GenerationProduct {
+  id                     String       @id @default(uuid()) @db.Uuid
+  code                   String       @unique // VIDEO_LIGHT_480, IMAGE_SOUL2…
+  name                   String
+  providerModel          String
+  resolution             String?
+  billingUnit            BillingUnit
+  creditsPerUnit         Int
+  providerCostUsdPerUnit Decimal      @db.Decimal(10, 5)
+  billableMultiplier     Int          @default(1) // Genjutsu Light : sortie + entrée = 2
+  minSeconds             Int?
+  maxSeconds             Int?
+  phase                  ProductPhase @default(MVP)
+  active                 Boolean      @default(false)
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  presets     Preset[]
+  generations Generation[]
+}
+
+model Preset {
+  id             String     @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?
+  category       String // danse, pub, anniversaire, mode…
+  type           PresetType
+  productId      String     @db.Uuid
+  defaultPrompt  String?
+  requestedItems Json? // éléments demandés à l'utilisateur
+  sortOrder      Int        @default(0)
+  visible        Boolean    @default(false)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  product     GenerationProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  media       MediaFile[]
+  generations Generation[]
+
+  @@index([visible, sortOrder])
+}
+
+// ───────────── Paiements et crédits ─────────────
+
+model Payment {
+  id                 String         @id @default(uuid()) @db.Uuid
+  userId             String         @db.Uuid
+  packId             String         @db.Uuid
+  country            String
+  currency           String
+  amount             Int
+  credits            Int // crédits totaux (bonus inclus) fixés à la création
+  gateway            String // "mock" en phase 1 ; "openpay" ultérieurement
+  operator           MobileOperator
+  payerPhone         String
+  externalReference  String         @unique // référence fournisseur (unicité = RG-05)
+  status             PaymentStatus  @default(INITIATED)
+  lastProviderStatus Json?
+  creditedAt         DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  pack   CreditPack     @relation(fields: [packId], references: [id], onDelete: Restrict)
+  ledger CreditLedger[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+model CreditLedger {
+  id           String       @id @default(uuid()) @db.Uuid
+  userId       String       @db.Uuid
+  amount       Int // signé ; jamais modifié ni supprimé (RG-02)
+  type         CreditTxType
+  reference    String       @unique // déterministe : pay:…, reserve:…, refund:…
+  generationId String?      @db.Uuid
+  paymentId    String?      @db.Uuid
+  expiresAt    DateTime?
+  note         String?
+  createdById  String?      @db.Uuid
+  createdAt    DateTime     @default(now())
+
+  user       User        @relation("LedgerOwner", fields: [userId], references: [id], onDelete: Restrict)
+  createdBy  User?       @relation("LedgerCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  generation Generation? @relation(fields: [generationId], references: [id], onDelete: Restrict)
+  payment    Payment?    @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([type, expiresAt])
+  @@index([generationId])
+  @@index([paymentId])
+}
+
+// ───────────── Générations et médias ─────────────
+
+model Generation {
+  id                String           @id @default(uuid()) @db.Uuid
+  userId            String           @db.Uuid
+  productId         String           @db.Uuid
+  presetId          String?          @db.Uuid
+  status            GenerationStatus @default(PENDING)
+  prompt            String?
+  billableSeconds   Int?
+  creditsCost       Int
+  providerRequestId String?
+  providerStatusUrl String?
+  errorMessage      String?
+  consentAt         DateTime // consentement horodaté (RG-31)
+  consentIp         String?
+  hidden            Boolean          @default(false)
+  retentionHold     Boolean          @default(false) // gel lié à un signalement (RG-28)
+  inputsPurgedAt    DateTime?
+  outputExpiresAt   DateTime?
+  outputPurgedAt    DateTime?
+  reminderSentAt    DateTime?
+  createdAt         DateTime         @default(now())
+  submittedAt       DateTime?
+  completedAt       DateTime?
+
+  user       User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  product    GenerationProduct  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  preset     Preset?            @relation(fields: [presetId], references: [id], onDelete: SetNull)
+  media      MediaFile[]
+  ledger     CreditLedger[]
+  reports    Report[]
+  moderation ModerationAction[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([outputExpiresAt])
+}
+
+model MediaFile {
+  id           String      @id @default(uuid()) @db.Uuid
+  role         MediaRole
+  bucket       MediaBucket
+  key          String // clé objet ; fichiers privés, URL signées uniquement
+  mimeType     String
+  sizeBytes    Int
+  durationMs   Int?
+  width        Int?
+  height       Int?
+  ownerId      String?     @db.Uuid
+  generationId String?     @db.Uuid
+  presetId     String?     @db.Uuid
+  verifiedAt   DateTime? // contrôle du type réel / ffprobe effectué
+  purgedAt     DateTime? // fichier supprimé, trace conservée (RG-27)
+  createdAt    DateTime    @default(now())
+
+  owner      User?       @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  generation Generation? @relation(fields: [generationId], references: [id], onDelete: Restrict)
+  preset     Preset?     @relation(fields: [presetId], references: [id], onDelete: Cascade)
+
+  @@unique([bucket, key])
+  @@index([generationId])
+  @@index([ownerId])
+}
+
+// ───────────── Modération ─────────────
+
+model Report {
+  id              String       @id @default(uuid()) @db.Uuid
+  generationId    String?      @db.Uuid
+  reporterUserId  String?      @db.Uuid
+  reporterContact String? // signalement public sans compte
+  reason          String
+  details         String?
+  status          ReportStatus @default(NEW)
+  handledById     String?      @db.Uuid
+  resolution      String?
+  createdAt       DateTime     @default(now())
+  handledAt       DateTime?
+
+  generation Generation? @relation(fields: [generationId], references: [id], onDelete: Restrict)
+  reporter   User?       @relation("ReportReporter", fields: [reporterUserId], references: [id], onDelete: SetNull)
+  handler    User?       @relation("ReportHandler", fields: [handledById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([generationId])
+}
+
+model ModerationAction {
+  id           String               @id @default(uuid()) @db.Uuid
+  targetUserId String?              @db.Uuid
+  generationId String?              @db.Uuid
+  action       ModerationActionType
+  reason       String
+  actorId      String               @db.Uuid
+  createdAt    DateTime             @default(now())
+
+  targetUser User?       @relation("ModerationTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+  generation Generation? @relation(fields: [generationId], references: [id], onDelete: Restrict)
+  actor      User        @relation("ModerationActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([targetUserId])
+  @@index([generationId])
+}
+
+// ───────────── Finances ─────────────
+
+model ProviderTopUp {
+  id          String   @id @default(uuid()) @db.Uuid
+  provider    String   @default("higgsfield")
+  amountUsd   Decimal  @db.Decimal(10, 2)
+  amountXaf   Int
+  fxRate      Decimal  @db.Decimal(10, 4)
+  note        String?
+  createdById String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+}
+
+model PayoutRecord {
+  id            String   @id @default(uuid()) @db.Uuid
+  amountXaf     Int
+  commissionXaf Int
+  date          DateTime
+  note          String?
+  createdById   String   @db.Uuid
+  createdAt     DateTime @default(now())
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+}
+
+// ───────────── Configuration, notifications, audit ─────────────
+
+model Setting {
+  key         String   @id
+  value       Json
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt
+
+  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  type      NotificationType
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  reason     String?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
