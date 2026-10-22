@@ -208,6 +208,16 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
     expect(res.headers.location).toBe(`${APP}/connexion?erreur=google_refuse`);
   });
 
+  it('indique si la connexion Google est disponible', async () => {
+    const on = await new Client(app).get('/v1/auth/providers').expect(200);
+    expect(on.body).toEqual({ google: true });
+    jest
+      .spyOn(app.get(GoogleOAuthClient), 'isConfigured')
+      .mockReturnValue(false);
+    const off = await new Client(app).get('/v1/auth/providers').expect(200);
+    expect(off.body).toEqual({ google: false });
+  });
+
   it('renvoie 503 si Google n’est pas configuré', async () => {
     jest
       .spyOn(app.get(GoogleOAuthClient), 'isConfigured')

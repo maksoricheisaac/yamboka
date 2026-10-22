@@ -24,7 +24,8 @@
     "db:seed": "prisma db seed",
     "postinstall": "prisma generate",
     "lint:fix": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e:serve": "pnpm build && tsx scripts/prepare-e2e.ts && node dist/main.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

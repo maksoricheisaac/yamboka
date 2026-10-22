@@ -198,6 +198,15 @@ export class AuthController {
   // ───────────── Google OAuth 2.0 ─────────────
 
   @Public()
+  @Get('providers')
+  @ApiOperation({
+    summary: 'Méthodes de connexion disponibles (affichage du bouton Google)',
+  })
+  providers(): { google: boolean } {
+    return { google: this.google.isConfigured() };
+  }
+
+  @Public()
   @Get('google')
   @ApiOperation({ summary: 'Démarre la connexion avec Google (redirection)' })
   googleStart(@Res() res: Response): void {

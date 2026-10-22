@@ -16,7 +16,7 @@ Node 24+, pnpm 12+, Docker Desktop (PostgreSQL 16 et Redis en conteneurs). Windo
 ## Installation
 
 ```bash
-pnpm install                                   # un seul lockfile à la racine
+pnpm install                                   # un seul lockfile à la racine ; compile aussi packages/shared
 docker compose -f docker/docker-compose.dev.yml up -d
 cp api/.env.example api/.env                   # puis renseigner SESSION_SECRET et ADMIN_PASSWORD
 cp web/.env.example web/.env.local
@@ -39,7 +39,8 @@ pnpm dev:app    # http://localhost:3001
 |---|---|
 | `pnpm build` / `pnpm lint` / `pnpm test` | Sur les trois applications |
 | `pnpm --filter api test` | Tests unitaires de l'API |
-| `pnpm --filter api test:e2e` | Tests e2e de l'API (base de données requise) |
+| `pnpm --filter api test:e2e` | Tests d'intégration de l'API (base `yamboka_test` recréée à chaque exécution) |
+| `pnpm test:e2e` | Tests de navigateur Playwright (voir [docs/dev/tests.md](docs/dev/tests.md)) |
 | `pnpm --filter api typecheck` | Vérification TypeScript |
 | `pnpm --filter api db:migrate` | Crée/applique une migration en développement |
 | `pnpm --filter api db:deploy` | Applique les migrations (production) |
@@ -50,6 +51,10 @@ pnpm dev:app    # http://localhost:3001
 Paiement, génération, e-mail et stockage sont **simulés** (`PAYMENT_PROVIDER=mock`, etc.). Aucune clé externe n'est nécessaire,
 aucun argent réel n'est échangé. L'intégration OpenPay n'est pas codée : elle sera ajoutée derrière l'interface
 `PaymentProvider` à réception de sa documentation officielle.
+
+## Authentification
+
+Voir [docs/dev/authentification.md](docs/dev/authentification.md) (sessions, CSRF, rôles, Google, variables).
 
 ## Base de données
 
