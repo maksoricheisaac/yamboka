@@ -12,3 +12,4 @@ allowBuilds:
   prisma: false
   esbuild: false
   '@scarf/scarf': false
+  msgpackr-extract: false

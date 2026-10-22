@@ -7,6 +7,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().default('redis://localhost:6380'),
+  /** Force la file de tâches (true) ou l'exécution directe (false). Par défaut : active sauf en test. */
+  QUEUE_ENABLED: z.enum(['true', 'false']).optional(),
   SESSION_SECRET: z
     .string()
     .min(32, 'SESSION_SECRET doit contenir au moins 32 caractères'),

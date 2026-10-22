@@ -56,6 +56,10 @@ aucun argent réel n'est échangé. L'intégration OpenPay n'est pas codée : el
 
 Voir [docs/dev/authentification.md](docs/dev/authentification.md) (sessions, CSRF, rôles, Google, variables).
 
+## Crédits et paiements
+
+Voir [docs/dev/credits-et-paiements.md](docs/dev/credits-et-paiements.md) (registre, paiement simulé, scénarios de test, tâches asynchrones, futur point d'intégration OpenPay).
+
 ## Base de données
 
 Voir [docs/dev/base-de-donnees.md](docs/dev/base-de-donnees.md) (migrations, registre de crédits, sauvegarde et restauration).

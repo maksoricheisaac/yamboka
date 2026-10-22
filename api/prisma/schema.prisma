@@ -321,12 +321,14 @@ model Payment {
   currency           String
   amount             Int
   credits            Int // crédits totaux (bonus inclus) fixés à la création
+  bonusCredits       Int            @default(0) // part « bonus » des crédits totaux (mouvement BONUS)
   gateway            String // "mock" en phase 1 ; "openpay" ultérieurement
   operator           MobileOperator
   payerPhone         String
-  externalReference  String         @unique // référence fournisseur (unicité = RG-05)
+  externalReference  String?        @unique // référence fournisseur, connue après l'appel au fournisseur (unicité = RG-05)
   status             PaymentStatus  @default(INITIATED)
   lastProviderStatus Json?
+  failureReason      String?
   creditedAt         DateTime?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
@@ -337,6 +339,20 @@ model Payment {
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
+}
+
+/// Transactions du faux fournisseur de paiement (PAYMENT_PROVIDER=mock) : l'état « côté opérateur ».
+/// Le vrai fournisseur est externe et persistant ; le mock l'est donc aussi, pour survivre à un redémarrage.
+model MockPaymentTransaction {
+  reference   String   @id
+  amount      Int
+  currency    String
+  phone       String
+  operator    String
+  status      String   @default("pending") // pending | success | failed | cancelled
+  failureMode String? // provider_error | invalid_response : simule un fournisseur défaillant
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model CreditLedger {

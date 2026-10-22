@@ -17,6 +17,8 @@ export interface SessionUser {
   googleLinked: boolean;
   /** Solde de crédits (somme du registre). */
   credits: number;
+  /** Valeur indicative d'un crédit en FCFA (paramétrable dans l'admin). */
+  creditValueFcfa: number;
 }
 
 export const SESSION_COOKIE = 'yamboka_session';

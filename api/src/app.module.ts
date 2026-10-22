@@ -8,12 +8,17 @@ import { AuthCoreModule } from './auth/auth-core.module';
 import { AuthModule } from './auth/auth.module';
 import { AuthGuard, OriginGuard, RolesGuard } from './auth/guards';
 import { Env, validateEnv } from './config/env';
+import { CatalogModule } from './catalog/catalog.module';
 import { CreditsModule } from './credits/credits.module';
 import { DevModule } from './dev/dev.module';
 import { EmailModule } from './email/email.module';
 import { HealthModule } from './health/health.module';
+import { JobsModule } from './jobs/jobs.module';
 import { LegalModule } from './legal/legal.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { isQueueEnabled, QueueModule } from './queue/queue.module';
 import { SettingsModule } from './settings/settings.module';
 import { UsersModule } from './users/users.module';
 
@@ -57,12 +62,17 @@ const emailTracker = (req: Record<string, any>): Promise<string> => {
     PrismaModule,
     SettingsModule,
     CreditsModule,
+    NotificationsModule,
+    QueueModule.register(),
     LegalModule,
     EmailModule,
     AuthCoreModule,
     UsersModule,
     AuthModule,
+    CatalogModule,
+    PaymentsModule,
     AdminModule,
+    ...(isQueueEnabled() ? [JobsModule] : []),
     HealthModule,
     ...(process.env.NODE_ENV === 'production' ? [] : [DevModule]),
   ],

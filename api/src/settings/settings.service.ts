@@ -7,6 +7,11 @@ export const SETTING_DEFAULTS = {
   welcomeExpiryDays: 30,
   purchasedCreditsExpiryMonths: 12,
   maintenanceMode: false,
+  usdToXafRate: 575,
+  fxFeePercent: 6,
+  openpayCommissionPercent: 5,
+  regenOverheadPercent: 15,
+  minMarginPercent: 15,
 } as const;
 
 export type SettingKey = keyof typeof SETTING_DEFAULTS;

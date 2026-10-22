@@ -30,8 +30,9 @@ export class UsersService {
       where: { id: userId },
       include: { oauthAccounts: { select: { provider: true } } },
     });
-    const [credits, legalAccepted] = await Promise.all([
+    const [credits, creditValueFcfa, legalAccepted] = await Promise.all([
       this.credits.getBalance(userId),
+      this.credits.creditValue(),
       this.legal.hasAcceptedRequired(userId),
     ]);
     return {
@@ -47,6 +48,7 @@ export class UsersService {
       hasPassword: user.passwordHash !== null,
       googleLinked: user.oauthAccounts.some((a) => a.provider === 'google'),
       credits,
+      creditValueFcfa,
     };
   }
 
