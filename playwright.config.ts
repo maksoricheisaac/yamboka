@@ -16,6 +16,9 @@ export default defineConfig({
   testDir: './e2e',
   outputDir: './test-results',
   fullyParallel: true,
+  // Chaque worker pilote un Chromium ; en plus, trois serveurs Node et PostgreSQL tournent sur la même machine.
+  // Au-delà de 4, la surcharge provoque des délais dépassés qui ne disent rien du code.
+  workers: process.env.CI ? 2 : 4,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [['list'], ['html', { open: 'never' }]],
@@ -44,10 +47,12 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'pnpm --filter web start',
+      // Build dédié à l'e2e : NEXT_PUBLIC_* est figé à la compilation, avec un numéro WhatsApp factice.
+      command: 'pnpm --filter web build && pnpm --filter web start',
       url: WEB_URL,
-      reuseExistingServer: !process.env.CI,
-      timeout: 60_000,
+      reuseExistingServer: false,
+      timeout: 240_000,
+      env: { NEXT_PUBLIC_WHATSAPP_NUMBER: '242060000000' },
     },
     {
       // Compile l'API, recrée la base jetable (migrations + seed), puis démarre.

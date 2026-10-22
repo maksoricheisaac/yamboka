@@ -3,14 +3,15 @@
 | Niveau | Outil | Commande | Contenu |
 |---|---|---|---|
 | API, unitaires | Jest | `pnpm --filter api test` | Config, domaines jetables |
-| API, intégration | Jest + supertest + PostgreSQL réel | `pnpm --filter api test:e2e` | Authentification, sessions, CSRF, rôles, Google (client simulé), limitation de débit |
+| API, intégration | Jest + supertest + PostgreSQL réel | `pnpm --filter api test:e2e` | Authentification, sessions, CSRF, rôles, Google (client simulé), limitation de débit, registre de crédits (concurrence, idempotence, expiration), paiements simulés, catalogue |
+| API, file de tâches | Jest + BullMQ + **Redis** | (inclus dans `test:e2e`) | Callback → worker → crédit unique, rattrapage, tâches planifiées. Utilise la base Redis n° 15, réservée aux tests |
 | Navigateur | Playwright | `pnpm test:e2e` | Site public et application (desktop et mobile 360 px) |
 
 ## Base de données de test
 
 Les tests d'intégration recréent la base `yamboka_test` à chaque exécution (suppression, création, migrations, seed). Le registre de crédits est volontairement impossible à vider (trigger), d'où une base neuve plutôt qu'un nettoyage. **Garde-fou** : `resetDatabase` refuse toute base dont le nom ne finit pas par `_test` ou `_e2e`.
 
-PostgreSQL doit tourner : `docker compose -f docker/docker-compose.dev.yml up -d`.
+PostgreSQL **et Redis** doivent tourner : `docker compose -f docker/docker-compose.dev.yml up -d`.
 
 ## Tests de navigateur (Playwright)
 
@@ -25,6 +26,10 @@ Pile isolée, pour ne jamais toucher au développement en cours :
 Playwright démarre les trois serveurs lui-même. Premier lancement : `pnpm exec playwright install chromium`.
 
 Projets : `web-desktop`, `web-mobile-360`, `app-desktop`, `app-mobile-360`. Exemple : `pnpm exec playwright test --project=app-desktop -g "connexion"`.
+
+### Charge et nombre de workers
+
+La configuration limite Playwright à **4 workers** (2 en CI). Chaque worker pilote un Chromium, et trois serveurs Node plus PostgreSQL tournent sur la même machine : avec 8 workers sur 8 cœurs, environ 7 % des tests échouaient par délai dépassé (inscription ou paiement qui n'aboutit pas à temps). Ne pas augmenter ce nombre pour « aller plus vite » : cela rend la suite instable sans rien dire du code.
 
 ### Conventions des tests
 

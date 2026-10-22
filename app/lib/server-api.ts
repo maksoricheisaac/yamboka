@@ -29,3 +29,33 @@ export async function getAuthProviders(): Promise<{ google: boolean }> {
     return { google: false };
   }
 }
+
+/** Lecture d'une route authentifiée de l'API depuis un composant serveur (cookie de session transmis). */
+export async function serverGet<T>(path: string): Promise<T> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  const res = await fetch(`${API}/v1${path}`, {
+    headers: token ? { cookie: `${SESSION_COOKIE}=${token}` } : {},
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`API ${path} : ${res.status}`);
+  return (await res.json()) as T;
+}
+
+/** Lecture d'une route publique de l'API (packs, produits). */
+export async function publicGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${API}/v1${path}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`API ${path} : ${res.status}`);
+  return (await res.json()) as T;
+}
+
+/** Comme serverGet, mais renvoie null si la ressource n'existe pas (404) : permet un notFound() propre. */
+export async function serverGetOrNull<T>(path: string): Promise<T | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  const res = await fetch(`${API}/v1${path}`, {
+    headers: token ? { cookie: `${SESSION_COOKIE}=${token}` } : {},
+    cache: "no-store",
+  });
+  if (res.status === 404 || res.status === 400) return null;
+  if (!res.ok) throw new Error(`API ${path} : ${res.status}`);
+  return (await res.json()) as T;
+}

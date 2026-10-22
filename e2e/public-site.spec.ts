@@ -83,3 +83,12 @@ test('le hero ne dépend pas de la 3D : titre et boutons sont du HTML', async ({
   await expect(page.getByRole('heading', { level: 1 })).toContainText('payées en mobile money');
   await expect(page.getByRole('link', { name: 'Créer un compte' }).first()).toBeVisible();
 });
+
+test('contact : le bouton WhatsApp pointe vers le numéro configuré', async ({ page }) => {
+  await page.goto('/contact');
+  const link = page.getByRole('link', { name: /Écrire sur WhatsApp/ });
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute('href', /^https:\/\/wa\.me\/242060000000\?text=/);
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', /noopener/);
+});

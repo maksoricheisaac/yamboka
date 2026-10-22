@@ -66,3 +66,11 @@ Sans ces trois variables, le bouton Google n'est pas affiché (`GET /auth/provid
 ## Outils de développement
 
 `GET /v1/dev/outbox?to=<email>` expose les e-mails envoyés (liens de vérification) **hors production uniquement** : le module n'est pas chargé quand `NODE_ENV=production`.
+
+## Connexions keep-alive derrière un proxy (erreurs 500 aléatoires)
+
+Le navigateur parle à `app/`, qui relaie `/api/*` vers l'API. Un proxy réutilise des connexions HTTP keep-alive. Node ferme les siennes après **5 s d'inactivité** par défaut : si le proxy en réutilise une à cet instant précis, il reçoit `ECONNRESET` (« Failed to proxy … socket hang up ») et l'utilisateur voit une erreur 500 aléatoire.
+
+L'API garde donc ses connexions ouvertes **65 s** (`keepAliveTimeout`, `headersTimeout` à 66 s, voir `api/src/main.ts`), pour que ce soit toujours le proxy qui ferme en premier. Si un reverse proxy est ajouté devant (Traefik sous Dokploy), son délai d'inactivité doit rester **inférieur** à 65 s.
+
+Ce correctif réduit la fenêtre de la course mais n'a pas pu être prouvé comme la seule cause d'erreurs sous très forte charge ; en cas d'erreurs 500 intermittentes en production, chercher d'abord `Failed to proxy` dans les journaux de `app/`.
