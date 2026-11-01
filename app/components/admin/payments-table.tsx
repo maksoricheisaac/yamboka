@@ -2,6 +2,8 @@
 
 import { createColumnHelper } from "@tanstack/react-table";
 import type { AdminPaymentRow } from "@yamboka/shared";
+import Link from "next/link";
+import { providerLabel } from "@/components/credits/labels";
 import { DataTable, SortableHeader } from "@/components/admin/data-table/data-table";
 import type { DataTableFeatures } from "@/components/admin/data-table/features";
 import { StatusPill } from "@/components/admin/ui";
@@ -32,6 +34,17 @@ const columns = col.columns([
       </>
     ),
   }),
+  col.accessor("provider", {
+    id: "provider",
+    header: ({ column }) => <SortableHeader column={column} title="Fournisseur" />,
+    sortFn: "text",
+    cell: ({ row: { original: p } }) => (
+      <>
+        {providerLabel(p.provider)}
+        {p.network && <span className="block text-xs text-muted-foreground">{p.network}</span>}
+      </>
+    ),
+  }),
   col.accessor("packName", {
     id: "pack",
     header: ({ column }) => <SortableHeader column={column} title="Pack" />,
@@ -47,7 +60,14 @@ const columns = col.columns([
     id: "amount",
     header: ({ column }) => <SortableHeader column={column} title="Montant" />,
     sortFn: "basic",
-    cell: ({ row }) => <span className="whitespace-nowrap font-medium">{formatFcfa(row.original.amount)}</span>,
+    cell: ({ row: { original: p } }) => (
+      <>
+        <span className="whitespace-nowrap font-medium">{formatFcfa(p.amount)}</span>
+        {p.sentAmount != null && p.sentAmount !== p.amount && (
+          <span className="block whitespace-nowrap text-xs text-muted-foreground">envoyé : {formatFcfa(p.sentAmount)}</span>
+        )}
+      </>
+    ),
   }),
   col.accessor("status", {
     id: "status",
@@ -57,6 +77,7 @@ const columns = col.columns([
       <>
         <StatusPill kind="payment" value={p.status} />
         {p.failureReason && <span className="block text-xs text-muted-foreground">{p.failureReason}</span>}
+        {p.issue && <span className="block text-xs font-medium text-destructive">{p.issue}</span>}
       </>
     ),
   }),
@@ -65,7 +86,10 @@ const columns = col.columns([
     header: "Actions",
     enableHiding: false,
     cell: ({ row: { original: p } }) => (
-      <div className="text-right">
+      <div className="flex flex-col items-end gap-1.5">
+        <Link href={`/admin/paiements/${p.id}`} className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+          Détail<span className="sr-only"> du paiement de {p.user.email}</span>
+        </Link>
         {(p.status === "PENDING" || p.status === "INITIATED" || p.status === "FAILED") && <VerifyPaymentButton id={p.id} />}
       </div>
     ),
@@ -80,8 +104,8 @@ export function PaymentsTable({ payments }: { payments: AdminPaymentRow[] }) {
       columns={columns}
       data={payments}
       paginate={false}
-      minWidth="52rem"
-      columnLabels={{ customer: "Client", pack: "Pack", amount: "Montant", status: "État" }}
+      minWidth="60rem"
+      columnLabels={{ customer: "Client", provider: "Fournisseur", pack: "Pack", amount: "Montant", status: "État" }}
     />
   );
 }

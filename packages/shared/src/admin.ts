@@ -120,6 +120,8 @@ export type PayoutInput = z.infer<typeof payoutSchema>;
 export const listQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
   status: z.string().trim().max(30).optional(),
+  /** Fournisseur de paiement (« saspay », « mock ») : filtre du journal des paiements. */
+  provider: z.string().trim().max(30).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   from: z.iso.date().optional(),

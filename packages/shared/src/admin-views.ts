@@ -124,6 +124,39 @@ export interface AdminPaymentRow {
   externalReference: string | null;
   failureReason: string | null;
   createdAt: string;
+  /** Fournisseur de paiement (Payment.gateway). */
+  provider: string;
+  /** Réseau chez le fournisseur (ex. « mtn_cg »). */
+  network: string | null;
+  /** Montant réellement envoyé au fournisseur (prix affiché moins les frais absorbés). */
+  sentAmount: number | null;
+  clientFee: number | null;
+  debitedAmount: number | null;
+  /** Dernière vérification auprès du fournisseur (ISO), connue ou non. */
+  lastCheckedAt: string | null;
+  /** Problème de traitement constaté (fournisseur injoignable, clé refusée, refus…), sinon null. */
+  issue: string | null;
+}
+
+export type AdminPaymentEventKind = 'created' | 'webhook' | 'verification' | 'credited' | 'failed';
+
+/** Une ligne de la chronologie d'un paiement, reconstituée sans stocker de secret ni de donnée personnelle. */
+export interface AdminPaymentEvent {
+  at: string;
+  kind: AdminPaymentEventKind;
+  label: string;
+  detail: string | null;
+}
+
+export interface AdminPaymentDetail extends AdminPaymentRow {
+  country: string;
+  currency: string;
+  payerPhone: string;
+  bonusCredits: number;
+  creditedAt: string | null;
+  /** Frais calculés à la création : source du tarif, frais, total payé par le client. */
+  fee: { source: string; fee: number; total: number; absorbed: number } | null;
+  timeline: AdminPaymentEvent[];
 }
 
 export interface AdminGenerationRow {

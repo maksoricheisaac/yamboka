@@ -372,7 +372,20 @@ export class PaymentsService {
     }
   }
 
-  /** Rejoue l'initiation d'un paiement resté INITIATED sans référence (appelé par le rattrapage). */
+  /**
+   * Vérification demandée par un administrateur : rejoue l'initiation d'un paiement resté INITIATED (même clé,
+   * même corps), puis vérifie auprès du fournisseur. Ne force jamais un statut : seul le fournisseur décide.
+   */
+  async recheck(paymentId: string): Promise<PaymentStatus> {
+    await this.restart(paymentId);
+    return this.verify(paymentId);
+  }
+
+  /**
+   * Rejoue l'initiation d'un paiement resté INITIATED sans référence (rattrapage, relance admin). Limité à la
+   * fenêtre de 10 minutes : au-delà, on ne sait pas si SasPay garde encore la clé d'idempotence, et un rejeu
+   * pourrait alors créer un second paiement.
+   */
   private async restart(paymentId: string): Promise<void> {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
@@ -380,6 +393,8 @@ export class PaymentsService {
     });
     if (!payment || payment.externalReference || payment.status !== 'INITIATED')
       return;
+    if (!this.providerOf(payment.gateway)?.idempotent) return;
+    if (Date.now() - payment.createdAt.getTime() > UNSTARTED_GIVE_UP_MS) return;
     try {
       await this.start(payment);
     } catch (e) {

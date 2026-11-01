@@ -10,6 +10,8 @@ import {
   type AdminAccount,
   type AdminAlert,
   type AdminGenerationRow,
+  type AdminPaymentDetail,
+  type AdminPaymentEvent,
   type AdminPaymentRow,
   type AdminStats,
   type AuditRow,
@@ -112,7 +114,10 @@ export class AdminOpsService {
         message: 'La date de début doit précéder la date de fin.',
       });
     }
-    const days = Math.max(1, Math.ceil((until.getTime() - since.getTime()) / DAY));
+    const days = Math.max(
+      1,
+      Math.ceil((until.getTime() - since.getTime()) / DAY),
+    );
     const inPeriod = { gte: since, lt: until };
     const [
       usersTotal,
@@ -355,6 +360,7 @@ export class AdminOpsService {
       )
     )
       where.status = q.status as 'PENDING';
+    if (q.provider) where.gateway = q.provider;
     if (q.q) {
       where.OR = [
         { user: { email: { contains: q.q, mode: 'insensitive' } } },
@@ -366,6 +372,35 @@ export class AdminOpsService {
       where.createdAt = { gte: from, lt: end };
     }
     return where;
+  }
+
+  private paymentRow(
+    p: Prisma.PaymentGetPayload<{ include: { user: true; pack: true } }>,
+  ): AdminPaymentRow {
+    const last = (p.lastProviderStatus ?? null) as {
+      at?: string;
+      error?: string;
+      rejected?: string;
+    } | null;
+    return {
+      id: p.id,
+      user: { id: p.userId, email: p.user.email },
+      packName: p.pack.name,
+      amount: p.amount,
+      credits: p.credits,
+      operator: p.operator,
+      status: p.status,
+      externalReference: p.externalReference,
+      failureReason: p.failureReason,
+      createdAt: p.createdAt.toISOString(),
+      provider: p.gateway,
+      network: p.network,
+      sentAmount: p.sentAmount,
+      clientFee: p.clientFee,
+      debitedAmount: p.debitedAmount,
+      lastCheckedAt: typeof last?.at === 'string' ? last.at : null,
+      issue: paymentIssue(p.status, last),
+    };
   }
 
   async listPayments(q: ListQuery): Promise<Page<AdminPaymentRow>> {
@@ -381,21 +416,98 @@ export class AdminOpsService {
       }),
     ]);
     return {
-      items: rows.map((p) => ({
-        id: p.id,
-        user: { id: p.userId, email: p.user.email },
-        packName: p.pack.name,
-        amount: p.amount,
-        credits: p.credits,
-        operator: p.operator,
-        status: p.status,
-        externalReference: p.externalReference,
-        failureReason: p.failureReason,
-        createdAt: p.createdAt.toISOString(),
-      })),
+      items: rows.map((p) => this.paymentRow(p)),
       total,
       page: q.page,
       pageSize: q.pageSize,
+    };
+  }
+
+  /** Fiche d'un paiement avec sa chronologie (création, notifications reçues, vérifications manuelles, crédit). */
+  async getPayment(id: string): Promise<AdminPaymentDetail> {
+    const p = await this.prisma.payment.findUnique({
+      where: { id },
+      include: { user: true, pack: true },
+    });
+    if (!p)
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Paiement introuvable.',
+      });
+    const [webhooks, audits] = await Promise.all([
+      p.externalReference
+        ? this.prisma.paymentWebhookEvent.findMany({
+            where: { gateway: p.gateway, providerTxId: p.externalReference },
+            orderBy: { receivedAt: 'asc' },
+          })
+        : [],
+      this.prisma.auditLog.findMany({
+        where: { entityType: 'Payment', entityId: id },
+        orderBy: { createdAt: 'asc' },
+        include: { actor: { select: { email: true } } },
+      }),
+    ]);
+    const timeline: AdminPaymentEvent[] = [
+      {
+        at: p.createdAt.toISOString(),
+        kind: 'created',
+        label: 'Paiement créé',
+        detail: `${p.amount} ${p.currency}${p.sentAmount != null ? ` (envoyé : ${p.sentAmount})` : ''}`,
+      },
+      ...webhooks.map((w) => ({
+        at: w.receivedAt.toISOString(),
+        kind: 'webhook' as const,
+        label: `Notification reçue : ${w.event}`,
+        detail: w.processedAt
+          ? 'Signature vérifiée, vérification déclenchée'
+          : 'Signature vérifiée, transaction pas encore rattachée',
+      })),
+      ...audits.map((a) => ({
+        at: a.createdAt.toISOString(),
+        kind: 'verification' as const,
+        label: 'Vérification manuelle',
+        detail: `Par ${a.actor?.email ?? 'un administrateur'} : ${statusOf(a.before)} → ${statusOf(a.after)}`,
+      })),
+    ];
+    if (p.creditedAt) {
+      timeline.push({
+        at: p.creditedAt.toISOString(),
+        kind: 'credited',
+        label: 'Crédits ajoutés',
+        detail: `${p.credits + p.bonusCredits} crédits`,
+      });
+    } else if (p.status === 'FAILED' || p.status === 'CANCELLED') {
+      timeline.push({
+        at: p.updatedAt.toISOString(),
+        kind: 'failed',
+        label: p.status === 'FAILED' ? 'Paiement échoué' : 'Paiement annulé',
+        detail: p.failureReason,
+      });
+    }
+    timeline.sort((a, b) => a.at.localeCompare(b.at));
+    const snap = p.feeSnapshot as {
+      source?: string;
+      fee?: number;
+      total?: number;
+      absorbed?: number;
+    } | null;
+    return {
+      ...this.paymentRow(p),
+      country: p.country,
+      currency: p.currency,
+      payerPhone: p.payerPhone,
+      bonusCredits: p.bonusCredits,
+      creditedAt: p.creditedAt?.toISOString() ?? null,
+      fee:
+        snap && typeof snap.fee === 'number'
+          ? {
+              source: snap.source ?? 'inconnue',
+              fee: snap.fee,
+              total: snap.total ?? p.amount,
+              absorbed: snap.absorbed ?? 0,
+            }
+          : null,
+      timeline,
     };
   }
 
@@ -411,7 +523,8 @@ export class AdminOpsService {
         code: 'NOT_FOUND',
         message: 'Paiement introuvable.',
       });
-    const status = await this.payments.verify(id);
+    // recheck : rejoue l'initiation si elle est restée sans réponse (même clé), puis vérifie chez le fournisseur.
+    const status = await this.payments.recheck(id);
     await this.audit.log({
       actorId: adminId,
       action: 'payment.manual_verify',
@@ -442,6 +555,11 @@ export class AdminOpsService {
       'operateur',
       'statut',
       'reference_fournisseur',
+      'fournisseur',
+      'reseau',
+      'montant_envoye',
+      'frais_client',
+      'montant_debite',
     ];
     const lines = rows.map((p) =>
       [
@@ -454,6 +572,11 @@ export class AdminOpsService {
         p.operator,
         p.status,
         p.externalReference,
+        p.gateway,
+        p.network,
+        p.sentAmount,
+        p.clientFee,
+        p.debitedAmount,
       ]
         .map(csvCell)
         .join(','),
@@ -1027,5 +1150,33 @@ export class AdminOpsService {
           'Connexion établie mais l’envoi a été refusé : vérifiez EMAIL_FROM et le domaine autorisé.',
       };
     }
+  }
+}
+
+/** Statut lu dans un enregistrement d'audit (`{ status }`), « ? » s'il est absent. */
+function statusOf(value: unknown): string {
+  const status = (value as { status?: unknown } | null)?.status;
+  return typeof status === 'string' ? status : '?';
+}
+
+/**
+ * Problème de traitement à signaler à l'administrateur, déduit de la dernière réponse du fournisseur.
+ * Seulement tant que le paiement n'est pas conclu : un paiement réussi n'a plus rien à signaler.
+ */
+function paymentIssue(
+  status: string,
+  last: { error?: string; rejected?: string } | null,
+): string | null {
+  if (status === 'SUCCESS' || !last) return null;
+  if (last.rejected) return `Refusé par le fournisseur (${last.rejected})`;
+  switch (last.error) {
+    case 'auth':
+      return 'Clé API refusée par le fournisseur : à corriger d’urgence';
+    case 'unavailable':
+      return 'Fournisseur injoignable à la dernière tentative';
+    case 'invalid_response':
+      return 'Réponse illisible du fournisseur à la dernière tentative';
+    default:
+      return null;
   }
 }

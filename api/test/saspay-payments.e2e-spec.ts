@@ -665,6 +665,207 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
     });
   });
 
+  describe('Administration des paiements', () => {
+    let admin: Client;
+    beforeAll(async () => {
+      admin = new Client(app);
+      await admin
+        .post('/v1/auth/login', {
+          email: TEST_ENV.ADMIN_EMAIL,
+          password: TEST_ENV.ADMIN_PASSWORD,
+        })
+        .expect(200);
+    });
+
+    const find = async (ref: string) => {
+      const res = await admin.get(
+        `/v1/admin/payments?provider=saspay&q=${encodeURIComponent(ref)}`,
+      );
+      expect(res.status).toBe(200);
+      return res.body.items as Array<Record<string, any>>;
+    };
+
+    it('liste les paiements SasPay avec fournisseur, réseau et montants, et filtre par fournisseur', async () => {
+      const { row } = await started();
+      const [item] = await find(row.externalReference!);
+      expect(item).toMatchObject({
+        id: row.id,
+        provider: 'saspay',
+        network: 'mtn_cg',
+        amount: 5000,
+        sentAmount: 4730,
+        status: 'PENDING',
+        issue: null,
+      });
+      const mock = await admin.get(
+        `/v1/admin/payments?provider=mock&q=${encodeURIComponent(row.externalReference!)}`,
+      );
+      expect(mock.body.items).toEqual([]);
+      const byStatus = await admin.get(
+        '/v1/admin/payments?provider=saspay&status=PENDING',
+      );
+      expect(
+        byStatus.body.items.every(
+          (p: { provider: string; status: string }) =>
+            p.provider === 'saspay' && p.status === 'PENDING',
+        ),
+      ).toBe(true);
+    });
+
+    it('signale un problème de traitement quand le fournisseur est injoignable', async () => {
+      const { row, id } = await started();
+      fake.statuses.set(
+        row.externalReference!,
+        new ProviderUnavailableError('panne'),
+      );
+      await payments.verify(id);
+      const [item] = await find(row.externalReference!);
+      expect(item.issue).toContain('injoignable');
+      expect(item.lastCheckedAt).not.toBeNull();
+    });
+
+    it('la fiche montre la chronologie : création, notification, vérification manuelle, crédit', async () => {
+      const { row, id } = await started();
+      const ref = row.externalReference!;
+      confirm(ref);
+      const raw = JSON.stringify({
+        event: 'transaction.success',
+        data: { id: ref, status: 'SUCCESS' },
+      });
+      const ts = String(Math.floor(Date.now() / 1000));
+      await request(app.getHttpServer())
+        .post('/v1/webhooks/saspay')
+        .set('Content-Type', 'application/json')
+        .set('X-Webhook-Timestamp', ts)
+        .set(
+          'X-Webhook-Signature',
+          createHmac('sha256', TEST_ENV.SASPAY_WEBHOOK_SECRET)
+            .update(`${ts}.${raw}`)
+            .digest('hex'),
+        )
+        .send(raw)
+        .expect(200);
+      await admin.post(`/v1/admin/payments/${id}/verify`).expect(200);
+
+      const res = await admin.get(`/v1/admin/payments/${id}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        provider: 'saspay',
+        status: 'SUCCESS',
+        currency: 'XAF',
+        sentAmount: 4730,
+        clientFee: 270,
+        debitedAmount: 5000,
+        fee: { source: 'provider', fee: 270, total: 5000 },
+      });
+      const kinds = (res.body.timeline as { kind: string }[]).map(
+        (e) => e.kind,
+      );
+      expect(kinds).toEqual(
+        expect.arrayContaining([
+          'created',
+          'webhook',
+          'verification',
+          'credited',
+        ]),
+      );
+      const times = (res.body.timeline as { at: string }[]).map((e) => e.at);
+      expect([...times].sort()).toEqual(times);
+      // Aucun secret ni identifiant d'idempotence dans la fiche.
+      expect(JSON.stringify(res.body)).not.toContain(
+        row.idempotencyKey as string,
+      );
+    });
+
+    it('la vérification manuelle est tracée et ne crédite que si le fournisseur confirme', async () => {
+      const { client, row, id } = await started();
+      const ref = row.externalReference!;
+      const before = await prisma.auditLog.count({
+        where: { entityType: 'Payment', entityId: id },
+      });
+      // Le fournisseur dit « en attente » : l'administrateur ne peut rien forcer.
+      const pending = await admin
+        .post(`/v1/admin/payments/${id}/verify`)
+        .expect(200);
+      expect(pending.body.status).toBe('PENDING');
+      expect(await creditsOf(client)).toBe(0);
+
+      confirm(ref);
+      expect(
+        (await admin.post(`/v1/admin/payments/${id}/verify`).expect(200)).body
+          .status,
+      ).toBe('SUCCESS');
+      await admin.post(`/v1/admin/payments/${id}/verify`).expect(200);
+      expect(await creditsOf(client)).toBe(1500);
+      expect(
+        await prisma.creditLedger.count({ where: { paymentId: id } }),
+      ).toBe(2);
+
+      const audits = await prisma.auditLog.findMany({
+        where: { entityType: 'Payment', entityId: id },
+      });
+      expect(audits.length - before).toBe(3);
+      expect(audits.every((a) => a.action === 'payment.manual_verify')).toBe(
+        true,
+      );
+      expect(audits.every((a) => a.actorId !== null)).toBe(true);
+    });
+
+    it('relance un paiement resté sans réponse : même clé, aucun doublon chez le fournisseur', async () => {
+      const { client, userId } = await verifiedClient(app);
+      fake.next = 'lost-response';
+      await buy(client);
+      const p = await prisma.payment.findFirstOrThrow({ where: { userId } });
+      expect(p.status).toBe('INITIATED');
+      const res = await admin.post(`/v1/admin/payments/${p.id}/verify`);
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('PENDING');
+      const after = await prisma.payment.findUniqueOrThrow({
+        where: { id: p.id },
+      });
+      expect(after.externalReference).toBeTruthy();
+      expect(fake.created.size).toBe(1);
+    });
+
+    it('aucune route ne permet de forcer un statut ni de créditer un paiement', async () => {
+      const { client, id } = await started();
+      for (const action of ['status', 'credit', 'confirm', 'force']) {
+        const path = `/v1/admin/payments/${id}/${action}`;
+        const res = await admin.post(path, { status: 'SUCCESS' });
+        expect([path, res.status]).toEqual([path, 404]);
+      }
+      expect(await creditsOf(client)).toBe(0);
+    });
+
+    it('le journal exporté contient fournisseur, réseau et montants, sans secret', async () => {
+      const { row } = await started();
+      const res = await admin.get('/v1/admin/finance/export.csv');
+      expect(res.status).toBe(200);
+      const csv = res.text;
+      expect(csv).toContain('fournisseur');
+      expect(csv).toContain('montant_envoye');
+      expect(csv).toContain(row.externalReference!);
+      expect(csv).not.toContain(row.idempotencyKey as string);
+    });
+
+    it('fiche et vérification réservées aux administrateurs', async () => {
+      const { client, id } = await started();
+      const anon = new Client(app);
+      expect((await anon.get(`/v1/admin/payments/${id}`)).status).toBe(401);
+      expect((await client.get(`/v1/admin/payments/${id}`)).status).toBe(403);
+      expect(
+        (await client.post(`/v1/admin/payments/${id}/verify`)).status,
+      ).toBe(403);
+      expect(
+        (
+          await admin.get(
+            `/v1/admin/payments/00000000-0000-4000-8000-000000000000`,
+          )
+        ).status,
+      ).toBe(404);
+    });
+  });
+
   describe('Isolation', () => {
     it('un utilisateur ne voit pas le paiement d’un autre', async () => {
       const { id } = await started();

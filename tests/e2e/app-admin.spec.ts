@@ -139,3 +139,38 @@ test.describe('Administration — actions réelles', () => {
     await expect(page.getByText('Aucune entrée')).toBeVisible();
   });
 });
+
+test.describe('Administration — paiements', () => {
+  test('journal filtrable par fournisseur, fiche avec historique, vérification sans pouvoir de crédit', async ({ page, browser, request, baseURL }) => {
+    const customer = await newCustomer(browser, baseURL!, request);
+    // Le client lance un achat (fournisseur simulé) : le paiement reste en attente.
+    await customer.page.goto('/app/credits');
+    await expect(customer.page.getByRole('button', { name: /^Payer/ })).toBeEnabled();
+    await customer.page.locator('label', { hasText: 'Starter' }).first().click();
+    await customer.page.getByLabel('MTN Mobile Money').check();
+    await customer.page.getByLabel('Numéro qui paie').fill('242061234567');
+    await customer.page.getByRole('button', { name: /^Payer/ }).click();
+    await expect(customer.page).toHaveURL(/\/app\/credits\/paiement\/[0-9a-f-]{36}$/);
+
+    await adminLogin(page);
+    await page.goto(`/admin/paiements?q=${encodeURIComponent(customer.email)}`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Paiements' })).toBeVisible();
+    await expect(page.getByLabel('Fournisseur')).toBeVisible();
+    // Filtre par fournisseur : « SasPay » ne montre pas ce paiement simulé, « Simulé » le montre.
+    await page.goto(`/admin/paiements?q=${encodeURIComponent(customer.email)}&provider=saspay`);
+    await expect(page.getByText('Aucun paiement', { exact: true })).toBeVisible();
+    await page.goto(`/admin/paiements?q=${encodeURIComponent(customer.email)}&provider=mock`);
+    const row = page.getByRole('row', { name: new RegExp(customer.email) });
+    await expect(row.getByText('Simulé')).toBeVisible();
+
+    // Fiche : historique et vérification manuelle (le fournisseur dit « en attente » : rien n'est crédité).
+    await row.getByRole('link', { name: /Détail/ }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Paiement de');
+    await expect(page.getByText('Paiement créé')).toBeVisible();
+    await expect(page.getByText(/ne peut pas être modifié à la main/)).toBeVisible();
+    await page.getByRole('button', { name: 'Vérifier' }).click();
+    await expect(page.getByRole('status')).toContainText('Statut chez le fournisseur : PENDING');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await customer.ctx.close();
+  });
+});

@@ -16,6 +16,7 @@ import type {
   AdminAccount,
   AdminGenerationRow,
   AdminPack,
+  AdminPaymentDetail,
   AdminPaymentRow,
   AdminPreset,
   AdminProduct,
@@ -282,7 +283,13 @@ export class AdminController {
     @Body(featuredBody) body: { featured: boolean; reason: string },
     @ClientIp() ip?: string,
   ): Promise<{ ok: true }> {
-    await this.offer.setPresetFeatured(admin.id, id, body.featured, body.reason, ip);
+    await this.offer.setPresetFeatured(
+      admin.id,
+      id,
+      body.featured,
+      body.reason,
+      ip,
+    );
     return { ok: true };
   }
 
@@ -308,6 +315,12 @@ export class AdminController {
   @Get('payments')
   listPayments(@Query(query) q: ListQuery): Promise<Page<AdminPaymentRow>> {
     return this.ops.listPayments(q);
+  }
+
+  @Get('payments/:id')
+  @ApiOperation({ summary: 'Fiche et chronologie d’un paiement' })
+  getPayment(@Param('id', uuid) id: string): Promise<AdminPaymentDetail> {
+    return this.ops.getPayment(id);
   }
 
   @HttpCode(200)

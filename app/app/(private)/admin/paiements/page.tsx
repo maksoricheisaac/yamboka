@@ -12,16 +12,16 @@ export const metadata: Metadata = { title: "Paiements — Administration" };
 export default async function PaymentsPage({ searchParams }: PageProps<"/admin/paiements">) {
   await requireUser({ role: "ADMIN" });
   const sp = flat(await searchParams);
-  const data = await serverGet<Page<AdminPaymentRow>>(`/admin/payments${listQuery(sp)}`);
+  const data = await serverGet<Page<AdminPaymentRow>>(`/admin/payments${listQuery(sp, ["provider"])}`);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Paiements"
-        description="Journal des paiements Mobile Money. La vérification manuelle interroge le fournisseur : elle ne crédite que si celui-ci confirme le succès."
+        description="Journal des paiements. La vérification manuelle interroge le fournisseur (SasPay) : elle ne crédite que si celui-ci confirme le succès, jamais sur simple décision d’un administrateur."
         actions={
           <Button asChild variant="outline">
-            <a href={`/api/admin/finance/export.csv${listQuery(sp)}`}>
+            <a href={`/api/admin/finance/export.csv${listQuery(sp, ["provider"])}`}>
               <Download aria-hidden /> Exporter en CSV
             </a>
           </Button>
@@ -30,6 +30,15 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/admin/p
       <FilterBar reset="/admin/paiements">
         <FilterField label="E-mail ou référence" name="q" defaultValue={sp.q} />
         <FilterSelect label="Statut" name="status" value={sp.status} options={STATUS_OPTIONS.payment} />
+        <FilterSelect
+          label="Fournisseur"
+          name="provider"
+          value={sp.provider}
+          options={[
+            { value: "saspay", label: "SasPay" },
+            { value: "mock", label: "Simulé" },
+          ]}
+        />
         <FilterDateRange from={sp.from} to={sp.to} />
       </FilterBar>
       {data.items.length === 0 ? (
