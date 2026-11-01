@@ -1,3 +1,4 @@
+import { formatPhoneDisplay } from "@yamboka/shared";
 const nf = new Intl.NumberFormat("fr-FR");
 
 /** Montant en FCFA, avec espace insécable entre les milliers (« 2 500 FCFA »). */
@@ -22,8 +23,7 @@ export function formatDateTime(iso: string): string {
   return dateTime.format(new Date(iso));
 }
 
-/** « 242061234567 » → « +242 06 123 45 67 » pour l'affichage. */
+/** Présentation d'un numéro (E.164 ou ancien format congolais) : « +242 06 606 31 33 ». */
 export function formatPhone(phone: string): string {
-  const m = /^(242)(\d{2})(\d{3})(\d{2})(\d{2})$/.exec(phone);
-  return m ? `+${m[1]} ${m[2]} ${m[3]} ${m[4]} ${m[5]}` : phone;
+  return formatPhoneDisplay(phone);
 }

@@ -168,3 +168,59 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Espace administrateur : identité propre (barre latérale sombre, accent ambre) pour ne jamais être confondu avec l'espace client. */
+[data-space="admin"] {
+  --sidebar: oklch(0.24 0.035 160);
+  --sidebar-foreground: oklch(0.95 0.01 85);
+  --sidebar-primary: oklch(0.83 0.16 82);
+  --sidebar-primary-foreground: oklch(0.25 0.05 80);
+  --sidebar-accent: oklch(0.32 0.04 160);
+  --sidebar-accent-foreground: oklch(0.98 0.01 85);
+  --sidebar-border: oklch(1 0 0 / 14%);
+  --sidebar-ring: oklch(0.83 0.16 82);
+}
+
+/*
+ * Animations « studio » de l'espace client : CSS pur (transform/opacité), coupées par « réduire les animations »
+ * (règle globale du design system).
+ */
+@theme inline {
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-rec: rec 1.2s steps(2, jump-none) infinite;
+  --animate-scan: scan 2.4s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  --animate-pop: pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-clap: clap 1.6s ease-in-out infinite;
+  --animate-reel: reel 2.4s linear infinite;
+  --animate-draw: draw 0.7s ease-out 0.15s both;
+  --animate-marquee: marquee 30s linear infinite;
+}
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+@keyframes rec { 0% { opacity: 1; } 100% { opacity: 0.15; } }
+@keyframes scan { 0%, 100% { transform: translateY(-4%); opacity: 0; } 15%, 85% { opacity: 1; } 50% { transform: translateY(104%); } }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes pop { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
+@keyframes clap { 0%, 55%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-24deg); } }
+@keyframes reel { to { transform: rotate(360deg); } }
+@keyframes draw { from { stroke-dashoffset: 30; } to { stroke-dashoffset: 0; } }
+@keyframes marquee { to { transform: translateX(-50%); } }
+
+.film-holes {
+  background-image: radial-gradient(circle at 50% 50%, var(--background) 0 3px, transparent 3.5px);
+  background-size: 18px 12px;
+  background-repeat: repeat-x;
+}
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), color-mix(in oklch, var(--accent), transparent 72%), transparent 70%);
+}
+.spotlight:hover::before { opacity: 1; }
+@keyframes playhead { from { left: 0%; } to { left: 100%; } }
+.studio-playhead { animation: playhead 7s linear infinite; }

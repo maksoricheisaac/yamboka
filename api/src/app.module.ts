@@ -4,14 +4,17 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AdminModule } from './admin/admin.module';
+import { AuditModule } from './audit/audit.service';
 import { AuthCoreModule } from './auth/auth-core.module';
 import { AuthModule } from './auth/auth.module';
 import { AuthGuard, OriginGuard, RolesGuard } from './auth/guards';
 import { Env, validateEnv } from './config/env';
 import { CatalogModule } from './catalog/catalog.module';
+import { CreationsModule } from './creations/creations.module';
 import { CreditsModule } from './credits/credits.module';
 import { DevModule } from './dev/dev.module';
 import { EmailModule } from './email/email.module';
+import { GenerationModule } from './generation/generation.module';
 import { HealthModule } from './health/health.module';
 import { JobsModule } from './jobs/jobs.module';
 import { LegalModule } from './legal/legal.module';
@@ -20,6 +23,8 @@ import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { isQueueEnabled, QueueModule } from './queue/queue.module';
 import { SettingsModule } from './settings/settings.module';
+import { SetupModule } from './setup/setup.module';
+import { StorageModule } from './storage/storage.module';
 import { UsersModule } from './users/users.module';
 
 /** Désactive la limitation de débit en test, sauf si un test l'active explicitement (THROTTLE_TESTS=1). */
@@ -61,17 +66,22 @@ const emailTracker = (req: Record<string, any>): Promise<string> => {
     }),
     PrismaModule,
     SettingsModule,
+    AuditModule,
     CreditsModule,
     NotificationsModule,
     QueueModule.register(),
     LegalModule,
     EmailModule,
+    StorageModule,
+    GenerationModule,
     AuthCoreModule,
     UsersModule,
     AuthModule,
     CatalogModule,
     PaymentsModule,
+    CreationsModule,
     AdminModule,
+    SetupModule,
     ...(isQueueEnabled() ? [JobsModule] : []),
     HealthModule,
     ...(process.env.NODE_ENV === 'production' ? [] : [DevModule]),
