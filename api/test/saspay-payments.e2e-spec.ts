@@ -254,7 +254,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       expect(p.externalReference).toBeNull();
       expect(fake.created.size).toBe(0);
 
-      await payments.reconcile();
+      await payments.reconcile(new Date(), 'saspay');
       p = await prisma.payment.findUniqueOrThrow({ where: { id: p.id } });
       expect(p.status).toBe('PENDING');
       expect(p.externalReference).toBeTruthy();
@@ -272,8 +272,8 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       expect(fake.created.size).toBe(1);
       const [created] = [...fake.created.values()];
 
-      await payments.reconcile();
-      await payments.reconcile(); // un 2e passage ne change rien
+      await payments.reconcile(new Date(), 'saspay');
+      await payments.reconcile(new Date(), 'saspay'); // un 2e passage ne change rien
       const p = await prisma.payment.findFirstOrThrow({ where: { userId } });
       expect(p.status).toBe('PENDING');
       expect(p.externalReference).toBe(created.reference);
@@ -286,7 +286,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       fake.next = 'invalid-response';
       const res = await buy(client);
       expect(res.body.payment.status).toBe('INITIATED');
-      await payments.reconcile();
+      await payments.reconcile(new Date(), 'saspay');
       const p = await prisma.payment.findFirstOrThrow({ where: { userId } });
       expect(p.status).toBe('PENDING');
       expect(fake.created.size).toBe(1);
@@ -306,7 +306,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       await buy(client);
       const p = await prisma.payment.findFirstOrThrow({ where: { userId } });
       const later = new Date(Date.now() + 11 * 60 * 1000);
-      await payments.reconcile(later);
+      await payments.reconcile(later, 'saspay');
       const after = await prisma.payment.findUniqueOrThrow({
         where: { id: p.id },
       });
@@ -340,7 +340,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       confirm(row.externalReference!);
       await Promise.all(Array.from({ length: 6 }, () => payments.verify(id)));
       await payments.verify(id);
-      await payments.reconcile();
+      await payments.reconcile(new Date(), 'saspay');
       expect(await creditsOf(client)).toBe(1500);
       expect(
         await prisma.creditLedger.count({ where: { paymentId: id } }),
@@ -439,14 +439,14 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
     it('revérifie les paiements ouverts : un paiement confirmé sans webhook est crédité', async () => {
       const { client, row } = await started();
       confirm(row.externalReference!);
-      await payments.reconcile();
+      await payments.reconcile(new Date(), 'saspay');
       expect(await creditsOf(client)).toBe(1500);
     });
 
     it('au bout d’une heure sans confirmation, le paiement est déclaré échoué (pas d’attente infinie)', async () => {
       const { client, id } = await started();
       const later = new Date(Date.now() + 61 * 60 * 1000);
-      const r = await payments.reconcile(later);
+      const r = await payments.reconcile(later, 'saspay');
       expect(r.expired).toBeGreaterThanOrEqual(1);
       const p = await prisma.payment.findUniqueOrThrow({ where: { id } });
       expect(p.status).toBe('FAILED');
@@ -456,13 +456,13 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
 
     it('un succès tardif confirmé par SasPay après ce délai est tout de même crédité, une fois', async () => {
       const { client, row, id } = await started();
-      await payments.reconcile(new Date(Date.now() + 61 * 60 * 1000));
+      await payments.reconcile(new Date(Date.now() + 61 * 60 * 1000), 'saspay');
       expect(
         (await prisma.payment.findUniqueOrThrow({ where: { id } })).status,
       ).toBe('FAILED');
       confirm(row.externalReference!);
-      await payments.reconcile();
-      await payments.reconcile();
+      await payments.reconcile(new Date(), 'saspay');
+      await payments.reconcile(new Date(), 'saspay');
       expect(
         (await prisma.payment.findUniqueOrThrow({ where: { id } })).status,
       ).toBe('SUCCESS');
@@ -660,7 +660,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       expect(res.status).toBe(200);
       expect(await statusOf(id)).toBe('PENDING');
       confirm(ref);
-      await payments.reconcile();
+      await payments.reconcile(new Date(), 'saspay');
       expect(await creditsOf(client)).toBe(1500);
     });
   });

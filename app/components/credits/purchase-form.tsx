@@ -65,6 +65,12 @@ export function PurchaseForm({
     setFormError(null);
     try {
       const { payment } = await apiPost<{ payment: PaymentView }>("/payments", values);
+      // Certains réseaux exigent une page de paiement hébergée : sans cette redirection, le paiement n'aurait jamais lieu.
+      // Le retour sur notre page ne prouve rien : le suivi interroge toujours notre serveur.
+      if (payment.checkoutUrl) {
+        window.location.assign(payment.checkoutUrl);
+        return;
+      }
       router.push(`/app/credits/paiement/${payment.id}`);
     } catch (e) {
       setFormError(applyApiError(e, setError, ["packId", "operator", "phone"]));
@@ -171,7 +177,7 @@ export function PurchaseForm({
           <p className="text-sm text-muted-foreground">Choisissez un pack pour voir le détail.</p>
         )}
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <ShieldCheck className="size-3.5 shrink-0 text-success" aria-hidden /> Aucun frais en plus : vous payez exactement le prix affiché.
+          <ShieldCheck className="size-3.5 shrink-0 text-success" aria-hidden /> Aucun frais en plus : vous ne payez jamais plus que le prix affiché.
         </p>
         <Button type="submit" size="lg" className="h-11 w-full sm:w-auto" disabled={!hydrated || !emailVerified || isSubmitting}>
           {isSubmitting ? "Envoi…" : selected ? `Payer ${formatFcfa(selected.priceFcfa)}` : "Payer"}

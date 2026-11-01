@@ -687,9 +687,11 @@ export class PaymentsService {
    */
   async reconcile(
     now = new Date(),
+    /** Limite le passage à un fournisseur (diagnostic, tests) ; par défaut tous. */
+    gateway?: string,
   ): Promise<{ checked: number; expired: number }> {
     const open = await this.prisma.payment.findMany({
-      where: { status: { in: OPEN } },
+      where: { status: { in: OPEN }, ...(gateway ? { gateway } : {}) },
       orderBy: { createdAt: 'asc' },
       take: 200,
     });
@@ -724,6 +726,7 @@ export class PaymentsService {
         status: 'FAILED',
         failureReason: TIMEOUT_REASON,
         externalReference: { not: null },
+        ...(gateway ? { gateway } : {}),
         createdAt: { gte: new Date(now.getTime() - LATE_SUCCESS_WINDOW_MS) },
       },
       orderBy: { createdAt: 'desc' },
@@ -785,6 +788,7 @@ export class PaymentsService {
       operator: p.operator,
       payerPhone: p.payerPhone,
       reference: p.externalReference,
+      provider: p.gateway,
       // La redirection n'a de sens que tant que le paiement est ouvert.
       checkoutUrl: OPEN.includes(p.status) ? p.checkoutUrl : null,
       failureReason: p.failureReason,

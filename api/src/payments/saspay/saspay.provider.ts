@@ -229,6 +229,9 @@ export class SaspayPaymentProvider extends PaymentProvider {
     path: string,
     options: { body?: unknown; idempotencyKey?: string } = {},
   ): Promise<unknown> {
+    if (!this.apiKey) {
+      throw new ProviderAuthError('SasPay : aucune clé API configurée.');
+    }
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${path}`, {

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { PaymentView } from "@yamboka/shared";
-import { OPERATOR_LABELS } from "@/components/credits/labels";
+import { OPERATOR_LABELS, providerLabel } from "@/components/credits/labels";
 import { StatusBadge } from "@/components/credits/status-badge";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth";
@@ -30,7 +30,7 @@ export default async function PurchasesPage() {
         </div>
       ) : (
         <div className="relative overflow-x-auto rounded-2xl border bg-card">
-          <table className="w-full min-w-[40rem] text-left text-sm">
+          <table className="w-full min-w-[52rem] text-left text-sm">
             <caption className="sr-only">Historique de vos achats de crédits</caption>
             <thead className="border-b bg-muted/60">
               <tr>
@@ -38,6 +38,8 @@ export default async function PurchasesPage() {
                 <th scope="col" className="px-4 py-3 font-semibold">Pack</th>
                 <th scope="col" className="px-4 py-3 font-semibold">Montant</th>
                 <th scope="col" className="px-4 py-3 font-semibold">Opérateur</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Fournisseur</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Référence</th>
                 <th scope="col" className="px-4 py-3 font-semibold">État</th>
                 <th scope="col" className="px-4 py-3 font-semibold">
                   <span className="sr-only">Détail</span>
@@ -54,6 +56,8 @@ export default async function PurchasesPage() {
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 font-medium">{formatFcfa(p.amountFcfa)}</td>
                   <td className="px-4 py-3">{OPERATOR_LABELS[p.operator]}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{providerLabel(p.provider)}</td>
+                  <td className="max-w-[10rem] break-all px-4 py-3 font-mono text-xs text-muted-foreground">{p.reference ?? "—"}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={p.status} />
                   </td>

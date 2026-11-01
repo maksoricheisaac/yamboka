@@ -19,4 +19,9 @@ export const PAYMENT_LABELS: Record<PaymentStatus, { text: string; tone: "pendin
   CANCELLED: { text: "Annulé", tone: "error" },
 };
 
+/** Nom affiché du fournisseur de paiement (Payment.gateway). */
+export function providerLabel(provider: string): string {
+  return provider === "saspay" ? "SasPay" : provider === "mock" ? "Simulé" : provider;
+}
+
 export const OPERATOR_LABELS = { MTN: "MTN Mobile Money", AIRTEL: "Airtel Money" } as const;

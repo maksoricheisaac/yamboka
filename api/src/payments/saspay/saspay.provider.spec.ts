@@ -64,6 +64,22 @@ describe('SaspayPaymentProvider', () => {
     };
   };
 
+  it('sans clé API configurée, n’appelle jamais le réseau', async () => {
+    const noKey = new SaspayPaymentProvider(
+      new ConfigService<Env, true>({
+        SASPAY_API_BASE_URL: 'https://api.saspay.test/api/v1',
+        SASPAY_TIMEOUT_MS: 5000,
+      }),
+    );
+    await expect(noKey.getStatus('x')).rejects.toBeInstanceOf(
+      ProviderAuthError,
+    );
+    await expect(noKey.initiate(request)).rejects.toBeInstanceOf(
+      ProviderAuthError,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   describe('initiate', () => {
     it('envoie le bon appel softpay et lit la réponse (push sur le téléphone)', async () => {
       fetchMock.mockReturnValue(

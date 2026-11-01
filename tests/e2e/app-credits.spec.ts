@@ -229,3 +229,53 @@ test.describe('Responsive et accessibilité des écrans de crédits', () => {
     await expect(page.getByText(/Vous payez\s*5\s?000 FCFA et recevez\s*1\s?250 crédits/)).toBeVisible();
   });
 });
+
+/**
+ * États propres à un vrai fournisseur (SasPay), rejoués par interception du suivi côté navigateur : le serveur de test
+ * n'utilise que le fournisseur simulé. Le serveur, lui, est testé en e2e API (saspay-payments.e2e-spec.ts).
+ */
+test.describe('Suivi d’un paiement : états d’un vrai fournisseur (réponses simulées)', () => {
+  async function paymentWith(page: Page, request: APIRequestContext, override: Record<string, unknown> | 'unavailable') {
+    await verifiedOnCreditsPage(page, request);
+    await startPayment(page);
+    const id = page.url().split('/').pop()!;
+    const real = (await (await page.request.get(`${APP_URL}/api/payments/${id}`)).json()) as { payment: Record<string, unknown> };
+    await page.route(`**/api/payments/${id}`, (route) =>
+      override === 'unavailable'
+        ? route.fulfill({ status: 503, json: { code: 'PAYMENT_PROVIDER_UNAVAILABLE', message: 'indisponible' } })
+        : route.fulfill({ json: { payment: { ...real.payment, ...override } } }),
+    );
+    return id;
+  }
+  const noHorizontalScroll = (page: Page) =>
+    page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+
+  test('demande pas encore reçue par le fournisseur : message dédié, sans inviter à repayer', async ({ page, request }) => {
+    await paymentWith(page, request, { status: 'INITIATED', reference: null });
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Envoi de votre demande de paiement', { timeout: 15_000 });
+    await expect(page.getByText(/vous ne serez débité qu’une fois/)).toBeVisible();
+    expect(await noHorizontalScroll(page)).toBe(true);
+  });
+
+  test('page de paiement hébergée : bouton de redirection, jamais un succès présumé', async ({ page, request }) => {
+    await paymentWith(page, request, { checkoutUrl: 'https://pay.saspay.test/checkout/abc', provider: 'saspay' });
+    const link = page.getByRole('link', { name: /Continuer vers le paiement/ });
+    await expect(link).toBeVisible({ timeout: 15_000 });
+    await expect(link).toHaveAttribute('href', 'https://pay.saspay.test/checkout/abc');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('En attente de votre confirmation');
+    await expect(page.getByText('SasPay')).toBeVisible();
+    expect(await noHorizontalScroll(page)).toBe(true);
+  });
+
+  test('vérification impossible pour le moment : message rassurant, le paiement n’est pas déclaré échoué', async ({ page, request }) => {
+    await paymentWith(page, request, 'unavailable');
+    await expect(page.getByText(/Impossible de vérifier l’état du paiement/)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('En attente de votre confirmation');
+  });
+
+  test('délai dépassé : explique qu’un paiement validé sera tout de même crédité', async ({ page, request }) => {
+    await paymentWith(page, request, { status: 'FAILED', failureReason: 'Délai de confirmation dépassé' });
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Paiement échoué', { timeout: 15_000 });
+    await expect(page.getByText(/ne le refaites pas : vos crédits seront ajoutés automatiquement/)).toBeVisible();
+  });
+});
