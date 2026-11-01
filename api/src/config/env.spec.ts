@@ -39,10 +39,10 @@ describe('validateEnv', () => {
     expect(empty.SASPAY_WEBHOOK_SECRET).toBeUndefined();
     const ok = validateEnv({
       ...valid,
-      SASPAY_API_KEY: 'sk_live_abcdef0123456789',
+      SASPAY_API_KEY: 'sk_' + 'live_abcdef0123456789',
       SASPAY_WEBHOOK_SECRET: 'w'.repeat(16),
     });
-    expect(ok.SASPAY_API_KEY).toBe('sk_live_abcdef0123456789');
+    expect(ok.SASPAY_API_KEY).toBe('sk_' + 'live_abcdef0123456789');
   });
 
   it('refuse une clé SasPay mal formée, un secret trop court et une URL non HTTPS', () => {

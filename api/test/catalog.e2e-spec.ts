@@ -13,7 +13,7 @@ describe('Catalogue et devis (e2e)', () => {
   });
 
   describe('Packs et produits (publics)', () => {
-    it('liste les 6 packs avec crédits totaux, bonus et équivalents calculés côté serveur', async () => {
+    it('liste les 3 packs de lancement avec crédits et équivalents calculés côté serveur', async () => {
       const res = await new Client(app).get('/v1/catalog/packs').expect(200);
       const packs = res.body.packs as {
         name: string;
@@ -22,22 +22,18 @@ describe('Catalogue et devis (e2e)', () => {
         equivalent: { videoSeconds: number; images: number };
       }[];
       expect(packs.map((p) => [p.name, p.priceFcfa, p.totalCredits])).toEqual([
-        ['Mini', 500, 20],
-        ['Découverte', 1000, 40],
-        ['Créateur', 2500, 103],
-        ['Pro', 5000, 210],
-        ['Business', 10000, 432],
-        ['Agence', 25000, 1100],
+        ['Starter', 5000, 1250],
+        ['Pro', 10000, 2600],
+        ['Business', 25000, 6800],
       ]);
-      // Équivalents du business plan : Découverte = 1 vidéo de 10 s ; Pro = 5 vidéos de 10 s ; Agence = 27.
+      // Équivalences : modèle par défaut à 10 crédits/s (1 vidéo de 10 s = 100 crédits) et image à 2 crédits.
       const byName = Object.fromEntries(
         packs.map((p) => [p.name, p.equivalent]),
       );
-      expect(byName.Mini.videoSeconds).toBe(5);
-      expect(byName.Découverte.videoSeconds).toBe(10);
-      expect(byName.Pro.videoSeconds).toBe(52);
-      expect(Math.floor(byName.Agence.videoSeconds / 10)).toBe(27);
-      expect(byName.Créateur).toEqual({ videoSeconds: 25, images: 51 });
+      expect(byName.Starter).toEqual({ videoSeconds: 125, images: 625 });
+      expect(Math.floor(byName.Starter.videoSeconds / 10)).toBe(12);
+      expect(Math.floor(byName.Pro.videoSeconds / 10)).toBe(26);
+      expect(Math.floor(byName.Business.videoSeconds / 10)).toBe(68);
     });
 
     it('ne liste que les produits actifs', async () => {
@@ -62,7 +58,7 @@ describe('Catalogue et devis (e2e)', () => {
       expect(res.status).toBe(401);
     });
 
-    it('vidéo de 10 s : 40 crédits, 1 000 FCFA', async () => {
+    it('vidéo de 10 s : 100 crédits', async () => {
       const { client } = await verifiedClient(app);
       const res = await client
         .post('/v1/catalog/quote', {
@@ -72,10 +68,10 @@ describe('Catalogue et devis (e2e)', () => {
         .expect(200);
       expect(res.body).toEqual({
         productCode: 'VIDEO_LIGHT_480',
-        credits: 40,
+        credits: 100,
         billableSeconds: 10,
-        creditValueFcfa: 25,
-        valueFcfa: 1000,
+        creditValueFcfa: 4,
+        valueFcfa: 400,
       });
     });
 
@@ -87,17 +83,17 @@ describe('Catalogue et devis (e2e)', () => {
           durationSeconds: 9.2,
         })
         .expect(200);
-      expect(res.body).toMatchObject({ billableSeconds: 10, credits: 40 });
+      expect(res.body).toMatchObject({ billableSeconds: 10, credits: 100 });
     });
 
-    it('image : 2 crédits, 50 FCFA, sans durée', async () => {
+    it('image : 2 crédits, sans durée', async () => {
       const { client } = await verifiedClient(app);
       const res = await client
         .post('/v1/catalog/quote', { productCode: 'IMAGE_SOUL2' })
         .expect(200);
       expect(res.body).toMatchObject({
         credits: 2,
-        valueFcfa: 50,
+        valueFcfa: 8,
         billableSeconds: null,
       });
     });
@@ -142,7 +138,7 @@ describe('Catalogue et devis (e2e)', () => {
           price: 1,
         })
         .expect(200);
-      expect(res.body.credits).toBe(40);
+      expect(res.body.credits).toBe(100);
     });
 
     it('rejette une durée négative, nulle ou non numérique', async () => {

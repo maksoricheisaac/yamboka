@@ -2,12 +2,12 @@ import type { LedgerEntryType, PaymentStatus } from "@yamboka/shared";
 
 export const LEDGER_LABELS: Record<LedgerEntryType, string> = {
   PURCHASE: "Achat de crédits",
-  BONUS: "Bonus du pack",
+  FIRST_PURCHASE_BONUS: "Bonus de premier achat",
   WELCOME: "Crédits de bienvenue",
   RESERVE: "Réservé pour une création",
   CAPTURE: "Création terminée",
-  REFUND: "Remboursement",
-  ADJUSTMENT: "Ajustement",
+  RELEASE: "Crédits restitués",
+  ADMIN_ADJUST: "Ajustement",
   EXPIRE: "Crédits expirés",
 };
 

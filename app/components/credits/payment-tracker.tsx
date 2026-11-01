@@ -75,6 +75,18 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      <ol aria-label="Étapes du paiement" className="grid grid-cols-3 gap-2 text-center text-xs font-medium">
+        {[
+          { label: "Demande envoyée", done: true },
+          { label: "Validation sur le téléphone", done: !open },
+          { label: payment.status === "SUCCESS" ? "Crédits ajoutés" : payment.status === "FAILED" || payment.status === "CANCELLED" ? "Aucun crédit ajouté" : "Crédits ajoutés", done: payment.status === "SUCCESS" },
+        ].map((s, i) => (
+          <li key={s.label} className="space-y-1.5">
+            <span className={`block h-1.5 rounded-full transition-colors motion-reduce:transition-none ${s.done ? (payment.status === "FAILED" || payment.status === "CANCELLED" ? "bg-destructive" : "bg-primary") : open && i === (payment.status === "INITIATED" ? 0 : 1) ? "animate-pulse bg-accent motion-reduce:animate-none" : "bg-muted"}`} />
+            <span className={s.done ? "text-foreground" : "text-muted-foreground"}>{s.label}</span>
+          </li>
+        ))}
+      </ol>
       <div className="space-y-4 rounded-2xl border bg-card p-6 shadow-soft" aria-live="polite">
         {open && (
           <>

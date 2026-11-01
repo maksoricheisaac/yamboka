@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { PackView, ProductView, QuoteView } from '@yamboka/shared';
 import { CreditsService } from '../credits/credits.service';
+import { creditsPerSecond } from '../billing/credits';
 import type { GenerationProduct } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -34,16 +35,22 @@ export class CatalogService {
     private readonly settings: SettingsService,
   ) {}
 
-  async listPacks(country = 'CG'): Promise<PackView[]> {
+  /** `publicOnly` : catalogue des pages publiques (packs actifs ET publiés, trois au maximum). */
+  async listPacks(country = 'CG', publicOnly = false): Promise<PackView[]> {
     const [packs, products] = await Promise.all([
       this.prisma.creditPack.findMany({
-        where: { country, active: true },
+        where: {
+          country,
+          active: true,
+          ...(publicOnly ? { publicVisible: true } : {}),
+        },
         orderBy: { sortOrder: 'asc' },
+        ...(publicOnly ? { take: 3 } : {}),
       }),
       this.prisma.generationProduct.findMany({ where: { active: true } }),
     ]);
-    const video = products.find((p) => p.billingUnit === 'SECOND');
     const image = products.find((p) => p.billingUnit === 'IMAGE');
+    const perSecond = await this.referenceCreditsPerSecond(products);
 
     return packs.map((p) => {
       const total = packTotalCredits({
@@ -61,11 +68,49 @@ export class CatalogService {
         totalCredits: total,
         featured: p.featured,
         equivalent: {
-          videoSeconds: video ? Math.floor(total / video.creditsPerUnit) : 0,
+          videoSeconds: perSecond ? Math.floor(total / perSecond) : 0,
           images: image ? Math.floor(total / image.creditsPerUnit) : 0,
         },
       };
     });
+  }
+
+  /**
+   * Crédits par seconde du modèle par défaut (base des « ≈ 12 vidéos de 10 s »), calculés depuis son prix en $/s.
+   * Sans modèle par défaut, repli sur le produit vidéo actif.
+   */
+  private async referenceCreditsPerSecond(
+    products: GenerationProduct[],
+  ): Promise<number> {
+    const model = await this.prisma.modelPricing.findFirst({
+      where: { isDefault: true, active: true },
+    });
+    if (!model) {
+      return (
+        products.find((p) => p.billingUnit === 'SECOND')?.creditsPerUnit ?? 0
+      );
+    }
+    const [fcfaPerUsd, fcfaPerCredit] = await Promise.all([
+      this.settings.get('usdToXafRate'),
+      this.settings.get('hfCostFcfaPerCredit'),
+    ]);
+    return creditsPerSecond(model.usdPerSecond.toString(), {
+      fcfaPerUsd,
+      fcfaPerCredit,
+    });
+  }
+
+  /** État de maintenance, lisible sans connexion (bandeau et blocage des nouvelles créations). */
+  async maintenance(): Promise<{ enabled: boolean; message: string | null }> {
+    const enabled = await this.settings.get('maintenanceMode');
+    if (!enabled) return { enabled: false, message: null };
+    const row = await this.prisma.setting.findUnique({
+      where: { key: 'maintenanceMessage' },
+    });
+    return {
+      enabled: true,
+      message: typeof row?.value === 'string' ? row.value : null,
+    };
   }
 
   async listProducts(): Promise<ProductView[]> {

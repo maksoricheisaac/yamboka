@@ -12,9 +12,10 @@ import type {
   PaymentView,
   SimulatePaymentInput,
 } from '@yamboka/shared';
-import { packTotalCredits } from '../catalog/pricing';
+import { firstPurchaseBonusPercent } from '../billing/bonus';
 import { lockUserRow } from '../common/locks';
 import { CreditsService } from '../credits/credits.service';
+import { EmailService } from '../email/email.service';
 import type { CreditPack, Payment } from '../generated/prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -49,6 +50,7 @@ export class PaymentsService {
     private readonly settings: SettingsService,
     private readonly notifications: NotificationsService,
     private readonly queue: JobQueue,
+    private readonly email: EmailService,
   ) {}
 
   // ───────────── Création ─────────────
@@ -67,6 +69,15 @@ export class PaymentsService {
       });
     }
     const provider = this.providers.forCountry(pack.country);
+    const bonusPercent = firstPurchaseBonusPercent(
+      pack.firstPurchaseBonusPercent,
+      {
+        enabled: await this.settings.get('firstPurchaseBonusEnabled'),
+        defaultPercent: await this.settings.get(
+          'firstPurchaseBonusDefaultPercent',
+        ),
+      },
+    );
 
     // Création sérialisée par utilisateur : deux envois simultanés identiques ne donnent qu'un paiement.
     const payment = await this.prisma.$transaction(async (tx) => {
@@ -85,11 +96,9 @@ export class PaymentsService {
       });
       if (recent) return { row: recent, created: false };
 
-      const total = packTotalCredits({
-        price: pack.price,
-        baseCredits: pack.credits,
-        bonusPercent: pack.bonusPercent,
-      });
+      // Crédits de base du pack. Le bonus de premier achat n'est pas connu ici : il est jugé à la confirmation
+      // (premier paiement RÉUSSI du compte) ; seul son pourcentage promis est figé pour que le client reçoive
+      // ce qui lui a été affiché.
       const row = await tx.payment.create({
         data: {
           userId,
@@ -97,8 +106,9 @@ export class PaymentsService {
           country: pack.country,
           currency: pack.currency,
           amount: pack.price,
-          credits: total,
-          bonusCredits: total - pack.credits,
+          credits: pack.credits,
+          bonusCredits: 0,
+          firstPurchaseBonusPercent: bonusPercent,
           gateway: provider.name,
           operator: input.operator,
           payerPhone: input.phone,
@@ -282,7 +292,8 @@ export class PaymentsService {
         },
       });
       if (claimed.count === 1) {
-        await this.notifications.create(this.prisma, {
+        await this.notifications.notify(this.prisma, {
+          dedupKey: `payment-failed:${paymentId}`,
           userId: payment.userId,
           type: 'PAYMENT_FAILED',
           title:
@@ -325,7 +336,11 @@ export class PaymentsService {
     const expiresAt = new Date();
     expiresAt.setUTCMonth(expiresAt.getUTCMonth() + months);
 
-    await this.prisma.$transaction(async (tx) => {
+    let successNoteId: string | null = null;
+    const credited = await this.prisma.$transaction(async (tx) => {
+      // Le verrou utilisateur d'abord : deux confirmations simultanées du même compte passent l'une après l'autre,
+      // et la seconde voit que la première est déjà réussie (bonus de premier achat une seule fois).
+      await lockUserRow(tx, payment.userId);
       const claimed = await tx.payment.updateMany({
         where: {
           id: paymentId,
@@ -341,23 +356,37 @@ export class PaymentsService {
           lastProviderStatus: { status: 'success' },
         },
       });
-      if (claimed.count !== 1) return; // déjà conclu par un autre appelant : rien à créditer
-      await this.credits.grantPurchase(tx, {
+      if (claimed.count !== 1) return false; // déjà conclu par un autre appelant : rien à créditer
+      const granted = await this.credits.grantPurchase(tx, {
         userId: payment.userId,
         paymentId,
         reference,
-        baseCredits: payment.credits - payment.bonusCredits,
-        bonusCredits: payment.bonusCredits,
+        baseCredits: payment.credits,
         expiresAt,
+        bonusPercent: payment.firstPurchaseBonusPercent ?? 0,
       });
-      await this.notifications.create(tx, {
+      if (granted.bonusCredits > 0) {
+        await tx.payment.update({
+          where: { id: paymentId },
+          data: { bonusCredits: granted.bonusCredits },
+        });
+      }
+      const note = await this.notifications.notify(tx, {
         userId: payment.userId,
         type: 'PAYMENT_SUCCESS',
         title: 'Paiement confirmé',
-        body: `${payment.credits} crédits ont été ajoutés à votre compte.`,
+        body:
+          granted.bonusCredits > 0
+            ? `${payment.credits + granted.bonusCredits} crédits ont été ajoutés à votre compte, dont ${granted.bonusCredits} offerts pour votre premier achat.`
+            : `${payment.credits} crédits ont été ajoutés à votre compte.`,
         link: '/app/credits',
+        dedupKey: `payment-ok:${paymentId}`,
       });
+      successNoteId = note.id;
+      return true;
     });
+    // E-mail de confirmation (et reçu) après validation de la transaction, selon la préférence de l'utilisateur.
+    if (credited) await this.notifications.dispatchEmail(successNoteId);
     return 'SUCCESS';
   }
 
@@ -429,7 +458,8 @@ export class PaymentsService {
       packName: p.pack.name,
       amountFcfa: p.amount,
       currency: p.currency,
-      credits: p.credits,
+      // Total crédité : crédits du pack + bonus de premier achat éventuel.
+      credits: p.credits + p.bonusCredits,
       bonusCredits: p.bonusCredits,
       operator: p.operator,
       payerPhone: p.payerPhone,

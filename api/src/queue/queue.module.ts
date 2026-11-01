@@ -4,7 +4,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env';
 import { BullJobQueue } from './bull-job-queue';
 import { InlineJobQueue } from './inline-job-queue';
-import { JobQueue, QUEUE_CREDITS, QUEUE_PAYMENTS } from './job-queue';
+import {
+  JobQueue,
+  QUEUE_CREDITS,
+  QUEUE_GENERATIONS,
+  QUEUE_PAYMENTS,
+} from './job-queue';
 import { redisConnection } from './redis-connection';
 
 /** La file est active sauf en test, où l'on évite de dépendre de Redis (QUEUE_ENABLED=true pour la forcer). */
@@ -40,6 +45,7 @@ export class QueueModule {
         BullModule.registerQueue(
           { name: QUEUE_PAYMENTS },
           { name: QUEUE_CREDITS },
+          { name: QUEUE_GENERATIONS },
         ),
       ],
       providers: [{ provide: JobQueue, useClass: BullJobQueue }],

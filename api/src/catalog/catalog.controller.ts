@@ -27,6 +27,25 @@ export class CatalogController {
   }
 
   @Public()
+  @Get('packs/public')
+  @ApiOperation({
+    summary:
+      'Offres affichées sur les pages publiques : actives et publiées, trois au maximum',
+  })
+  async publicPacks(): Promise<{ packs: PackView[] }> {
+    return { packs: await this.catalog.listPacks('CG', true) };
+  }
+
+  @Public()
+  @Get('status')
+  @ApiOperation({ summary: 'Mode maintenance' })
+  async status(): Promise<{
+    maintenance: { enabled: boolean; message: string | null };
+  }> {
+    return { maintenance: await this.catalog.maintenance() };
+  }
+
+  @Public()
   @Get('products')
   @ApiOperation({
     summary: 'Types de création disponibles et leur tarif en crédits',

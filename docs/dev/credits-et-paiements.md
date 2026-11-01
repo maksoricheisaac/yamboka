@@ -2,32 +2,44 @@
 
 Aucun appel réel n'est fait vers un opérateur ou un agrégateur : le paiement passe par un **fournisseur simulé**. L'intégration OpenPay n'est pas codée ; son point d'accrochage est décrit en fin de document.
 
-## Registre de crédits
+## Registre de crédits et lots
 
-Table `CreditLedger`, en **ajout seul** (RG-02) : un trigger PostgreSQL interdit `UPDATE`, `DELETE` et `TRUNCATE`, même en SQL direct. Le solde est toujours `SUM(amount)` ; il n'existe aucune colonne « solde ». Une correction passe par un nouveau mouvement.
+Table `CreditLedger`, en **ajout seul** (RG-02) : un trigger PostgreSQL interdit `UPDATE`, `DELETE` et `TRUNCATE`, même en SQL direct. Le solde est toujours `SUM(amount)` ; il n'existe aucune colonne « solde ». Une correction passe par un nouveau mouvement. Aucune clé étrangère ne pointe vers cette table (sinon `TRUNCATE` échouerait avant le trigger).
 
 | Type | Signe | Référence (unique) | Quand |
 |---|---|---|---|
-| `WELCOME` | + | `welcome:<userId>` | Vérification de l'e-mail (une fois) |
-| `PURCHASE` | + | `pay:<réf. fournisseur>` | Achat confirmé (crédits de base) |
-| `BONUS` | + | `bonus:<réf. fournisseur>` | Achat confirmé (bonus du pack) |
+| `PURCHASE` | + | `pay:<réf. fournisseur>` | Achat confirmé (crédits du pack) |
+| `FIRST_PURCHASE_BONUS` | + | `firstbonus:<réf. fournisseur>` | Premier achat réussi du compte (lot distinct) |
 | `RESERVE` | − | `reserve:<generationId>` | Lancement d'une création |
 | `CAPTURE` | 0 | `capture:<generationId>` | Création réussie : la réservation devient définitive |
-| `REFUND` | + | `refund:<generationId>` | Échec, annulation ou délai dépassé |
-| `ADJUSTMENT` | ± | `adjust:<uuid>` | Geste commercial ou correction (motif obligatoire) |
-| `EXPIRE` | − | `expire:<id du lot>` | Lot échu (job quotidien) |
+| `RELEASE` | + | `release:<generationId>` | Échec technique, annulation ou délai dépassé |
+| `ADMIN_ADJUST` | ± | `adjust:<uuid>` | Geste commercial ou correction (motif obligatoire) |
+| `EXPIRE` | − | `expire:<id du lot>` (suffixe `:n` si le lot expire de nouveau) | Lot échu |
+| `WELCOME` | + | — | **Hérité** : plus jamais produit ; des lignes anciennes peuvent subsister |
+
+**Aucun crédit n'est offert à l'inscription** (ni à la vérification de l'e-mail) : les comptes multiples ne rapportent rien.
 
 La contrainte `credit_ledger_amount_sign` vérifie le signe de chaque type. La référence unique rend chaque opération **idempotente**.
 
+### Lots (`CreditLot`)
+
+Chaque entrée de crédits (`PURCHASE`, `FIRST_PURCHASE_BONUS`, `ADMIN_ADJUST` positif) crée **un lot** avec son échéance, dans la même transaction que le mouvement du journal. Le lot porte `remaining` (ce qui reste à dépenser). Invariant : **la somme des `remaining` égale le solde du journal** (testé après des rafales d'opérations concurrentes). Contrainte SQL : `0 ≤ remaining ≤ initialAmount`.
+
+- **Consommation FIFO** : une réservation prélève d'abord le lot qui expire le plus tôt (puis le plus ancien). Fonction pure `allocateFifo` (`src/credits/fifo.ts`). Un lot échu n'est jamais dépensé.
+- **Allocations** (`LotAllocation`) : pour chaque réservation, ce qui a été pris sur chaque lot. La libération restitue chaque lot pour ce qu'il avait donné. Une réservation antérieure aux lots (sans détail) revient dans un lot neuf.
+- **Expiration** : le job nocturne (3 h, Brazzaville) et chaque réservation, libération ou ajustement expirent les lots échus d'un utilisateur (`EXPIRE`, montant = reste du lot). Des crédits libérés dans un lot devenu échu expirent aussitôt.
+- **Validité** : 12 mois pour un achat et son bonus (même échéance) ; 12 mois par défaut pour un ajout administratif. Un retrait administratif est pris sur les lots comme une consommation.
+
+### Bonus de premier achat
+
+- Pourcentage : `CreditPack.firstPurchaseBonusPercent` (`null` = valeur globale `firstPurchaseBonusDefaultPercent`, 20 par défaut ; `0` = aucun bonus pour ce pack), activable globalement par `firstPurchaseBonusEnabled`.
+- Le pourcentage promis est **figé sur le paiement à sa création** ; l'éligibilité est jugée à la **confirmation** : premier paiement réussi du compte, jamais sur un paiement en attente ou échoué.
+- Accordé **une seule fois par compte**, même avec des confirmations simultanées : le verrou utilisateur sérialise les transactions, la seconde voit le premier achat déjà réussi ; un index unique partiel sur `CreditLedger` en est le filet.
+- Bonus arrondi à l'inférieur (2 600 crédits à 20 % : 520). Le lot de bonus a la même échéance que le pack.
+
 ### Concurrence
 
-Toute opération qui lit le solde puis écrit (`reserve`, `capture`, `refund`, `adjust`, expiration) prend d'abord un verrou de ligne sur l'utilisateur (`SELECT … FOR UPDATE`, `lockUserRow`). Deux requêtes simultanées pour un même utilisateur s'exécutent donc l'une après l'autre : cinq réservations de 40 crédits avec 100 crédits n'en acceptent que deux. Une capture et un remboursement simultanés : un seul gagne (les deux sont exclusifs).
-
-Ces tests ont été validés par **mutation** : sans le verrou, trois tests de concurrence échouent.
-
-### Expiration FIFO
-
-Crédits achetés : 12 mois. Crédits de bienvenue : 30 jours. Les lots qui expirent le plus tôt sont consommés en premier. Le registre ne dit pas quel lot une consommation a entamé : `computeExpirations` (fonction pure, `src/credits/expiry.ts`) répartit la consommation nette sur les lots dans l'ordre d'échéance. Un lot déjà expiré a sa part consommée figée, ce qui évite d'envoyer le solde sous zéro quand on dépense après l'expiration d'un lot antérieur. Le job `expire-credits` tourne chaque nuit à 3 h (Brazzaville) et est idempotent.
+Toute opération qui lit le solde puis écrit (`reserve`, `capture`, `release`, `adjust`, expiration, `grantPurchase`) prend d'abord un verrou de ligne sur l'utilisateur (`SELECT … FOR UPDATE`, `lockUserRow`). Deux requêtes simultanées pour un même utilisateur s'exécutent donc l'une après l'autre : cinq réservations de 40 crédits avec 100 crédits n'en acceptent que deux. Une capture et une libération simultanées : une seule gagne (les deux sont exclusives).
 
 ## Paiement d'un pack
 
@@ -38,7 +50,7 @@ Le client confirme sur son téléphone
   → callback  POST /v1/webhooks/payment {reference}   (réponse 200 immédiate, toujours la même)
   → tâche verify-payment → provider.getStatus(reference)
   → SUCCESS uniquement si le fournisseur dit « succès » ET que montant et devise correspondent
-  → dans une transaction : Payment SUCCESS + mouvements PURCHASE et BONUS
+  → dans une transaction (verrou utilisateur d'abord) : Payment SUCCESS + lot PURCHASE, et lot FIRST_PURCHASE_BONUS s'il s'agit du premier achat réussi
 ```
 
 Règles de sécurité :
@@ -75,7 +87,7 @@ BullMQ + Redis (`REDIS_URL`). En test (`NODE_ENV=test`) la file est désactivée
 |---|---|---|
 | `payments` | `verify-payment` | Callback (une tâche par paiement tant qu'elle n'est pas terminée ; 5 tentatives, attente exponentielle) |
 | `payments` | `reconcile-payments` | Toutes les 2 minutes |
-| `credits` | `expire-credits` | Chaque nuit à 3 h (Africa/Brazzaville) |
+| `credits` | `expire-credits` | Chaque nuit à 3 h (Africa/Brazzaville) : expire les lots échus |
 
 Les processeurs tournent dans le processus de l'API pour l'instant ; un processus `worker` séparé est prévu au déploiement.
 

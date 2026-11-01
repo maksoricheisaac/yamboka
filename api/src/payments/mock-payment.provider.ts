@@ -13,7 +13,7 @@ import {
 } from './payment-provider';
 
 /** Numéro qui simule un fournisseur indisponible dès l'initiation (parcours d'erreur). */
-export const MOCK_UNAVAILABLE_PHONE = '242099999999';
+export const MOCK_UNAVAILABLE_PHONE = '+242099999999';
 
 /**
  * Faux fournisseur de paiement (PAYMENT_PROVIDER=mock) : simule MTN / Airtel sans aucun transfert d'argent.

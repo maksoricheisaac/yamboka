@@ -29,7 +29,7 @@ export default async function PurchasesPage() {
           </Button>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border bg-card">
+        <div className="relative overflow-x-auto rounded-2xl border bg-card">
           <table className="w-full min-w-[40rem] text-left text-sm">
             <caption className="sr-only">Historique de vos achats de crédits</caption>
             <thead className="border-b bg-muted/60">

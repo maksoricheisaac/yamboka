@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { phoneSchema } from './auth';
+import { mobileMoneyPhoneSchema } from './phone';
 
 export const MOBILE_OPERATORS = ['MTN', 'AIRTEL'] as const;
 export type MobileOperator = (typeof MOBILE_OPERATORS)[number];
@@ -9,7 +9,7 @@ export type PaymentStatus = 'INITIATED' | 'PENDING' | 'SUCCESS' | 'FAILED' | 'CA
 export const createPaymentSchema = z.object({
   packId: z.uuid({ error: 'Pack invalide.' }),
   operator: z.enum(MOBILE_OPERATORS, { error: 'Choisissez MTN ou Airtel.' }),
-  phone: phoneSchema,
+  phone: mobileMoneyPhoneSchema,
 });
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 
