@@ -25,19 +25,26 @@ enum UserStatus {
 }
 
 enum EmailTokenType {
-  VERIFY_EMAIL
+  VERIFY_EMAIL // hérité : la vérification passe désormais par un code (EmailOtp), plus par un lien
   RESET_PASSWORD
+}
+
+enum OtpPurpose {
+  VERIFY_EMAIL
+  LOGIN
+  SENSITIVE_ACTION
 }
 
 enum CreditTxType {
   PURCHASE
-  BONUS
+  FIRST_PURCHASE_BONUS
+  /// Hérité : les crédits de bienvenue n'existent plus ; des lignes anciennes (registre immuable) peuvent subsister.
   WELCOME
   RESERVE
   CAPTURE
-  REFUND
-  ADJUSTMENT
+  RELEASE
   EXPIRE
+  ADMIN_ADJUST
 }
 
 enum PaymentStatus {
@@ -123,6 +130,7 @@ enum NotificationType {
   GENERATION_FAILED
   PAYMENT_SUCCESS
   PAYMENT_FAILED
+  CREDITS_REFUNDED
   DELETION_REMINDER
   MODERATION
   SYSTEM
@@ -138,7 +146,8 @@ model User {
   emailVerifiedAt  DateTime?
   passwordHash     String? // null pour un compte Google uniquement
   avatarUrl        String?
-  phone            String? // format international 242XXXXXXXXX, non vérifié
+  emailPrefs       Json? // préférences d'e-mail par événement (voir EmailPrefs) ; null = valeurs par défaut
+  phone            String? // E.164 (+242066063133), non vérifié
   role             Role       @default(USER)
   status           UserStatus @default(ACTIVE)
   signupIp         String?
@@ -151,6 +160,7 @@ model User {
   oauthAccounts    OAuthAccount[]
   emailTokens      EmailToken[]
   legalAcceptances LegalAcceptance[]
+  lots             CreditLot[]
   ledger           CreditLedger[]     @relation("LedgerOwner")
   ledgerCreated    CreditLedger[]     @relation("LedgerCreator")
   payments         Payment[]
@@ -214,6 +224,29 @@ model EmailToken {
   @@index([userId, type])
 }
 
+/// Code à usage unique envoyé par e-mail. Le code n'est jamais stocké : seulement son HMAC.
+model EmailOtp {
+  id        String     @id @default(uuid()) @db.Uuid
+  email     String
+  purpose   OtpPurpose
+  userId    String?    @db.Uuid
+  codeHash  String
+  attempts  Int        @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime   @default(now())
+
+  @@index([email, purpose, createdAt])
+  @@index([expiresAt])
+}
+
+/// État d'installation : une seule ligne (id = 1, contrainte CHECK en SQL). Sa présence verrouille définitivement le Setup Wizard.
+model InstallState {
+  id          Int      @id @default(1)
+  completedAt DateTime @default(now())
+  adminUserId String?  @db.Uuid
+}
+
 // ───────────── Textes légaux ─────────────
 
 model LegalDocument {
@@ -251,18 +284,22 @@ model CurrencySetting {
 }
 
 model CreditPack {
-  id           String   @id @default(uuid()) @db.Uuid
-  name         String
-  country      String   @default("CG") // ISO 3166-1
-  currency     String   @default("XAF")
-  price        Int // dans la devise
-  credits      Int // crédits de base, hors bonus
-  bonusPercent Int      @default(0)
-  sortOrder    Int      @default(0)
-  featured     Boolean  @default(false)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                        String   @id @default(uuid()) @db.Uuid
+  name                      String
+  country                   String   @default("CG") // ISO 3166-1
+  currency                  String   @default("XAF")
+  price                     Int // dans la devise
+  credits                   Int // crédits de base, hors bonus
+  bonusPercent              Int      @default(0)
+  sortOrder                 Int      @default(0)
+  featured                  Boolean  @default(false)
+  active                    Boolean  @default(true)
+  /// Bonus de premier achat de ce pack, en %. null = valeur globale (réglage firstPurchaseBonusDefaultPercent) ; 0 = aucun bonus.
+  firstPurchaseBonusPercent Int?
+  /// Affichée sur les pages publiques (3 maximum, dont une recommandée). Un pack inactif n'est jamais public.
+  publicVisible             Boolean  @default(false)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
   payments Payment[]
 
@@ -301,6 +338,8 @@ model Preset {
   requestedItems Json? // éléments demandés à l'utilisateur
   sortOrder      Int        @default(0)
   visible        Boolean    @default(false)
+  /// Mise en avant éditoriale (« à la une »), distincte de la publication : décidée par l'administrateur.
+  featured       Boolean    @default(false)
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
@@ -314,31 +353,129 @@ model Preset {
 // ───────────── Paiements et crédits ─────────────
 
 model Payment {
-  id                 String         @id @default(uuid()) @db.Uuid
-  userId             String         @db.Uuid
-  packId             String         @db.Uuid
-  country            String
-  currency           String
-  amount             Int
-  credits            Int // crédits totaux (bonus inclus) fixés à la création
-  bonusCredits       Int            @default(0) // part « bonus » des crédits totaux (mouvement BONUS)
-  gateway            String // "mock" en phase 1 ; "openpay" ultérieurement
-  operator           MobileOperator
-  payerPhone         String
-  externalReference  String?        @unique // référence fournisseur, connue après l'appel au fournisseur (unicité = RG-05)
-  status             PaymentStatus  @default(INITIATED)
-  lastProviderStatus Json?
-  failureReason      String?
-  creditedAt         DateTime?
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  id                        String         @id @default(uuid()) @db.Uuid
+  userId                    String         @db.Uuid
+  packId                    String         @db.Uuid
+  country                   String
+  currency                  String
+  amount                    Int
+  credits                   Int // crédits totaux (bonus inclus) fixés à la création
+  bonusCredits              Int            @default(0) // part « bonus » des crédits totaux (mouvement BONUS)
+  gateway                   String // "mock" en phase 1 ; "openpay" ultérieurement
+  operator                  MobileOperator
+  payerPhone                String
+  externalReference         String?        @unique // référence fournisseur, connue après l'appel au fournisseur (unicité = RG-05)
+  /// Montant réellement envoyé au fournisseur (prix affiché moins les frais d'encaissement absorbés par Yamboka). `amount` reste le prix affiché.
+  sentAmount                Int?
+  /// Code du réseau chez le fournisseur (ex. SasPay /networks/). `operator` reste utilisé par le fournisseur simulé.
+  network                   String?
+  /// Tarif appliqué au calcul du montant envoyé : palier, source (my-rates ou surcharge), date.
+  feeSnapshot               Json?
+  /// Clé d'idempotence du fournisseur : unique par intention de paiement, réutilisée à chaque nouvelle tentative réseau.
+  idempotencyKey            String?        @unique
+  checkoutUrl               String? // redirection exigée par certains réseaux
+  /// Constatés par la vérification du fournisseur (frais client, montant débité).
+  clientFee                 Int?
+  debitedAmount             Int?
+  /// Pourcentage de bonus de premier achat promis au moment de la création (figé).
+  firstPurchaseBonusPercent Int?
+  status                    PaymentStatus  @default(INITIATED)
+  lastProviderStatus        Json?
+  failureReason             String?
+  creditedAt                DateTime?
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
 
   user   User           @relation(fields: [userId], references: [id], onDelete: Restrict)
   pack   CreditPack     @relation(fields: [packId], references: [id], onDelete: Restrict)
   ledger CreditLedger[]
+  lots   CreditLot[]
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
+}
+
+/// Tarif d'encaissement imposé par l'administrateur pour un pays et un réseau. Optionnel : la source principale
+/// est GET /pricing/my-rates/ de SasPay ; une ligne active ici la remplace pour ce pays et ce réseau.
+model FeeRateOverride {
+  id          String   @id @default(uuid()) @db.Uuid
+  country     String // ISO 3166-1
+  network     String // code du réseau chez le fournisseur
+  percent     Decimal  @db.Decimal(7, 4) // 5.7 = 5,7 %
+  fixed       Decimal  @default(0) @db.Decimal(12, 2)
+  floorAmount Decimal? @db.Decimal(12, 2)
+  capAmount   Decimal? @db.Decimal(12, 2)
+  active      Boolean  @default(true)
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([country, network])
+}
+
+enum CreditLotKind {
+  PURCHASE
+  FIRST_PURCHASE_BONUS
+  ADMIN_ADJUST
+}
+
+/// Lot de crédits avec échéance. Le journal (CreditLedger) reste la source de vérité et immuable ;
+/// `remaining` est un état dérivé, mis à jour dans la même transaction que le mouvement qui l'explique.
+model CreditLot {
+  id            String        @id @default(uuid()) @db.Uuid
+  userId        String        @db.Uuid
+  kind          CreditLotKind
+  initialAmount Int
+  remaining     Int
+  expiresAt     DateTime
+  /// Mouvement du journal qui a créé le lot (un lot pour un mouvement). Volontairement sans clé étrangère :
+  /// CreditLedger ne doit avoir aucune référence entrante (sinon TRUNCATE échoue avant le trigger d'immuabilité).
+  ledgerId      String?       @unique @db.Uuid
+  paymentId     String?       @db.Uuid
+  createdAt     DateTime      @default(now())
+
+  user        User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  payment     Payment?        @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  allocations LotAllocation[]
+
+  @@index([userId, expiresAt])
+}
+
+/// Part d'une réservation prélevée sur un lot : permet de restituer les crédits au bon lot en cas d'échec.
+model LotAllocation {
+  id           String   @id @default(uuid()) @db.Uuid
+  lotId        String   @db.Uuid
+  generationId String   @db.Uuid
+  amount       Int // crédits prélevés sur le lot
+  returned     Int      @default(0) // crédits restitués au lot (libération)
+  createdAt    DateTime @default(now())
+
+  lot        CreditLot  @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  generation Generation @relation(fields: [generationId], references: [id], onDelete: Restrict)
+
+  @@unique([lotId, generationId])
+  @@index([generationId])
+}
+
+/// Prix fournisseur d'un modèle de génération, en dollars par seconde. Le coût en crédits n'est jamais stocké :
+/// il se calcule avec le taux FCFA/$ et le coût du crédit (réglages administrables), voir billing/credits.ts.
+model ModelPricing {
+  id                    String   @id @default(uuid()) @db.Uuid
+  code                  String   @unique
+  name                  String
+  providerModel         String
+  resolution            String?
+  usdPerSecond          Decimal  @db.Decimal(10, 5)
+  /// Prix par seconde avec l'audio natif. null = le modèle n'a pas cette option.
+  usdPerSecondWithAudio Decimal? @db.Decimal(10, 5)
+  minSeconds            Int      @default(1)
+  maxSeconds            Int      @default(10)
+  /// Modèle de référence pour les équivalences affichées (« ≈ 12 vidéos de 10 s »). Un seul à la fois.
+  isDefault             Boolean  @default(false)
+  active                Boolean  @default(false)
+  sortOrder             Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 /// Transactions du faux fournisseur de paiement (PAYMENT_PROVIDER=mock) : l'état « côté opérateur ».
@@ -388,6 +525,8 @@ model Generation {
   presetId          String?          @db.Uuid
   status            GenerationStatus @default(PENDING)
   prompt            String?
+  /// Choix de l'utilisateur : texte, prix, téléphone, format (voir GenerationOptions dans @yamboka/shared).
+  options           Json?
   billableSeconds   Int?
   creditsCost       Int
   providerRequestId String?
@@ -401,17 +540,20 @@ model Generation {
   outputExpiresAt   DateTime?
   outputPurgedAt    DateTime?
   reminderSentAt    DateTime?
+  /// Supprimée par son propriétaire : fichiers purgés, trace conservée (RG-27).
+  deletedAt         DateTime?
   createdAt         DateTime         @default(now())
   submittedAt       DateTime?
   completedAt       DateTime?
 
-  user       User               @relation(fields: [userId], references: [id], onDelete: Restrict)
-  product    GenerationProduct  @relation(fields: [productId], references: [id], onDelete: Restrict)
-  preset     Preset?            @relation(fields: [presetId], references: [id], onDelete: SetNull)
-  media      MediaFile[]
-  ledger     CreditLedger[]
-  reports    Report[]
-  moderation ModerationAction[]
+  user        User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  product     GenerationProduct  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  preset      Preset?            @relation(fields: [presetId], references: [id], onDelete: SetNull)
+  media       MediaFile[]
+  ledger      CreditLedger[]
+  allocations LotAllocation[]
+  reports     Report[]
+  moderation  ModerationAction[]
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
@@ -487,14 +629,20 @@ model ModerationAction {
 // ───────────── Finances ─────────────
 
 model ProviderTopUp {
-  id          String   @id @default(uuid()) @db.Uuid
-  provider    String   @default("higgsfield")
-  amountUsd   Decimal  @db.Decimal(10, 2)
-  amountXaf   Int
-  fxRate      Decimal  @db.Decimal(10, 4)
-  note        String?
-  createdById String   @db.Uuid
-  createdAt   DateTime @default(now())
+  id                 String   @id @default(uuid()) @db.Uuid
+  provider           String   @default("higgsfield")
+  amountUsd          Decimal  @db.Decimal(10, 2)
+  /// FCFA débités de la carte.
+  amountXaf          Int
+  /// FCFA retirés du solde SasPay pour cette recharge.
+  saspayWithdrawnXaf Int?
+  /// Taux effectif FCFA/$ constaté (calculé à la saisie).
+  fxRate             Decimal  @db.Decimal(10, 4)
+  /// Date de la recharge (saisie), distincte de la date d'enregistrement.
+  occurredAt         DateTime @default(now())
+  note               String?
+  createdById        String   @db.Uuid
+  createdAt          DateTime @default(now())
 
   createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
 }
@@ -531,6 +679,13 @@ model Notification {
   link      String?
   readAt    DateTime?
   createdAt DateTime         @default(now())
+  /// Clé d'idempotence de l'événement (« gen-ready:<id> ») : un événement rejoué ne crée qu'une notification.
+  dedupKey  String?          @unique
+  /// E-mail à envoyer (préférence activée et adresse vérifiée à la création), pas encore parti.
+  emailPending  Boolean      @default(false)
+  emailSentAt   DateTime?
+  emailAttempts Int          @default(0)
+  emailError    String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -122,3 +122,11 @@ export async function rawSession(app: INestApplication) {
     .split(';')[0];
   return { cookie, email: body.email };
 }
+
+/** Extrait le code à usage unique (6 chiffres) du dernier e-mail envoyé à cette adresse. */
+export function otpFromEmail(app: INestApplication, to: string): string {
+  const mail = lastEmailFor(app, to);
+  const match = mail?.text.match(/^(\d{4,10})$/m);
+  if (!match) throw new Error(`Aucun code dans l'e-mail envoyé à ${to}`);
+  return match[1];
+}

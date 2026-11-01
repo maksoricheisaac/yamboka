@@ -6,7 +6,10 @@ import { Client } from 'pg';
  * à vider : on repart donc d'une base neuve.
  * Garde-fou : refuse de toucher à toute base dont le nom ne se termine pas par `_test` ou `_e2e`.
  */
-export async function resetDatabase(databaseUrl: string): Promise<void> {
+export async function resetDatabase(
+  databaseUrl: string,
+  options: { seed?: boolean } = {},
+): Promise<void> {
   const url = new URL(databaseUrl);
   const dbName = url.pathname.slice(1);
   if (!/_(test|e2e)$/.test(dbName)) {
@@ -28,5 +31,8 @@ export async function resetDatabase(databaseUrl: string): Promise<void> {
 
   const env = { ...process.env, DATABASE_URL: databaseUrl };
   execSync('pnpm exec prisma migrate deploy', { stdio: 'ignore', env });
-  execSync('pnpm exec prisma db seed', { stdio: 'ignore', env });
+  // `seed: false` : base vierge, comme une installation neuve avant le Setup Wizard.
+  if (options.seed !== false) {
+    execSync('pnpm exec prisma db seed', { stdio: 'ignore', env });
+  }
 }
