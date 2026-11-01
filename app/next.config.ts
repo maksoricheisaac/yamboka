@@ -4,6 +4,8 @@ import type { NextConfig } from "next";
 const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? "http://localhost:4000";
 
 const nextConfig: NextConfig = {
+  // Les tests de navigateur compilent dans un dossier à part (NEXT_DIST_DIR) pour ne pas gêner un serveur de développement.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   /* config options here */
   experimental: {
     agentFeedback: true,

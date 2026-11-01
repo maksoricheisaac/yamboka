@@ -2,10 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * Pile e2e isolée : ports et base de données dédiés, pour ne jamais toucher au développement en cours.
- *  - site public  : http://localhost:3000   (aucune dépendance à l'API)
+ *  - site public  : http://localhost:3100   (aucune dépendance à l'API)
  *  - application  : http://localhost:3101   → API http://localhost:4101 → base `yamboka_e2e` (recréée à chaque lancement)
  */
-export const WEB_URL = process.env.E2E_WEB_URL ?? 'http://localhost:3000';
+export const WEB_URL = process.env.E2E_WEB_URL ?? 'http://localhost:3100';
 export const APP_URL = process.env.E2E_APP_URL ?? 'http://localhost:3101';
 export const API_URL = process.env.E2E_API_URL ?? 'http://localhost:4101';
 
@@ -14,14 +14,14 @@ const E2E_DATABASE_URL =
 
 export default defineConfig({
   testDir: './e2e',
-  outputDir: './test-results',
+  outputDir: './results',
   fullyParallel: true,
   // Chaque worker pilote un Chromium ; en plus, trois serveurs Node et PostgreSQL tournent sur la même machine.
   // Au-delà de 4, la surcharge provoque des délais dépassés qui ne disent rien du code.
   workers: process.env.CI ? 2 : 4,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: [['list'], ['html', { open: 'never', outputFolder: './report' }]],
   use: { trace: 'retain-on-failure' },
   projects: [
     {
@@ -48,11 +48,11 @@ export default defineConfig({
   webServer: [
     {
       // Build dédié à l'e2e : NEXT_PUBLIC_* est figé à la compilation, avec un numéro WhatsApp factice.
-      command: 'pnpm --filter web build && pnpm --filter web start',
+      command: 'pnpm --filter web build && pnpm --filter web exec next start -p 3100',
       url: WEB_URL,
       reuseExistingServer: false,
       timeout: 240_000,
-      env: { NEXT_PUBLIC_WHATSAPP_NUMBER: '242060000000' },
+      env: { NEXT_PUBLIC_WHATSAPP_NUMBER: '242060000000', NEXT_DIST_DIR: '.next-e2e' },
     },
     {
       // Compile l'API, recrée la base jetable (migrations + seed), puis démarre.
@@ -71,6 +71,20 @@ export default defineConfig({
         ADMIN_EMAIL: 'admin@yamboka.test',
         ADMIN_PASSWORD: 'Admin-E2E-Password-2026!',
         LOG_LEVEL: 'warn',
+        // Génération et stockage simulés (jamais d'appel payant) ; quelques secondes de traitement pour voir la progression.
+        GENERATION_PROVIDER: 'mock',
+        MOCK_GENERATION_SECONDS: '4',
+        STORAGE_DRIVER: 'local',
+        LOCAL_STORAGE_DIR: './storage/e2e',
+        // Jamais de vrai envoi : sans cela, le .env de développement (EMAIL_PROVIDER=smtp) serait lu par l'API de test.
+        EMAIL_PROVIDER: 'console',
+        // Google non configuré en e2e (le test du bouton masqué l'exige) : vides, donc le .env de développement ne les remplace pas.
+        GOOGLE_CLIENT_ID: '',
+        GOOGLE_CLIENT_SECRET: '',
+        // Délai de renvoi des codes réduit pour pouvoir tester le renvoi sans attendre une minute.
+        EMAIL_OTP_RESEND_COOLDOWN_SECONDS: '3',
+        EMAIL_OTP_MAX_SENDS_PER_HOUR: '100',
+        SETUP_SECRET: 'e2e-setup-secret-0123456789abcdef',
         // Navigateur → Next (réécriture /api/*) → API : 2 sauts de confiance pour lire l'IP du client (X-Forwarded-For).
         TRUST_PROXY: '2',
       },
@@ -81,7 +95,7 @@ export default defineConfig({
       url: `${APP_URL}/connexion`,
       reuseExistingServer: false,
       timeout: 240_000,
-      env: { API_INTERNAL_URL: API_URL, NEXT_PUBLIC_SITE_URL: WEB_URL },
+      env: { API_INTERNAL_URL: API_URL, NEXT_PUBLIC_SITE_URL: WEB_URL, NEXT_DIST_DIR: '.next-e2e' },
     },
   ],
 });
