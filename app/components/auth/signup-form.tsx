@@ -7,14 +7,15 @@ import { useState } from "react";
 import { Controller, useForm, type Resolver } from "react-hook-form";
 import type { z } from "zod";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { apiPost, applyApiError } from "@/lib/api-client";
 import { useHydrated } from "@/lib/use-hydrated";
 import { SITE_URL } from "@/lib/site";
 import { Field, describedBy } from "./field";
 import { PasswordInput } from "./password-input";
+import { SubmitButton } from "./submit-button";
 
 /** Le schéma partagé exige `acceptLegal: true` ; la case démarre décochée, d'où ce type de formulaire élargi. */
 type SignupFormValues = Omit<z.input<typeof signupSchema>, "acceptLegal"> & { acceptLegal: boolean };
@@ -42,8 +43,9 @@ export function SignupForm() {
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     try {
-      await apiPost("/auth/register", values);
-      router.replace("/app");
+      const res = await apiPost<{ emailSent: boolean }>("/auth/register", values);
+      // Compte créé et connecté : on enchaîne sur la saisie du code reçu par e-mail.
+      router.replace(res.emailSent ? "/verifier-email" : "/verifier-email?envoi=echec");
       router.refresh();
     } catch (e) {
       setFormError(applyApiError(e, setError, FIELDS));
@@ -57,7 +59,7 @@ export function SignupForm() {
           <AlertDescription>{formError}</AlertDescription>
         </Alert>
       )}
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-3 sm:gap-5">
         <Field id="firstName" label="Prénom" error={errors.firstName?.message}>
           <Input
             id="firstName"
@@ -90,19 +92,24 @@ export function SignupForm() {
       </Field>
       <Field
         id="phone"
-        label="Numéro mobile money (facultatif)"
-        hint="Format 242XXXXXXXXX. Il servira à préremplir vos paiements."
+        label="Téléphone (facultatif)"
+        hint="Choisissez votre pays. Il servira à préremplir vos paiements mobile money."
         error={errors.phone?.message}
       >
-        <Input
-          id="phone"
-          type="tel"
-          autoComplete="tel-national"
-          inputMode="numeric"
-          placeholder="242060000000"
-          aria-invalid={!!errors.phone}
-          aria-describedby={describedBy("phone", errors.phone?.message, "hint")}
-          {...register("phone")}
+        <Controller
+          control={control}
+          name="phone"
+          render={({ field }) => (
+            <PhoneInput
+              id="phone"
+              name={field.name}
+              value={field.value ?? ""}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+              aria-invalid={!!errors.phone}
+              aria-describedby={describedBy("phone", errors.phone?.message, "hint")}
+            />
+          )}
         />
       </Field>
       <Field id="password" label="Mot de passe" hint="8 caractères minimum." error={errors.password?.message}>
@@ -161,9 +168,9 @@ export function SignupForm() {
         )}
       </div>
 
-      <Button type="submit" size="lg" className="w-full" disabled={!hydrated || isSubmitting}>
-        {isSubmitting ? "Création du compte…" : "Créer mon compte"}
-      </Button>
+      <SubmitButton disabled={!hydrated} loading={isSubmitting} loadingLabel="Création du compte…">
+        Créer mon compte
+      </SubmitButton>
     </form>
   );
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { phoneSchema } from './phone';
 
 /** Règles d'authentification partagées (cahier des charges §3.1, RG). La validation définitive reste côté API. */
 
@@ -23,12 +24,6 @@ const nameSchema = (label: string) =>
     .trim()
     .min(1, `${label} requis.`)
     .max(80, `${label} trop long.`);
-
-/** Numéro mobile money au format international congolais : 242 suivi de 9 chiffres. */
-export const phoneSchema = z
-  .string()
-  .trim()
-  .regex(/^242\d{9}$/, 'Numéro invalide. Format attendu : 242XXXXXXXXX.');
 
 const optionalPhone = z
   .union([phoneSchema, z.literal('')])
@@ -62,8 +57,21 @@ export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 
 export const tokenSchema = z.string().trim().min(20).max(200);
 
-export const verifyEmailSchema = z.object({ token: tokenSchema });
+/** Code à usage unique reçu par e-mail : chiffres uniquement (la longueur exacte est configurée côté API). */
+export const otpCodeSchema = z
+  .string({ error: 'Code requis.' })
+  .trim()
+  .regex(/^\d{4,10}$/, 'Le code ne contient que des chiffres.');
+
+export const verifyEmailSchema = z.object({ code: otpCodeSchema });
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+
+/** Correction de l'adresse e-mail d'un compte dont l'adresse n'est pas encore vérifiée. */
+export const changeEmailSchema = z.object({ email: emailSchema });
+export type ChangeEmailInput = z.infer<typeof changeEmailSchema>;
+
+export const loginOtpSchema = z.object({ email: emailSchema, code: otpCodeSchema });
+export type LoginOtpInput = z.infer<typeof loginOtpSchema>;
 
 export const resetPasswordSchema = z
   .object({

@@ -10,7 +10,7 @@ import {
   PASSWORD,
   createApp,
   prismaOf,
-  tokenFromEmail,
+  otpFromEmail,
   uniqueEmail,
 } from './helpers';
 
@@ -83,7 +83,7 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
     expect(fetchProfile).not.toHaveBeenCalled();
   });
 
-  it('crée un compte vérifié avec crédits de bienvenue, sans mot de passe, et demande les CGU', async () => {
+  it('crée un compte vérifié sans crédit offert, sans mot de passe, et demande les CGU', async () => {
     const client = new Client(app);
     const p = profile();
     const res = await callback(client, await start(client), p);
@@ -95,7 +95,7 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
       email: p.email,
       firstName: 'Grace',
       emailVerified: true,
-      credits: 4,
+      credits: 0,
       googleLinked: true,
       hasPassword: false,
       legalAccepted: false,
@@ -129,7 +129,7 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
     const client = new Client(app);
     const { email } = await client.register();
     await client
-      .post('/v1/auth/verify-email', { token: tokenFromEmail(app, email) })
+      .post('/v1/auth/verify-email', { code: otpFromEmail(app, email) })
       .expect(200);
     const id = (await client.get('/v1/auth/me')).body.user.id;
 
@@ -210,12 +210,17 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
 
   it('indique si la connexion Google est disponible', async () => {
     const on = await new Client(app).get('/v1/auth/providers').expect(200);
-    expect(on.body).toEqual({ google: true });
+    expect(on.body).toMatchObject({ google: true });
+    expect(on.body.emailOtp).toEqual({
+      length: 6,
+      ttlMinutes: 10,
+      resendCooldownSeconds: 0,
+    });
     jest
       .spyOn(app.get(GoogleOAuthClient), 'isConfigured')
       .mockReturnValue(false);
     const off = await new Client(app).get('/v1/auth/providers').expect(200);
-    expect(off.body).toEqual({ google: false });
+    expect(off.body).toMatchObject({ google: false });
   });
 
   it('renvoie 503 si Google n’est pas configuré', async () => {

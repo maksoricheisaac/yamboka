@@ -15,7 +15,7 @@ async function SignupContent() {
   return (
     <AuthCard
       title="Créer un compte"
-      lead="Des crédits de bienvenue vous sont offerts après la confirmation de votre adresse e-mail."
+      lead="Gratuit. Vous payez seulement les crédits que vous achetez, en mobile money."
       footer={
         <>
           Déjà inscrit ?{" "}

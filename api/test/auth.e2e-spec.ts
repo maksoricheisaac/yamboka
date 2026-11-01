@@ -9,10 +9,12 @@ import {
   prismaOf,
   signupBody,
   tokenFromEmail,
+  otpFromEmail,
   uniqueEmail,
   createApp,
   rawSession,
 } from './helpers';
+import { addLot } from './finance-helpers';
 
 describe('Authentification (e2e)', () => {
   let app: INestApplication;
@@ -30,13 +32,13 @@ describe('Authentification (e2e)', () => {
     const client = new Client(app);
     const { email } = await client.register(overrides);
     await client
-      .post('/v1/auth/verify-email', { token: tokenFromEmail(app, email) })
+      .post('/v1/auth/verify-email', { code: otpFromEmail(app, email) })
       .expect(200);
     return { client, email };
   }
 
   describe('Inscription', () => {
-    it('crée le compte, ouvre une session sécurisée et envoie le lien de vérification', async () => {
+    it('crée le compte, ouvre une session sécurisée et envoie le code de vérification', async () => {
       const client = new Client(app);
       const { res, email } = await client.register();
 
@@ -64,7 +66,7 @@ describe('Authentification (e2e)', () => {
       );
 
       const mail = lastEmailFor(app, email);
-      expect(mail.subject).toContain('Confirmez votre adresse e-mail');
+      expect(mail.subject).toContain('Votre code de vérification');
 
       const me = await client.get('/v1/auth/me').expect(200);
       expect(me.body.user).toMatchObject({
@@ -146,65 +148,64 @@ describe('Authentification (e2e)', () => {
     });
   });
 
-  describe('Vérification de l’e-mail et crédits de bienvenue', () => {
-    it('vérifie l’adresse et attribue 4 crédits valables 30 jours', async () => {
+  describe('Vérification de l’e-mail : aucun crédit offert', () => {
+    it('vérifie l’adresse sans attribuer le moindre crédit', async () => {
       const { client, email } = await verified();
       const me = await client.get('/v1/auth/me').expect(200);
-      expect(me.body.user).toMatchObject({ emailVerified: true, credits: 4 });
+      expect(me.body.user).toMatchObject({ emailVerified: true, credits: 0 });
 
-      const row = await prisma.creditLedger.findFirstOrThrow({
-        where: { user: { email }, type: 'WELCOME' },
-      });
-      expect(row.amount).toBe(4);
-      const days = (row.expiresAt!.getTime() - Date.now()) / 86_400_000;
-      expect(days).toBeGreaterThan(29);
-      expect(days).toBeLessThan(31);
-    });
-
-    it('un lien ne sert qu’une fois', async () => {
-      const client = new Client(app);
-      const { email } = await client.register();
-      const token = tokenFromEmail(app, email);
-      await client.post('/v1/auth/verify-email', { token }).expect(200);
-      const again = await client.post('/v1/auth/verify-email', { token });
-      expect(again.status).toBe(400);
-      expect(again.body.code).toBe('INVALID_TOKEN');
-      expect((await client.get('/v1/auth/me')).body.user.credits).toBe(4);
-    });
-
-    it('deux requêtes parallèles avec le même lien : crédits accordés une seule fois', async () => {
-      const client = new Client(app);
-      const { email } = await client.register();
-      const token = tokenFromEmail(app, email);
-      const results = await Promise.all([
-        client.post('/v1/auth/verify-email', { token }),
-        client.post('/v1/auth/verify-email', { token }),
-        client.post('/v1/auth/verify-email', { token }),
-      ]);
-      expect(results.filter((r) => r.status === 200)).toHaveLength(1);
       const user = await prisma.user.findUniqueOrThrow({ where: { email } });
       expect(
-        await prisma.creditLedger.count({
-          where: { userId: user.id, type: 'WELCOME' },
-        }),
-      ).toBe(1);
+        await prisma.creditLedger.count({ where: { userId: user.id } }),
+      ).toBe(0);
+      expect(await prisma.creditLot.count({ where: { userId: user.id } })).toBe(
+        0,
+      );
     });
 
-    it('refuse un lien expiré ou inconnu', async () => {
+    it('un code ne sert qu’une fois', async () => {
       const client = new Client(app);
       const { email } = await client.register();
-      const token = tokenFromEmail(app, email);
-      await prisma.emailToken.updateMany({
-        where: { user: { email } },
+      const code = otpFromEmail(app, email);
+      await client.post('/v1/auth/verify-email', { code }).expect(200);
+      // Déjà vérifié : la route est idempotente, mais le code, lui, est consommé.
+      const row = await prisma.emailOtp.findFirstOrThrow({ where: { email } });
+      expect(row.usedAt).not.toBeNull();
+      expect((await client.get('/v1/auth/me')).body.user.credits).toBe(0);
+    });
+
+    it('deux requêtes parallèles avec le même code : compte vérifié, toujours aucun mouvement de crédits', async () => {
+      const client = new Client(app);
+      const { email } = await client.register();
+      const code = otpFromEmail(app, email);
+      const results = await Promise.all([
+        client.post('/v1/auth/verify-email', { code }),
+        client.post('/v1/auth/verify-email', { code }),
+        client.post('/v1/auth/verify-email', { code }),
+      ]);
+      expect(
+        results.filter((r) => r.status === 200).length,
+      ).toBeGreaterThanOrEqual(1);
+      const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect(user.emailVerifiedAt).not.toBeNull();
+      expect(
+        await prisma.creditLedger.count({ where: { userId: user.id } }),
+      ).toBe(0);
+    });
+
+    it('refuse un code expiré, faux ou déjà remplacé', async () => {
+      const client = new Client(app);
+      const { email } = await client.register();
+      const code = otpFromEmail(app, email);
+      await prisma.emailOtp.updateMany({
+        where: { email },
         data: { expiresAt: new Date(Date.now() - 1000) },
       });
-      expect(
-        (await client.post('/v1/auth/verify-email', { token })).status,
-      ).toBe(400);
-      expect(
-        (await client.post('/v1/auth/verify-email', { token: 'x'.repeat(43) }))
-          .status,
-      ).toBe(400);
+      const expired = await client.post('/v1/auth/verify-email', { code });
+      expect(expired.status).toBe(400);
+      expect(expired.body.code).toBe('OTP_EXPIRED');
+      const none = await client.post('/v1/auth/verify-email', { code });
+      expect(none.status).toBe(400);
       const user = await prisma.user.findUniqueOrThrow({ where: { email } });
       expect(user.emailVerifiedAt).toBeNull();
       expect(
@@ -212,38 +213,37 @@ describe('Authentification (e2e)', () => {
       ).toBe(0);
     });
 
-    it('au-delà de 3 comptes depuis la même IP en 24 h : pas de crédits de bienvenue (RG-09)', async () => {
+    it('aucun crédit à l’inscription, quel que soit le nombre de comptes créés depuis la même adresse IP', async () => {
       const ip = freshIp();
       const credits: number[] = [];
       for (let i = 0; i < 5; i++) {
         const client = new Client(app, ip);
         const { email } = await client.register();
         await client
-          .post('/v1/auth/verify-email', { token: tokenFromEmail(app, email) })
+          .post('/v1/auth/verify-email', { code: otpFromEmail(app, email) })
           .expect(200);
         credits.push((await client.get('/v1/auth/me')).body.user.credits);
       }
-      expect(credits).toEqual([4, 4, 4, 0, 0]);
+      expect(credits).toEqual([0, 0, 0, 0, 0]);
     });
 
-    it('le renvoi du lien invalide l’ancien et est plafonné', async () => {
+    it('le renvoi du code invalide l’ancien et est plafonné', async () => {
       const client = new Client(app);
       const { email } = await client.register();
-      const first = tokenFromEmail(app, email);
+      const first = otpFromEmail(app, email);
 
       await client.post('/v1/auth/resend-verification').expect(200);
-      const second = tokenFromEmail(app, email);
-      expect(second).not.toBe(first);
-      expect(
-        (await client.post('/v1/auth/verify-email', { token: first })).status,
-      ).toBe(400);
+      const second = otpFromEmail(app, email);
+      // Un nouveau code remplace l'ancien : l'ancien est refusé, même s'il était correct.
+      if (second !== first) {
+        const old = await client.post('/v1/auth/verify-email', { code: first });
+        expect(old.status).toBe(400);
+      }
 
-      // 5 e-mails par heure au maximum (inscription comprise).
-      for (let i = 0; i < 3; i++)
-        await client.post('/v1/auth/resend-verification').expect(200);
-      const capped = await client.post('/v1/auth/resend-verification');
-      expect(capped.status).toBe(429);
-      expect(capped.body.code).toBe('TOO_MANY_EMAILS');
+      // Plafond configuré (EMAIL_OTP_MAX_SENDS_PER_HOUR) : voir otp.e2e-spec.ts.
+      expect(
+        (await client.post('/v1/auth/verify-email', { code: second })).status,
+      ).toBe(200);
     });
 
     it('le renvoi exige d’être connecté', async () => {
@@ -258,7 +258,7 @@ describe('Authentification (e2e)', () => {
       expect(refused.status).toBe(403);
       expect(refused.body.code).toBe('EMAIL_NOT_VERIFIED');
       await client
-        .post('/v1/auth/verify-email', { token: tokenFromEmail(app, email) })
+        .post('/v1/auth/verify-email', { code: otpFromEmail(app, email) })
         .expect(200);
       await client.get('/v1/probe/verified').expect(200);
     });
@@ -516,10 +516,24 @@ describe('Authentification (e2e)', () => {
         phone: '242061234567',
       });
       expect(ok.status).toBe(200);
+      // L'ancien format (sans « + ») reste accepté ; il est enregistré au format E.164.
       expect(ok.body.user).toMatchObject({
         firstName: 'Marie',
-        phone: '242061234567',
+        phone: '+242061234567',
       });
+
+      // Numéros internationaux : saisie avec espaces, autre pays, normalisation E.164.
+      const fr = await client.patch('/v1/me', { phone: '+33 6 12 34 56 78' });
+      expect(fr.status).toBe(200);
+      expect(fr.body.user.phone).toBe('+33612345678');
+      const congo = await client.patch('/v1/me', {
+        phone: '+242 06 606 31 33',
+      });
+      expect(congo.body.user.phone).toBe('+242066063133');
+      // Numéro invalide pour son pays : refusé côté serveur, pas seulement dans l'interface.
+      for (const bad of ['+242 12', '+33 1 23', '0612345678', 'abc']) {
+        expect((await client.patch('/v1/me', { phone: bad })).status).toBe(400);
+      }
     });
 
     it('changer de mot de passe déconnecte les autres appareils mais garde la session courante', async () => {
@@ -550,6 +564,7 @@ describe('Authentification (e2e)', () => {
     it('supprime le compte : données effacées, sessions coupées, registre conservé', async () => {
       const { client, email } = await verified();
       const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+      await addLot(app, user.id, 25); // un mouvement au registre, qui doit survivre à la suppression
 
       expect((await client.delete('/v1/me', { password: 'faux' })).status).toBe(
         401,

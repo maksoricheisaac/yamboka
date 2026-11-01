@@ -12,6 +12,7 @@ import { apiPost, applyApiError } from "@/lib/api-client";
 import { useHydrated } from "@/lib/use-hydrated";
 import { Field, describedBy } from "./field";
 import { PasswordInput } from "./password-input";
+import { SubmitButton } from "./submit-button";
 
 export function ResetForm() {
   const hydrated = useHydrated();
@@ -93,9 +94,9 @@ export function ResetForm() {
           {...register("confirmPassword")}
         />
       </Field>
-      <Button type="submit" size="lg" className="w-full" disabled={!hydrated || isSubmitting}>
-        {isSubmitting ? "Enregistrement…" : "Enregistrer le mot de passe"}
-      </Button>
+      <SubmitButton disabled={!hydrated} loading={isSubmitting} loadingLabel="Enregistrement…">
+        Enregistrer le mot de passe
+      </SubmitButton>
     </form>
   );
 }

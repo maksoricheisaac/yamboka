@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -13,15 +14,19 @@ import { ConfigService } from '@nestjs/config';
 import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type {
+  ChangeEmailInput,
   ForgotPasswordInput,
   LoginInput,
+  LoginOtpInput,
   ResetPasswordInput,
   SessionUser,
   SignupInput,
   VerifyEmailInput,
 } from '@yamboka/shared';
 import {
+  changeEmailSchema,
   forgotPasswordSchema,
+  loginOtpSchema,
   loginSchema,
   resetPasswordSchema,
   signupSchema,
@@ -36,6 +41,7 @@ import { ZodPipe } from '../common/zod.pipe';
 import type { Env } from '../config/env';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
+import type { OtpIssued } from './otp.service';
 import { GoogleOAuthClient } from './google-oauth.client';
 import { SessionService } from './session.service';
 import { randomToken, safeEqual } from './tokens';
@@ -74,7 +80,7 @@ export class AuthController {
     @Req() req: Request,
     @ClientIp() ip: string | undefined,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ user: SessionUser }> {
+  ): Promise<{ user: SessionUser; emailSent: boolean }> {
     const result = await this.auth.register(body, this.ctx(req, ip));
     this.sessions.setCookie(
       res,
@@ -82,7 +88,10 @@ export class AuthController {
       result.session.expiresAt,
     );
     res.status(201);
-    return { user: await this.users.toSessionUser(result.userId) };
+    return {
+      user: await this.users.toSessionUser(result.userId),
+      emailSent: result.emailSent,
+    };
   }
 
   @Public()
@@ -96,14 +105,66 @@ export class AuthController {
     @Req() req: Request,
     @ClientIp() ip: string | undefined,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ user: SessionUser }> {
+  ): Promise<
+    { user: SessionUser } | { otpRequired: true; email: string; otp: OtpIssued }
+  > {
     const result = await this.auth.login(body, this.ctx(req, ip));
+    // Confirmation par code exigée : aucune session n'est ouverte à ce stade.
+    if ('otpRequired' in result) return result;
     this.sessions.setCookie(
       res,
       result.session.token,
       result.session.expiresAt,
     );
     return { user: await this.users.toSessionUser(result.userId) };
+  }
+
+  @Public()
+  @Throttle(STRICT)
+  @HttpCode(200)
+  @Post('login/verify')
+  @ApiOperation({
+    summary: 'Termine une connexion avec le code reçu par e-mail',
+  })
+  @ApiBody({ schema: jsonSchema(loginOtpSchema) })
+  async loginVerify(
+    @Body(new ZodPipe(loginOtpSchema)) body: LoginOtpInput,
+    @Req() req: Request,
+    @ClientIp() ip: string | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ user: SessionUser }> {
+    const result = await this.auth.completeLoginOtp(body, this.ctx(req, ip));
+    this.sessions.setCookie(
+      res,
+      result.session.token,
+      result.session.expiresAt,
+    );
+    return { user: await this.users.toSessionUser(result.userId) };
+  }
+
+  @Public()
+  @Throttle(STRICT)
+  @HttpCode(200)
+  @Post('login/resend')
+  @ApiOperation({
+    summary:
+      'Renvoie le code de connexion (le mot de passe doit être ressaisi : aucune session n’existe encore)',
+  })
+  @ApiBody({ schema: jsonSchema(loginSchema) })
+  async loginResend(
+    @Body(new ZodPipe(loginSchema)) body: LoginInput,
+    @Req() req: Request,
+    @ClientIp() ip: string | undefined,
+  ): Promise<{ otp: OtpIssued }> {
+    const result = await this.auth.login(body, this.ctx(req, ip));
+    if (!('otpRequired' in result)) {
+      // Le mode a changé entre-temps : la connexion normale suffit, on ne laisse pas de session ouverte ici.
+      throw new BadRequestException({
+        code: 'OTP_NOT_REQUIRED',
+        message: 'Reconnectez-vous normalement.',
+      });
+    }
+    return { otp: result.otp };
   }
 
   @HttpCode(200)
@@ -124,38 +185,57 @@ export class AuthController {
     return { user: await this.users.toSessionUser(user.id) };
   }
 
-  @Public()
   @Throttle(STRICT)
   @HttpCode(200)
   @Post('verify-email')
   @ApiOperation({
-    summary: 'Valide l’adresse e-mail avec le lien reçu (24 h, usage unique)',
+    summary:
+      'Confirme l’adresse e-mail du compte connecté avec le code reçu (usage unique)',
   })
   @ApiBody({ schema: jsonSchema(verifyEmailSchema) })
   async verifyEmail(
+    @CurrentUser() user: AuthUser,
     @Body(new ZodPipe(verifyEmailSchema)) body: VerifyEmailInput,
-  ): Promise<{ message: string }> {
-    await this.auth.verifyEmail(body.token);
-    return { message: 'Votre adresse e-mail est confirmée.' };
+  ): Promise<{ user: SessionUser }> {
+    await this.auth.verifyEmail(user.id, body.code);
+    return { user: await this.users.toSessionUser(user.id) };
   }
 
   @Throttle({
-    auth: { limit: 3, ttl: 60_000 },
+    auth: { limit: 5, ttl: 60_000 },
+    global: { limit: 10, ttl: 60_000 },
+  })
+  @HttpCode(200)
+  @Post('change-email')
+  @ApiOperation({
+    summary:
+      'Corrige l’adresse e-mail d’un compte non vérifié et envoie un code à la nouvelle adresse',
+  })
+  @ApiBody({ schema: jsonSchema(changeEmailSchema) })
+  async changeEmail(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodPipe(changeEmailSchema)) body: ChangeEmailInput,
+  ): Promise<{ user: SessionUser; otp: OtpIssued }> {
+    const otp = await this.auth.changeUnverifiedEmail(user.id, body.email);
+    return { user: await this.users.toSessionUser(user.id), otp };
+  }
+
+  @Throttle({
+    auth: { limit: 5, ttl: 60_000 },
     global: { limit: 10, ttl: 60_000 },
   })
   @HttpCode(200)
   @Post('resend-verification')
   @ApiOperation({
-    summary: 'Renvoie le lien de vérification de l’adresse e-mail',
+    summary: 'Renvoie le code de vérification de l’adresse e-mail',
   })
-  async resend(@CurrentUser() user: AuthUser): Promise<{ message: string }> {
+  async resend(
+    @CurrentUser() user: AuthUser,
+  ): Promise<{ message: string; otp?: OtpIssued }> {
     const outcome = await this.auth.resendVerification(user.id);
-    return {
-      message:
-        outcome === 'already_verified'
-          ? 'Votre adresse e-mail est déjà confirmée.'
-          : 'Un nouveau lien vous a été envoyé.',
-    };
+    return outcome.status === 'already_verified'
+      ? { message: 'Votre adresse e-mail est déjà confirmée.' }
+      : { message: 'Un nouveau code vous a été envoyé.', otp: outcome.otp };
   }
 
   @Public()
@@ -202,8 +282,26 @@ export class AuthController {
   @ApiOperation({
     summary: 'Méthodes de connexion disponibles (affichage du bouton Google)',
   })
-  providers(): { google: boolean } {
-    return { google: this.google.isConfigured() };
+  providers(): {
+    google: boolean;
+    emailOtp: {
+      length: number;
+      ttlMinutes: number;
+      resendCooldownSeconds: number;
+    };
+  } {
+    return {
+      google: this.google.isConfigured(),
+      // Paramètres des codes, pour que l'interface affiche les vraies valeurs (compte à rebours, durée).
+      emailOtp: {
+        length: this.config.get('EMAIL_OTP_LENGTH', { infer: true }),
+        ttlMinutes: this.config.get('EMAIL_OTP_TTL_MINUTES', { infer: true }),
+        resendCooldownSeconds: this.config.get(
+          'EMAIL_OTP_RESEND_COOLDOWN_SECONDS',
+          { infer: true },
+        ),
+      },
+    };
   }
 
   @Public()

@@ -1,75 +1,137 @@
 "use client";
 
-import { CheckCircle2 } from "lucide-react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { changeEmailSchema, type ChangeEmailInput, type SessionUser } from "@yamboka/shared";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { ApiError, apiPost } from "@/lib/api-client";
+import { Input } from "@/components/ui/input";
+import { apiPost, applyApiError } from "@/lib/api-client";
+import { Field, describedBy } from "./field";
+import { OtpForm, type OtpIssuedInfo } from "./otp-form";
 
-type State = "idle" | "loading" | "done" | "error";
-
-/**
- * La validation se fait par un clic (POST), jamais au simple chargement de la page : certains
- * antivirus et messageries ouvrent les liens automatiquement et consommeraient le jeton à usage unique.
- */
-export function VerifyEmailCard() {
+/** Vérification de l'adresse e-mail par code : saisie, renvoi avec compte à rebours, correction de l'adresse. */
+export function VerifyEmailCard({
+  email: initialEmail,
+  initialCooldown,
+  codeLength,
+  ttlMinutes,
+  sent,
+}: {
+  email: string;
+  initialCooldown: number;
+  codeLength?: number;
+  ttlMinutes?: number;
+  /** Faux : l'e-mail d'inscription n'a pas pu partir (on le dit, et le renvoi est immédiat). */
+  sent: boolean;
+}) {
   const router = useRouter();
-  const token = useSearchParams().get("token") ?? "";
-  const [state, setState] = useState<State>("idle");
-  const [message, setMessage] = useState("");
+  const [email, setEmail] = useState(initialEmail);
+  const [editing, setEditing] = useState(false);
+  const [cooldown, setCooldown] = useState(sent ? initialCooldown : 0);
+  const [notSent, setNotSent] = useState(!sent);
+  // Remonte le formulaire de code quand l'adresse change : état et compte à rebours repartent de zéro.
+  const [epoch, setEpoch] = useState(0);
 
-  if (!token) {
+  if (editing) {
     return (
-      <Alert variant="destructive" role="alert">
-        <AlertDescription>
-          Ce lien est incomplet. Ouvrez le lien depuis l’e-mail reçu, ou demandez-en un nouveau depuis{" "}
-          <Link href="/app" className="font-medium underline">votre espace</Link>.
-        </AlertDescription>
-      </Alert>
-    );
-  }
-
-  async function confirm() {
-    setState("loading");
-    try {
-      await apiPost("/auth/verify-email", { token });
-      setState("done");
-      router.refresh();
-    } catch (e) {
-      setMessage(e instanceof ApiError ? e.message : "Une erreur est survenue. Veuillez réessayer.");
-      setState("error");
-    }
-  }
-
-  if (state === "done") {
-    return (
-      <div className="space-y-4">
-        <Alert role="status">
-          <CheckCircle2 aria-hidden />
-          <AlertDescription>Votre adresse e-mail est confirmée. Merci !</AlertDescription>
-        </Alert>
-        <Button asChild size="lg" className="w-full">
-          <Link href="/app">Accéder à mon espace</Link>
-        </Button>
-      </div>
+      <ChangeEmail
+        current={email}
+        onCancel={() => setEditing(false)}
+        onDone={(user, otp) => {
+          setEmail(user.email);
+          setCooldown(otp.resendInSeconds);
+          setNotSent(false);
+          setEpoch((n) => n + 1);
+          setEditing(false);
+        }}
+      />
     );
   }
 
   return (
-    <div className="space-y-4">
-      {state === "error" && (
+    <OtpForm
+      key={epoch}
+      email={email}
+      initialCooldown={cooldown}
+      codeLength={codeLength}
+      ttlMinutes={ttlMinutes}
+      notSentNotice={
+        notSent ? "Nous n’avons pas pu envoyer l’e-mail. Vérifiez l’adresse, puis cliquez sur « Renvoyer le code »." : undefined
+      }
+      onVerify={async (code) => {
+        await apiPost("/auth/verify-email", { code });
+        router.replace("/app");
+        router.refresh();
+      }}
+      onResend={async () => {
+        const res = await apiPost<{ otp: OtpIssuedInfo }>("/auth/resend-verification");
+        setNotSent(false);
+        return res.otp;
+      }}
+      onChangeEmail={() => setEditing(true)}
+    />
+  );
+}
+
+function ChangeEmail({
+  current,
+  onCancel,
+  onDone,
+}: {
+  current: string;
+  onCancel: () => void;
+  onDone: (user: SessionUser, otp: OtpIssuedInfo) => void;
+}) {
+  const [formError, setFormError] = useState<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<ChangeEmailInput>({ resolver: zodResolver(changeEmailSchema) });
+
+  const onSubmit = handleSubmit(async (values) => {
+    setFormError(null);
+    try {
+      const res = await apiPost<{ user: SessionUser; otp: OtpIssuedInfo }>("/auth/change-email", values);
+      onDone(res.user, res.otp);
+    } catch (e) {
+      setFormError(applyApiError(e, setError, ["email"]));
+    }
+  });
+
+  return (
+    <form onSubmit={onSubmit} noValidate className="space-y-5">
+      <p className="text-sm text-muted-foreground">
+        Adresse actuelle : <strong className="text-foreground">{current}</strong>. Un nouveau code sera envoyé à la nouvelle adresse.
+      </p>
+      {formError && (
         <Alert variant="destructive" role="alert">
-          <AlertDescription>
-            {message} Connectez-vous pour recevoir un nouveau lien depuis{" "}
-            <Link href="/app" className="font-medium underline">votre espace</Link>.
-          </AlertDescription>
+          <AlertDescription>{formError}</AlertDescription>
         </Alert>
       )}
-      <Button size="lg" className="w-full" onClick={confirm} disabled={state === "loading"}>
-        {state === "loading" ? "Vérification…" : "Confirmer mon adresse e-mail"}
-      </Button>
-    </div>
+      <Field id="email" label="Nouvelle adresse e-mail" error={errors.email?.message}>
+        <Input
+          id="email"
+          type="email"
+          autoComplete="email"
+          inputMode="email"
+          aria-invalid={!!errors.email}
+          aria-describedby={describedBy("email", errors.email?.message)}
+          {...register("email")}
+        />
+      </Field>
+      <div className="flex gap-3">
+        <Button type="submit" size="lg" className="flex-1" disabled={isSubmitting}>
+          {isSubmitting ? "Envoi…" : "Envoyer le code"}
+        </Button>
+        <Button type="button" variant="outline" size="lg" onClick={onCancel}>
+          Annuler
+        </Button>
+      </div>
+    </form>
   );
 }

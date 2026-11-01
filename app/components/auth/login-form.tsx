@@ -1,19 +1,20 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { loginSchema, type LoginInput } from "@yamboka/shared";
+import { loginSchema, type LoginInput, type SessionUser } from "@yamboka/shared";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiPost, applyApiError } from "@/lib/api-client";
+import { OtpForm, type OtpIssuedInfo } from "./otp-form";
 import { useHydrated } from "@/lib/use-hydrated";
 import { safeNext } from "@/lib/safe-redirect";
 import { Field, describedBy } from "./field";
 import { PasswordInput } from "./password-input";
+import { SubmitButton } from "./submit-button";
 
 const ERRORS: Record<string, string> = {
   google_etat: "La connexion avec Google a expiré. Veuillez réessayer.",
@@ -23,11 +24,19 @@ const ERRORS: Record<string, string> = {
   google: "La connexion avec Google a échoué. Veuillez réessayer.",
 };
 
-export function LoginForm() {
+export function LoginForm({ codeLength, ttlMinutes }: { codeLength?: number; ttlMinutes?: number } = {}) {
   const router = useRouter();
   const hydrated = useHydrated();
   const params = useSearchParams();
-  const next = safeNext(params.get("suivant"));
+  const requested = params.get("suivant");
+  const next = safeNext(requested);
+  const [challenge, setChallenge] = useState<{ email: string; password: string; otp: OtpIssuedInfo } | null>(null);
+
+  /** Après connexion : page demandée si elle existe, sinon l'espace du rôle (administration ou espace client). */
+  function landOn(user: SessionUser) {
+    router.replace(requested ? next : user.role === "ADMIN" ? "/admin" : "/app");
+    router.refresh();
+  }
   const [formError, setFormError] = useState<string | null>(ERRORS[params.get("erreur") ?? ""] ?? null);
   const {
     register,
@@ -39,13 +48,42 @@ export function LoginForm() {
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     try {
-      await apiPost("/auth/login", values);
-      router.replace(next);
-      router.refresh();
+      const res = await apiPost<{ user?: SessionUser; otpRequired?: boolean; otp?: OtpIssuedInfo }>("/auth/login", values);
+      if (res.otpRequired && res.otp) {
+        // Mot de passe correct : aucune session n'est ouverte avant le code reçu par e-mail.
+        setChallenge({ email: values.email, password: values.password, otp: res.otp });
+        return;
+      }
+      landOn(res.user!);
     } catch (e) {
       setFormError(applyApiError(e, setError, ["email", "password"]));
     }
   });
+
+  if (challenge) {
+    return (
+      <div className="space-y-4">
+        <OtpForm
+          email={challenge.email}
+          initialCooldown={challenge.otp.resendInSeconds}
+          codeLength={codeLength}
+          ttlMinutes={ttlMinutes}
+          onVerify={async (code) => {
+            const res = await apiPost<{ user: SessionUser }>("/auth/login/verify", { email: challenge.email, code });
+            landOn(res.user);
+          }}
+          onResend={async () => {
+            const res = await apiPost<{ otp: OtpIssuedInfo }>("/auth/login/resend", {
+              email: challenge.email,
+              password: challenge.password,
+            });
+            return res.otp;
+          }}
+          onChangeEmail={() => setChallenge(null)}
+        />
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-5">
@@ -79,9 +117,9 @@ export function LoginForm() {
           Mot de passe oublié ?
         </Link>
       </div>
-      <Button type="submit" size="lg" className="w-full" disabled={!hydrated || isSubmitting}>
-        {isSubmitting ? "Connexion…" : "Se connecter"}
-      </Button>
+      <SubmitButton disabled={!hydrated} loading={isSubmitting} loadingLabel="Connexion…">
+        Se connecter
+      </SubmitButton>
     </form>
   );
 }

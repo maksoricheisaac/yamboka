@@ -19,14 +19,21 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   return ((await res.json()) as { user: SessionUser }).user;
 });
 
-/** Méthodes de connexion proposées (le bouton Google n'apparaît que s'il est configuré). */
-export async function getAuthProviders(): Promise<{ google: boolean }> {
+export interface AuthProviders {
+  google: boolean;
+  emailOtp: { length: number; ttlMinutes: number; resendCooldownSeconds: number };
+}
+
+const DEFAULT_PROVIDERS: AuthProviders = { google: false, emailOtp: { length: 6, ttlMinutes: 10, resendCooldownSeconds: 60 } };
+
+/** Méthodes de connexion proposées (le bouton Google n'apparaît que s'il est configuré) et paramètres des codes e-mail. */
+export async function getAuthProviders(): Promise<AuthProviders> {
   try {
     const res = await fetch(`${API}/v1/auth/providers`, { cache: "no-store" });
-    if (!res.ok) return { google: false };
-    return (await res.json()) as { google: boolean };
+    if (!res.ok) return DEFAULT_PROVIDERS;
+    return (await res.json()) as AuthProviders;
   } catch {
-    return { google: false };
+    return DEFAULT_PROVIDERS;
   }
 }
 

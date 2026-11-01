@@ -21,9 +21,11 @@ Le proxy Next.js (`app/proxy.ts`) ne fait qu'une redirection de confort (absence
 
 ## Parcours
 
-- **Inscription** : crée le compte, enregistre l'acceptation horodatée (CGU et charte, avec l'IP), ouvre la session et envoie le lien de vérification. L'utilisateur peut explorer l'application mais ni acheter ni créer tant que l'adresse n'est pas vérifiée.
-- **Vérification de l'e-mail** (24 h, usage unique) : le lien ouvre une page qui demande **un clic** (POST). Une simple ouverture du lien (antivirus, messagerie) ne consomme donc pas le jeton. Le jeton est « réclamé » par un `UPDATE` conditionnel : deux requêtes parallèles ne passent qu'une fois.
-- **Crédits de bienvenue** : attribués une seule fois (`welcome:<userId>` est une référence unique du registre), valables 30 jours. Au-delà de 3 comptes créés depuis la même IP en 24 h, les nouveaux comptes n'en reçoivent pas (RG-09). Les adresses jetables sont refusées.
+- **Inscription** : crée le compte, enregistre l'acceptation horodatée (CGU et charte, avec l'IP), ouvre la session et envoie un **code à usage unique** par e-mail. La réponse indique `emailSent` : si l'e-mail n'a pas pu partir, l'interface le dit. L'utilisateur peut explorer l'application mais ni acheter ni créer tant que l'adresse n'est pas vérifiée.
+- **Vérification de l'e-mail** : code à 6 chiffres, 10 minutes, usage unique, 5 essais, renvoi limité (voir [emails-et-otp.md](emails-et-otp.md)). Il **remplace le lien de 24 h** : un seul système. Une faute de frappe dans l'adresse se corrige tant qu'elle n'est pas vérifiée (`POST /auth/change-email`).
+- **Confirmation de connexion** (optionnelle, réglage `loginOtpMode` : `off` / `admin` / `all`) : le mot de passe est vérifié d'abord, **aucune session n'est ouverte avant le code**. Les comptes Google n'ont pas d'étape supplémentaire.
+- **Rôles et administration** : voir [administration.md](administration.md) (séparation des espaces, Setup Wizard du premier administrateur).
+- **Aucun crédit offert à l'inscription** : sans vérification par SMS, des comptes multiples (e-mails temporaires, Gmail à la chaîne) permettraient d'abuser d'un essai gratuit. Les crédits s'achètent ; le seul geste commercial automatique est le bonus de premier achat (voir [credits-et-paiements.md](credits-et-paiements.md)). Les adresses jetables sont refusées.
 - **Mot de passe oublié** (1 h, usage unique) : réponse identique que l'adresse existe ou non. Une réinitialisation coupe **toutes** les sessions.
 - **Connexion** : même message et même durée que le compte existe ou non. Plafond de 5 e-mails par heure et par utilisateur et par type.
 - **Suppression de compte** : anonymisation (le registre de crédits et les traces légales sont conservés, RG-34).
@@ -38,7 +40,7 @@ Flux code d'autorisation avec **PKCE** et paramètre **`state`** (cookies `HttpO
 
 - Compte e-mail **vérifié** existant : liaison automatique, mot de passe conservé.
 - Compte e-mail **jamais vérifié** existant : liaison, **mot de passe effacé et sessions coupées** (un tiers a pu s'inscrire avec l'adresse d'autrui ; son mot de passe ne doit pas survivre).
-- Nouveau compte : créé vérifié, crédits de bienvenue attribués, acceptation des CGU demandée à la première visite.
+- Nouveau compte : créé vérifié (sans crédit), acceptation des CGU demandée à la première visite.
 
 ### Configuration (à faire une fois)
 
@@ -65,7 +67,7 @@ Sans ces trois variables, le bouton Google n'est pas affiché (`GET /auth/provid
 
 ## Outils de développement
 
-`GET /v1/dev/outbox?to=<email>` expose les e-mails envoyés (liens de vérification) **hors production uniquement** : le module n'est pas chargé quand `NODE_ENV=production`.
+`GET /v1/dev/outbox?to=<email>` expose les e-mails du mode `console` (codes de vérification, liens de réinitialisation) **hors production uniquement** : le module n'est pas chargé quand `NODE_ENV=production`.
 
 ## Connexions keep-alive derrière un proxy (erreurs 500 aléatoires)
 

@@ -32,7 +32,7 @@ async function LoginContent() {
           <OrSeparator />
         </>
       )}
-      <LoginForm />
+      <LoginForm codeLength={providers.emailOtp.length} ttlMinutes={providers.emailOtp.ttlMinutes} />
     </AuthCard>
   );
 }

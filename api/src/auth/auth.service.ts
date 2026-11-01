@@ -3,7 +3,6 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
-  HttpStatus,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -11,6 +10,7 @@ import {
 import type {
   ForgotPasswordInput,
   LoginInput,
+  LoginOtpInput,
   ResetPasswordInput,
   SignupInput,
 } from '@yamboka/shared';
@@ -22,23 +22,29 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { isDisposableEmail } from './disposable-domains';
 import type { GoogleProfile } from './google-oauth.client';
+import { OtpIssued, OtpService } from './otp.service';
 import { PasswordService } from './password.service';
 import { SessionContext, SessionService } from './session.service';
 import { randomToken, sha256 } from './tokens';
 
 const HOUR = 3600 * 1000;
 const TOKEN_TTL: Record<EmailTokenType, number> = {
-  VERIFY_EMAIL: 24 * HOUR,
+  VERIFY_EMAIL: 24 * HOUR, // hérité : la vérification passe par un code (OtpService)
   RESET_PASSWORD: 1 * HOUR,
 };
 /** Plafond d'envois d'e-mails par utilisateur et par type, sur une heure (UF-09). */
 const MAX_EMAILS_PER_HOUR = 5;
-/** Au-delà de ce nombre de comptes créés depuis une même IP en 24 h : pas de crédits de bienvenue (RG-09). */
-const WELCOME_MAX_ACCOUNTS_PER_IP = 3;
 
 export interface AuthResult {
   userId: string;
   session: { token: string; expiresAt: Date };
+}
+
+/** Connexion en deux temps : le mot de passe est correct, mais la session n'est ouverte qu'après le code reçu par e-mail. */
+export interface LoginChallenge {
+  otpRequired: true;
+  email: string;
+  otp: OtpIssued;
 }
 
 @Injectable()
@@ -53,11 +59,15 @@ export class AuthService {
     private readonly credits: CreditsService,
     private readonly settings: SettingsService,
     private readonly legal: LegalService,
+    private readonly otp: OtpService,
   ) {}
 
   // ───────────── Inscription et connexion ─────────────
 
-  async register(input: SignupInput, ctx: SessionContext): Promise<AuthResult> {
+  async register(
+    input: SignupInput,
+    ctx: SessionContext,
+  ): Promise<AuthResult & { emailSent: boolean }> {
     if (isDisposableEmail(input.email)) {
       throw new BadRequestException({
         code: 'DISPOSABLE_EMAIL',
@@ -94,12 +104,29 @@ export class AuthService {
       throw e;
     }
 
-    await this.sendVerificationEmail(user);
+    // L'inscription réussit même si l'e-mail ne part pas : le compte existe et le code peut être redemandé.
+    // On dit la vérité à l'interface (emailSent) au lieu de laisser croire qu'un message est parti.
+    const emailSent = await this.otp
+      .issue(user.email, 'VERIFY_EMAIL', user)
+      .then(() => true)
+      .catch((e: unknown) => {
+        this.logger.warn(
+          `Code d'inscription non envoyé : ${e instanceof HttpException ? String(e.getStatus()) : 'erreur'}`,
+        );
+        return false;
+      });
     const session = await this.sessions.create(user.id, ctx);
-    return { userId: user.id, session };
+    return { userId: user.id, session, emailSent };
   }
 
-  async login(input: LoginInput, ctx: SessionContext): Promise<AuthResult> {
+  /**
+   * Étape 1 : vérifie le mot de passe. Selon le paramètre `loginOtpMode` (off | admin | all), la session s'ouvre
+   * tout de suite ou seulement après confirmation par code (étape 2 : completeLoginOtp).
+   */
+  async login(
+    input: LoginInput,
+    ctx: SessionContext,
+  ): Promise<AuthResult | LoginChallenge> {
     const user = await this.prisma.user.findUnique({
       where: { email: input.email },
     });
@@ -115,108 +142,118 @@ export class AuthService {
       });
     }
     this.assertActive(user);
+
+    const mode = await this.settings.get('loginOtpMode');
+    const required =
+      mode === 'all' || (mode === 'admin' && user.role === 'ADMIN');
+    if (required) {
+      const otp = await this.otp.issue(user.email, 'LOGIN', user);
+      return { otpRequired: true, email: user.email, otp };
+    }
     const session = await this.sessions.create(user.id, ctx);
     return { userId: user.id, session };
   }
 
-  // ───────────── Vérification de l'e-mail ─────────────
-
-  async sendVerificationEmail(
-    user: Pick<User, 'id' | 'email' | 'firstName'>,
-  ): Promise<boolean> {
-    const token = await this.issueEmailToken(user.id, 'VERIFY_EMAIL');
-    if (!token) return false;
-    await this.email
-      .sendVerification(user.email, user.firstName, token)
-      .catch((e: unknown) => {
-        this.logger.error(
-          `Envoi de l'e-mail de vérification impossible : ${String(e)}`,
-        );
+  /** Étape 2 : le code reçu par e-mail ouvre la session. Il est lié à l'adresse et à l'objectif « connexion ». */
+  async completeLoginOtp(
+    input: LoginOtpInput,
+    ctx: SessionContext,
+  ): Promise<AuthResult> {
+    const { userId } = await this.otp.verify(input.email, 'LOGIN', input.code);
+    const user = userId
+      ? await this.prisma.user.findUnique({ where: { id: userId } })
+      : null;
+    if (!user || user.deletedAt) {
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Connexion impossible.',
       });
-    return true;
+    }
+    this.assertActive(user);
+    const session = await this.sessions.create(user.id, ctx);
+    return { userId: user.id, session };
   }
+
+  // ───────────── Vérification de l'e-mail (code à usage unique) ─────────────
 
   async resendVerification(
     userId: string,
-  ): Promise<'sent' | 'already_verified'> {
+  ): Promise<
+    { status: 'sent'; otp: OtpIssued } | { status: 'already_verified' }
+  > {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
     });
-    if (user.emailVerifiedAt) return 'already_verified';
-    const sent = await this.sendVerificationEmail(user);
-    if (!sent) {
-      throw new HttpException(
-        {
-          code: 'TOO_MANY_EMAILS',
-          message: 'Trop d’e-mails envoyés. Réessayez dans une heure.',
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-    return 'sent';
+    if (user.emailVerifiedAt) return { status: 'already_verified' };
+    // Les erreurs (délai, plafond horaire, échec SMTP) remontent telles quelles à l'utilisateur.
+    const otp = await this.otp.issue(user.email, 'VERIFY_EMAIL', user);
+    return { status: 'sent', otp };
   }
 
-  /** Le jeton est « réclamé » par un UPDATE conditionnel : un double clic ou deux requêtes parallèles ne passent qu'une fois. */
-  async verifyEmail(token: string): Promise<void> {
-    const tokenHash = sha256(token);
-    const ok = await this.prisma.$transaction(async (tx) => {
-      const claimed = await tx.emailToken.updateMany({
-        where: {
-          tokenHash,
-          type: 'VERIFY_EMAIL',
-          usedAt: null,
-          expiresAt: { gt: new Date() },
-        },
-        data: { usedAt: new Date() },
-      });
-      if (claimed.count !== 1) return false;
-      const row = await tx.emailToken.findUniqueOrThrow({
-        where: { tokenHash },
-      });
-      await this.markEmailVerified(tx, row.userId);
-      return true;
+  /**
+   * Corrige une faute de frappe dans l'adresse d'inscription tant qu'elle n'est pas vérifiée : sans cela, la personne
+   * resterait bloquée (le code part vers une adresse qui n'est pas la sienne). Un compte déjà vérifié ne passe pas par ici.
+   */
+  async changeUnverifiedEmail(
+    userId: string,
+    email: string,
+  ): Promise<OtpIssued> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
     });
-    if (!ok) throw this.invalidToken();
+    if (user.emailVerifiedAt) {
+      throw new ConflictException({
+        code: 'EMAIL_ALREADY_VERIFIED',
+        message: 'Votre adresse e-mail est déjà confirmée.',
+      });
+    }
+    if (email !== user.email) {
+      if (isDisposableEmail(email)) {
+        throw new BadRequestException({
+          code: 'DISPOSABLE_EMAIL',
+          message:
+            'Les adresses e-mail jetables ne sont pas acceptées. Utilisez votre adresse personnelle.',
+        });
+      }
+      try {
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { email },
+        });
+      } catch (e) {
+        if (this.isUniqueViolation(e)) {
+          throw new ConflictException({
+            code: 'EMAIL_TAKEN',
+            message: 'Cette adresse e-mail est déjà utilisée.',
+          });
+        }
+        throw e;
+      }
+    }
+    return this.otp.issue(email, 'VERIFY_EMAIL', {
+      id: userId,
+      firstName: user.firstName,
+    });
   }
 
-  /** Marque l'adresse comme vérifiée et attribue, au plus une fois, les crédits de bienvenue (RG-09). */
+  async verifyEmail(userId: string, code: string): Promise<void> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
+    if (user.emailVerifiedAt) return;
+    await this.otp.verify(user.email, 'VERIFY_EMAIL', code);
+    await this.prisma.$transaction((tx) => this.markEmailVerified(tx, userId));
+  }
+
+  /** Marque l'adresse comme vérifiée. Aucun crédit n'est offert à l'inscription : les crédits s'achètent. */
   private async markEmailVerified(
     tx: Prisma.TransactionClient,
     userId: string,
   ): Promise<void> {
-    const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
-    if (!user.emailVerifiedAt) {
-      await tx.user.update({
-        where: { id: userId },
-        data: { emailVerifiedAt: new Date() },
-      });
-    }
-    if (user.welcomeGrantedAt) return;
-
-    const recentFromSameIp = user.signupIp
-      ? await tx.user.count({
-          where: {
-            signupIp: user.signupIp,
-            createdAt: { gte: new Date(Date.now() - 24 * HOUR) },
-          },
-        })
-      : 0;
-    if (recentFromSameIp > WELCOME_MAX_ACCOUNTS_PER_IP) return;
-
-    const amount = await this.settings.get('welcomeCredits');
-    const days = await this.settings.get('welcomeExpiryDays');
-    const granted = await this.credits.grantWelcome(
-      tx,
-      userId,
-      amount,
-      new Date(Date.now() + days * 24 * HOUR),
-    );
-    if (granted) {
-      await tx.user.update({
-        where: { id: userId },
-        data: { welcomeGrantedAt: new Date() },
-      });
-    }
+    await tx.user.updateMany({
+      where: { id: userId, emailVerifiedAt: null },
+      data: { emailVerifiedAt: new Date() },
+    });
   }
 
   // ───────────── Mot de passe oublié ─────────────
