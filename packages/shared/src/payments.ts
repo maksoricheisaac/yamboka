@@ -27,6 +27,8 @@ export interface PaymentView {
   failureReason: string | null;
   createdAt: string;
   creditedAt: string | null;
+  /** Non vide : le client doit être redirigé ici pour payer (certains réseaux). Ne prouve jamais un paiement. */
+  checkoutUrl: string | null;
   /** Vrai quand le fournisseur est simulé : l'écran d'attente propose alors le simulateur. */
   simulated: boolean;
 }

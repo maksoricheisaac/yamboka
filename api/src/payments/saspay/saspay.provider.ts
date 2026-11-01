@@ -1,4 +1,6 @@
 import { ConfigService } from '@nestjs/config';
+import { z } from 'zod';
+import type { FeeTier } from '../../billing/fees';
 import type { Env } from '../../config/env';
 import {
   InitiatePaymentRequest,
@@ -20,9 +22,33 @@ import {
 
 interface SaspayBody {
   success?: boolean;
-  data?: Record<string, unknown>;
+  data?: unknown;
   error?: unknown;
 }
+
+const TIERS_TTL_MS = 60 * 60 * 1000;
+
+const num = z.union([z.number(), z.string()]);
+const ratesSchema = z.array(
+  z.object({
+    country_code: z.string(),
+    network_code: z.string(),
+    payin: z.object({
+      available: z.boolean(),
+      tiers: z.array(
+        z.object({
+          min_amount: num,
+          max_amount: num.nullable(),
+          percent: num,
+          fixed: num.nullish(),
+          floor_amount: num.nullish(),
+          cap_amount: num.nullish(),
+          fee_charge_mode: z.enum(['ADD_ON', 'DEDUCTED']).optional(),
+        }),
+      ),
+    }),
+  }),
+);
 
 /**
  * SasPay (PAYMENT_PROVIDER=saspay), API https://docs.saspay.me. Les paiements sont RÉELS : aucun bac à sable
@@ -33,6 +59,14 @@ interface SaspayBody {
  */
 export class SaspayPaymentProvider extends PaymentProvider {
   readonly name = 'saspay';
+  /** Idempotency-Key supportée sur POST /payments/softpay/ (même clé + même corps = même réponse). */
+  override readonly idempotent = true;
+  /** Un push mobile money expire vite : au-delà d'une heure sans confirmation, on cesse d'attendre. */
+  override readonly pendingTtlMs = 60 * 60 * 1000;
+  private readonly tiersCache = new Map<
+    string,
+    { at: number; tiers: FeeTier[] }
+  >();
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly timeoutMs: number;
@@ -44,6 +78,55 @@ export class SaspayPaymentProvider extends PaymentProvider {
       .replace(/\/+$/, '');
     this.apiKey = config.get('SASPAY_API_KEY', { infer: true }) ?? '';
     this.timeoutMs = config.get('SASPAY_TIMEOUT_MS', { infer: true });
+  }
+
+  override networkFor(operator: 'MTN' | 'AIRTEL'): string {
+    return SASPAY_NETWORK_BY_OPERATOR[operator];
+  }
+
+  /**
+   * Tarif d'encaissement d'un réseau pour CE compte (GET /pricing/my-rates/), gardé 1 h en mémoire.
+   * Si SasPay est injoignable, le dernier tarif connu sert encore ; sans tarif connu, l'erreur remonte.
+   * Les champs `min_fee` / `min_fee_basis_amount` (non documentés) sont ignorés : sur nos packs, le pourcentage domine.
+   */
+  override async getPayinTiers(
+    country: string,
+    network: string,
+  ): Promise<FeeTier[]> {
+    const key = `${country}:${network}`;
+    const cached = this.tiersCache.get(key);
+    if (cached && Date.now() - cached.at < TIERS_TTL_MS) return cached.tiers;
+    let data: unknown;
+    try {
+      data = await this.request('GET', '/pricing/my-rates/');
+    } catch (e) {
+      if (cached && e instanceof ProviderUnavailableError) return cached.tiers;
+      throw e;
+    }
+    const rates = ratesSchema.safeParse(data);
+    if (!rates.success) {
+      throw new ProviderInvalidResponseError('SasPay : tarifs illisibles.');
+    }
+    const rate = rates.data.find(
+      (r) => r.country_code === country && r.network_code === network,
+    );
+    if (!rate || !rate.payin.available) {
+      throw new ProviderRejectedError(
+        'invalid_method',
+        'Réseau non disponible à l’encaissement.',
+      );
+    }
+    const tiers: FeeTier[] = rate.payin.tiers.map((t) => ({
+      minAmount: t.min_amount,
+      maxAmount: t.max_amount,
+      percent: t.percent,
+      fixed: t.fixed ?? 0,
+      floorAmount: t.floor_amount ?? null,
+      capAmount: t.cap_amount ?? null,
+      feeChargeMode: t.fee_charge_mode,
+    }));
+    this.tiersCache.set(key, { at: Date.now(), tiers });
+    return tiers;
   }
 
   async initiate(
@@ -76,7 +159,7 @@ export class SaspayPaymentProvider extends PaymentProvider {
       metadata: request.metadata,
       ...(request.returnUrl ? { return_url: request.returnUrl } : {}),
     };
-    const data = await this.call('POST', '/payments/softpay/', {
+    const data = await this.callObject('POST', '/payments/softpay/', {
       body,
       idempotencyKey: request.idempotencyKey,
     });
@@ -102,7 +185,7 @@ export class SaspayPaymentProvider extends PaymentProvider {
 
   /** GET /payments/{id}/verify/ : SasPay revérifie en direct auprès de son gateway tant que la transaction est PENDING. */
   async getStatus(reference: string): Promise<PaymentStatusResult> {
-    const data = await this.call(
+    const data = await this.callObject(
       'GET',
       `/payments/${encodeURIComponent(reference)}/verify/`,
     );
@@ -129,11 +212,23 @@ export class SaspayPaymentProvider extends PaymentProvider {
     };
   }
 
-  private async call(
+  private async callObject(
     method: 'GET' | 'POST',
     path: string,
     options: { body?: unknown; idempotencyKey?: string } = {},
   ): Promise<Record<string, unknown>> {
+    const data = await this.request(method, path, options);
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new ProviderInvalidResponseError('Réponse SasPay inexploitable.');
+    }
+    return data as Record<string, unknown>;
+  }
+
+  private async request(
+    method: 'GET' | 'POST',
+    path: string,
+    options: { body?: unknown; idempotencyKey?: string } = {},
+  ): Promise<unknown> {
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${path}`, {

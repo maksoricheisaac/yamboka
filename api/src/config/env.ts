@@ -63,7 +63,8 @@ const envSchema = z.object({
     .string()
     .min(24, 'SETUP_SECRET doit contenir au moins 24 caractères')
     .optional(),
-  PAYMENT_PROVIDER: z.enum(['mock']).default('mock'),
+  /** mock : paiements simulés. saspay : paiements RÉELS via SasPay. */
+  PAYMENT_PROVIDER: z.enum(['mock', 'saspay']).default('mock'),
   // ───── SasPay : paiements RÉELS (aucun bac à sable sur ce compte). Clés uniquement côté serveur. ─────
   SASPAY_API_BASE_URL: z
     .string()
@@ -137,6 +138,13 @@ const smtpSchema = envSchema.superRefine((env, ctx) => {
     'higgsfield', 'GENERATION_PROVIDER=higgsfield', [
     'HF_API_KEY_ID',
     'HF_API_KEY_SECRET',
+  ]);
+  require(env.PAYMENT_PROVIDER === 'saspay', 'PAYMENT_PROVIDER=saspay', [
+    'SASPAY_API_KEY',
+  ]);
+  require(env.PAYMENT_PROVIDER === 'saspay' &&
+    env.NODE_ENV === 'production', 'PAYMENT_PROVIDER=saspay en production', [
+    'SASPAY_WEBHOOK_SECRET',
   ]);
   require(env.STORAGE_DRIVER === 'r2', 'STORAGE_DRIVER=r2', [
     'R2_ACCOUNT_ID',

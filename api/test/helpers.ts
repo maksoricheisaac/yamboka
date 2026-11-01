@@ -26,7 +26,7 @@ export async function createApp(): Promise<INestApplication> {
     imports: [AppModule],
     controllers: [ProbeController as Type<unknown>],
   }).compile();
-  const app = moduleRef.createNestApplication();
+  const app = moduleRef.createNestApplication({ rawBody: true });
   configureApp(app);
   await app.init();
   return app;

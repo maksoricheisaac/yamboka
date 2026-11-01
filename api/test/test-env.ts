@@ -12,6 +12,10 @@ export const TEST_ENV: Record<string, string> = {
   LOG_LEVEL: 'silent',
   // Les tests ne doivent jamais envoyer de vrai e-mail, quel que soit le .env de développement.
   EMAIL_PROVIDER: 'console',
+  // Jamais de vrai paiement dans les tests, quel que soit le .env de développement (la clé SasPay y est RÉELLE).
+  PAYMENT_PROVIDER: 'mock',
+  SASPAY_API_KEY: '',
+  SASPAY_WEBHOOK_SECRET: 'test-only-saspay-webhook-secret-0123456789',
   // Génération et stockage simulés (jamais d'appel payant), résultat immédiat, fichiers dans un dossier ignoré par Git.
   GENERATION_PROVIDER: 'mock',
   MOCK_GENERATION_SECONDS: '0',

@@ -1,10 +1,13 @@
 import {
   ConflictException,
+  HttpException,
   Injectable,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type {
   CreatePaymentInput,
   PaymentReceipt,
@@ -12,11 +15,18 @@ import type {
   PaymentView,
   SimulatePaymentInput,
 } from '@yamboka/shared';
+import { randomUUID } from 'node:crypto';
 import { firstPurchaseBonusPercent } from '../billing/bonus';
+import {
+  computeSendAmount,
+  FeeComputationError,
+  type FeeTier,
+} from '../billing/fees';
 import { lockUserRow } from '../common/locks';
+import type { Env } from '../config/env';
 import { CreditsService } from '../credits/credits.service';
 import { EmailService } from '../email/email.service';
-import type { CreditPack, Payment } from '../generated/prisma/client';
+import type { CreditPack, Payment, Prisma } from '../generated/prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { JobQueue } from '../queue/job-queue';
@@ -24,12 +34,18 @@ import { SettingsService } from '../settings/settings.service';
 import { MockPaymentProvider } from './mock-payment.provider';
 import { PaymentProviders } from './payment-providers.service';
 import {
+  InitiatePaymentRequest,
+  PaymentProvider,
+  ProviderAuthError,
   ProviderInvalidResponseError,
+  ProviderRejectedError,
   ProviderUnavailableError,
 } from './payment-provider';
 
-/** Un paiement jamais confirmé au bout de ce délai est déclaré échoué (rattrapage de callbacks perdus). */
-const PENDING_TTL_MS = 24 * 3600 * 1000;
+/** Un paiement jamais initié chez le fournisseur au bout de ce délai est déclaré échoué (on cesse de rejouer l'appel). */
+const UNSTARTED_GIVE_UP_MS = 10 * 60 * 1000;
+/** Fenêtre pendant laquelle on revérifie un paiement déclaré échoué pour délai, au cas où il aurait abouti. */
+const LATE_SUCCESS_WINDOW_MS = 48 * 3600 * 1000;
 /** Un double clic ou un double envoi dans cette fenêtre renvoie le paiement déjà créé. */
 const DEDUPE_WINDOW_MS = 2 * 60 * 1000;
 /** Motif d'un échec dû au seul délai : un succès tardif confirmé par le fournisseur reste crédité. */
@@ -51,6 +67,7 @@ export class PaymentsService {
     private readonly notifications: NotificationsService,
     private readonly queue: JobQueue,
     private readonly email: EmailService,
+    private readonly config: ConfigService<Env, true>,
   ) {}
 
   // ───────────── Création ─────────────
@@ -78,6 +95,13 @@ export class PaymentsService {
         ),
       },
     );
+    // Montant à envoyer au fournisseur (prix affiché moins les frais absorbés) : calculé AVANT toute écriture,
+    // pour qu'une panne de tarification ne laisse aucun paiement en base.
+    const plan = await this.planAmount(provider, pack, input.operator);
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { email: true, firstName: true, lastName: true },
+    });
 
     // Création sérialisée par utilisateur : deux envois simultanés identiques ne donnent qu'un paiement.
     const payment = await this.prisma.$transaction(async (tx) => {
@@ -96,16 +120,46 @@ export class PaymentsService {
       });
       if (recent) return { row: recent, created: false };
 
+      const id = randomUUID();
+      // Requête figée ici et rejouée à l'identique : même clé d'idempotence, même corps (sinon SasPay répond 409).
+      const request: InitiatePaymentRequest = {
+        amount: plan?.sentAmount ?? pack.price,
+        currency: pack.currency,
+        phone: input.phone,
+        operator: input.operator,
+        customerId: userId,
+        metadata: { paymentId: id, userId, packId: pack.id },
+        ...(provider.idempotent
+          ? {
+              network: plan?.network ?? undefined,
+              country: pack.country,
+              idempotencyKey: randomUUID(),
+              customer: {
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+              },
+              description: `Yamboka — ${pack.name}`,
+              returnUrl: `${this.config.get('APP_URL', { infer: true })}/app/credits/paiement/${id}`,
+            }
+          : {}),
+      };
       // Crédits de base du pack. Le bonus de premier achat n'est pas connu ici : il est jugé à la confirmation
       // (premier paiement RÉUSSI du compte) ; seul son pourcentage promis est figé pour que le client reçoive
       // ce qui lui a été affiché.
       const row = await tx.payment.create({
         data: {
+          id,
           userId,
           packId: pack.id,
           country: pack.country,
           currency: pack.currency,
           amount: pack.price,
+          sentAmount: plan?.sentAmount ?? null,
+          network: plan?.network ?? null,
+          feeSnapshot: plan?.feeSnapshot ?? undefined,
+          idempotencyKey: request.idempotencyKey ?? null,
+          providerRequest: request as unknown as Prisma.InputJsonValue,
           credits: pack.credits,
           bonusCredits: 0,
           firstPurchaseBonusPercent: bonusPercent,
@@ -125,29 +179,184 @@ export class PaymentsService {
     });
 
     if (!payment.created) return this.toView(payment.row);
+    return this.start(payment.row);
+  }
 
+  /**
+   * Montant à envoyer au fournisseur : le plus grand A tel que A + frais(A) ≤ prix affiché (les frais sont absorbés
+   * par Yamboka). Tarif : surcharge administrateur active, sinon tarif du compte chez le fournisseur.
+   * Renvoie null quand le fournisseur ne facture rien (simulé) : on envoie alors le prix affiché.
+   */
+  private async planAmount(
+    provider: PaymentProvider,
+    pack: CreditPack,
+    operator: 'MTN' | 'AIRTEL',
+  ): Promise<{
+    sentAmount: number;
+    network: string;
+    feeSnapshot: Prisma.InputJsonValue;
+  } | null> {
+    const network = provider.networkFor(operator);
+    if (!network) return null;
+    const override = await this.prisma.feeRateOverride.findFirst({
+      where: { country: pack.country, network, active: true },
+    });
+    let tiers: FeeTier[] | null;
+    let source: 'override' | 'provider';
     try {
-      const started = await provider.initiate({
-        amount: payment.row.amount,
-        currency: payment.row.currency,
-        phone: input.phone,
-        operator: input.operator,
-        customerId: userId,
-        metadata: { paymentId: payment.row.id, userId, packId: pack.id },
-      });
-      const updated = await this.prisma.payment.update({
-        where: { id: payment.row.id },
-        data: { externalReference: started.reference, status: 'PENDING' },
-        include: { pack: true },
-      });
-      return this.toView(updated);
+      if (override) {
+        source = 'override';
+        tiers = [
+          {
+            minAmount: 0,
+            maxAmount: null,
+            percent: override.percent.toString(),
+            fixed: override.fixed.toString(),
+            floorAmount: override.floorAmount?.toString() ?? null,
+            capAmount: override.capAmount?.toString() ?? null,
+            feeChargeMode: 'ADD_ON',
+          },
+        ];
+      } else {
+        source = 'provider';
+        tiers = await provider.getPayinTiers(pack.country, network);
+      }
+      if (!tiers) return null;
+      const computed = computeSendAmount(pack.price, tiers);
+      return {
+        sentAmount: computed.sentAmount,
+        network,
+        feeSnapshot: {
+          source,
+          tiers: tiers as unknown as Prisma.InputJsonValue,
+          fee: computed.fee,
+          total: computed.total,
+          absorbed: computed.absorbed,
+          at: new Date().toISOString(),
+        },
+      };
     } catch (e) {
+      if (e instanceof ProviderRejectedError) {
+        throw new UnprocessableEntityException({
+          code: 'PAYMENT_METHOD_UNAVAILABLE',
+          message: rejectionMessage(e.code),
+        });
+      }
+      if (
+        e instanceof ProviderUnavailableError ||
+        e instanceof ProviderInvalidResponseError ||
+        e instanceof FeeComputationError
+      ) {
+        this.logger.error(
+          `Tarification du paiement impossible (${e.constructor.name})`,
+        );
+        throw new ServiceUnavailableException({
+          code: 'PAYMENT_PROVIDER_UNAVAILABLE',
+          message:
+            'Le service de paiement est momentanément indisponible. Aucun montant n’a été débité. Réessayez dans quelques minutes.',
+        });
+      }
+      throw e;
+    }
+  }
+
+  private requestOf(p: Payment): InitiatePaymentRequest {
+    if (p.providerRequest) {
+      return p.providerRequest as unknown as InitiatePaymentRequest;
+    }
+    // Paiement antérieur à la conservation de la requête (fournisseur simulé uniquement).
+    return {
+      amount: p.sentAmount ?? p.amount,
+      currency: p.currency,
+      phone: p.payerPhone,
+      operator: p.operator,
+      customerId: p.userId,
+      metadata: { paymentId: p.id, userId: p.userId, packId: p.packId },
+    };
+  }
+
+  /**
+   * Démarre (ou REJOUE) l'initiation chez le fournisseur. Avec un fournisseur idempotent, une panne ou un délai
+   * dépassé ne prouve rien : le paiement reste INITIATED et on rejoue la MÊME requête (même clé) jusqu'à obtenir
+   * la réponse du premier appel. On ne conclut « échoué » que sur un refus explicite du fournisseur.
+   */
+  private async start(payment: PaymentWithPack): Promise<PaymentView> {
+    const provider = this.providers.byName(payment.gateway);
+    try {
+      const started = await provider.initiate(this.requestOf(payment));
+      // Conditionnel : un rejeu concurrent qui obtient la même référence ne change rien, et un paiement déjà
+      // avancé n'est jamais ramené en arrière.
+      await this.prisma.payment.updateMany({
+        where: { id: payment.id, externalReference: null },
+        data: {
+          externalReference: started.reference,
+          status: 'PENDING',
+          checkoutUrl: started.checkoutUrl ?? null,
+        },
+      });
+      return this.toView(
+        await this.prisma.payment.findUniqueOrThrow({
+          where: { id: payment.id },
+          include: { pack: true },
+        }),
+      );
+    } catch (e) {
+      if (e instanceof ProviderRejectedError) {
+        await this.prisma.payment.updateMany({
+          where: {
+            id: payment.id,
+            status: { in: OPEN },
+            externalReference: null,
+          },
+          data: {
+            status: 'FAILED',
+            failureReason: 'Paiement refusé par le fournisseur',
+            lastProviderStatus: {
+              rejected: e.code,
+              at: new Date().toISOString(),
+            },
+          },
+        });
+        throw new UnprocessableEntityException({
+          code: 'PAYMENT_REJECTED',
+          message: rejectionMessage(e.code),
+        });
+      }
       if (
         e instanceof ProviderUnavailableError ||
         e instanceof ProviderInvalidResponseError
       ) {
+        if (provider.idempotent) {
+          // Résultat incertain : le paiement a peut-être été créé chez le fournisseur.
+          const kind =
+            e instanceof ProviderAuthError
+              ? 'auth'
+              : e instanceof ProviderUnavailableError
+                ? 'unavailable'
+                : 'invalid_response';
+          if (kind === 'auth') {
+            this.logger.error(
+              `Paiement ${payment.id} : clé API ${provider.name} refusée, à corriger d’urgence`,
+            );
+          } else {
+            this.logger.warn(
+              `Paiement ${payment.id} : initiation incertaine (${kind}), rejeu prévu`,
+            );
+          }
+          const row = await this.prisma.payment.update({
+            where: { id: payment.id },
+            data: {
+              lastProviderStatus: {
+                error: kind,
+                at: new Date().toISOString(),
+              },
+            },
+            include: { pack: true },
+          });
+          return this.toView(row);
+        }
         await this.prisma.payment.update({
-          where: { id: payment.row.id },
+          where: { id: payment.id },
           data: {
             status: 'FAILED',
             failureReason: 'Service de paiement indisponible',
@@ -160,6 +369,24 @@ export class PaymentsService {
         });
       }
       throw e;
+    }
+  }
+
+  /** Rejoue l'initiation d'un paiement resté INITIATED sans référence (appelé par le rattrapage). */
+  private async restart(paymentId: string): Promise<void> {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: { pack: true },
+    });
+    if (!payment || payment.externalReference || payment.status !== 'INITIATED')
+      return;
+    try {
+      await this.start(payment);
+    } catch (e) {
+      // Refus définitif : déjà enregistré par start(). Toute autre erreur sera retentée au prochain passage.
+      if (!(e instanceof HttpException)) {
+        this.logger.warn(`Rejeu du paiement ${paymentId} impossible`);
+      }
     }
   }
 
@@ -223,6 +450,52 @@ export class PaymentsService {
     } else {
       await this.verify(payment.id);
     }
+  }
+
+  /**
+   * Notification d'un fournisseur dont la SIGNATURE est déjà vérifiée. Elle est enregistrée (déduplication par
+   * fournisseur + transaction + événement) puis déclenche une vérification auprès du fournisseur : son contenu
+   * n'est jamais utilisé pour créditer. Une notification rejouée relance quand même la vérification tant que le
+   * paiement est ouvert (idempotent), au cas où la précédente n'ait pas pu conclure.
+   */
+  async handleProviderEvent(input: {
+    gateway: string;
+    event: string;
+    providerTxId: string;
+    summary: Prisma.InputJsonValue;
+  }): Promise<'processed' | 'duplicate' | 'unknown'> {
+    const { gateway, event, providerTxId } = input;
+    const payment = await this.prisma.payment.findUnique({
+      where: { externalReference: providerTxId },
+      select: { id: true, gateway: true, status: true },
+    });
+    // Une référence connue d'un AUTRE fournisseur n'est pas la nôtre.
+    const known = payment && payment.gateway === gateway ? payment : null;
+    await this.prisma.paymentWebhookEvent.createMany({
+      data: [
+        {
+          gateway,
+          providerTxId,
+          event,
+          paymentId: known?.id ?? null,
+          payload: input.summary,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    const row = await this.prisma.paymentWebhookEvent.findUniqueOrThrow({
+      where: { gateway_providerTxId_event: { gateway, providerTxId, event } },
+    });
+    // Inconnue (ou arrivée avant l'enregistrement de la référence) : rien à vérifier maintenant ; le rattrapage
+    // reprend la main dès que la référence est connue.
+    if (!known) return 'unknown';
+    if (row.processedAt && !OPEN.includes(known.status)) return 'duplicate';
+    await this.handleCallback(providerTxId);
+    await this.prisma.paymentWebhookEvent.update({
+      where: { id: row.id },
+      data: { paymentId: known.id, processedAt: row.processedAt ?? new Date() },
+    });
+    return row.processedAt ? 'duplicate' : 'processed';
   }
 
   /**
@@ -309,13 +582,12 @@ export class PaymentsService {
       ).status;
     }
 
-    // Succès annoncé : le montant et la devise doivent correspondre exactement à ce que nous avons demandé.
-    if (
-      result.amount !== payment.amount ||
-      result.currency !== payment.currency
-    ) {
+    // Succès annoncé : le montant et la devise doivent correspondre exactement à ce que nous avons demandé
+    // au fournisseur (montant envoyé, qui peut être inférieur au prix affiché : frais absorbés).
+    const expected = payment.sentAmount ?? payment.amount;
+    if (result.amount !== expected || result.currency !== payment.currency) {
       this.logger.error(
-        `Paiement ${paymentId} : montant incohérent (attendu ${payment.amount} ${payment.currency}, reçu ${result.amount} ${result.currency})`,
+        `Paiement ${paymentId} : montant incohérent (attendu ${expected} ${payment.currency}, reçu ${result.amount} ${result.currency})`,
       );
       await this.prisma.payment.updateMany({
         where: { id: paymentId, status: { in: OPEN } },
@@ -330,6 +602,23 @@ export class PaymentsService {
         },
       });
       return 'FAILED';
+    }
+
+    // Écarts à surveiller (le crédit n'en dépend pas : le client a payé ce que Yamboka a demandé).
+    const snapshot = payment.feeSnapshot as { fee?: number } | null;
+    if (
+      result.clientFee != null &&
+      typeof snapshot?.fee === 'number' &&
+      result.clientFee !== snapshot.fee
+    ) {
+      this.logger.warn(
+        `Paiement ${paymentId} : frais constatés ${result.clientFee} ≠ frais calculés ${snapshot.fee}`,
+      );
+    }
+    if (result.debitedAmount != null && result.debitedAmount > payment.amount) {
+      this.logger.warn(
+        `Paiement ${paymentId} : le client a payé ${result.debitedAmount}, plus que le prix affiché ${payment.amount}`,
+      );
     }
 
     const months = await this.settings.get('purchasedCreditsExpiryMonths');
@@ -353,6 +642,8 @@ export class PaymentsService {
           status: 'SUCCESS',
           creditedAt: new Date(),
           failureReason: null,
+          clientFee: result.clientFee ?? null,
+          debitedAmount: result.debitedAmount ?? null,
           lastProviderStatus: { status: 'success' },
         },
       });
@@ -404,11 +695,20 @@ export class PaymentsService {
     });
     let expired = 0;
     for (const p of open) {
-      const status = await this.verify(p.id);
-      const tooOld = now.getTime() - p.createdAt.getTime() > PENDING_TTL_MS;
-      const neverStarted =
+      const age = now.getTime() - p.createdAt.getTime();
+      const provider = this.providerOf(p.gateway);
+      // Initiation restée sans réponse (délai dépassé) : on rejoue la même requête, avec la même clé d'idempotence.
+      if (
         !p.externalReference &&
-        now.getTime() - p.createdAt.getTime() > 10 * 60 * 1000;
+        p.status === 'INITIATED' &&
+        provider?.idempotent &&
+        age <= UNSTARTED_GIVE_UP_MS
+      ) {
+        await this.restart(p.id);
+      }
+      const status = await this.verify(p.id);
+      const tooOld = age > (provider?.pendingTtlMs ?? 24 * 3600 * 1000);
+      const neverStarted = !p.externalReference && age > UNSTARTED_GIVE_UP_MS;
       if (OPEN.includes(status) && (tooOld || neverStarted)) {
         const res = await this.prisma.payment.updateMany({
           where: { id: p.id, status: { in: OPEN } },
@@ -417,7 +717,28 @@ export class PaymentsService {
         expired += res.count;
       }
     }
+    // Un paiement déclaré échoué pour délai peut avoir abouti après coup : on le revérifie quelque temps
+    // (un succès confirmé est alors crédité une seule fois, voir verify()).
+    const late = await this.prisma.payment.findMany({
+      where: {
+        status: 'FAILED',
+        failureReason: TIMEOUT_REASON,
+        externalReference: { not: null },
+        createdAt: { gte: new Date(now.getTime() - LATE_SUCCESS_WINDOW_MS) },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    for (const p of late) await this.verify(p.id);
     return { checked: open.length, expired };
+  }
+
+  private providerOf(gateway: string): PaymentProvider | undefined {
+    try {
+      return this.providers.byName(gateway);
+    } catch {
+      return undefined;
+    }
   }
 
   // ───────────── Simulation (fournisseur simulé uniquement) ─────────────
@@ -464,10 +785,32 @@ export class PaymentsService {
       operator: p.operator,
       payerPhone: p.payerPhone,
       reference: p.externalReference,
+      // La redirection n'a de sens que tant que le paiement est ouvert.
+      checkoutUrl: OPEN.includes(p.status) ? p.checkoutUrl : null,
       failureReason: p.failureReason,
       createdAt: p.createdAt.toISOString(),
       creditedAt: p.creditedAt?.toISOString() ?? null,
       simulated: p.gateway === this.mock.name,
     };
+  }
+}
+
+/** Message affiché au client pour un refus définitif du fournisseur : jamais le texte brut du fournisseur. */
+function rejectionMessage(code: string): string {
+  const base = 'Aucun montant n’a été débité. ';
+  switch (code) {
+    case 'invalid_customer':
+      return (
+        base +
+        'Vérifiez votre numéro de téléphone et vos informations de profil, puis réessayez.'
+      );
+    case 'invalid_method':
+    case 'no_route_available':
+      return (
+        base +
+        'Ce moyen de paiement n’est pas disponible pour le moment. Essayez avec un autre opérateur ou plus tard.'
+      );
+    default:
+      return base + 'Le paiement a été refusé. Réessayez ou contactez-nous.';
   }
 }

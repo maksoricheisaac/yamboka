@@ -14,7 +14,11 @@ import type { Env } from './config/env';
 export const KEEP_ALIVE_TIMEOUT_MS = 65_000;
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // rawBody : la signature des webhooks SasPay se calcule sur le corps brut, jamais sur un JSON re-sérialisé.
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
   configureApp(app);
   const config = app.get<ConfigService<Env, true>>(ConfigService);
   if (config.get('NODE_ENV', { infer: true }) !== 'production')

@@ -60,6 +60,34 @@ describe('validateEnv', () => {
     );
   });
 
+  it('PAYMENT_PROVIDER=saspay exige la clé API, et le secret de webhook en production', () => {
+    expect(() => validateEnv({ ...valid, PAYMENT_PROVIDER: 'saspay' })).toThrow(
+      /SASPAY_API_KEY/,
+    );
+    const key = 'sk_live_abcdef0123456789';
+    expect(
+      validateEnv({ ...valid, PAYMENT_PROVIDER: 'saspay', SASPAY_API_KEY: key })
+        .PAYMENT_PROVIDER,
+    ).toBe('saspay');
+    expect(() =>
+      validateEnv({
+        ...valid,
+        NODE_ENV: 'production',
+        PAYMENT_PROVIDER: 'saspay',
+        SASPAY_API_KEY: key,
+      }),
+    ).toThrow(/SASPAY_WEBHOOK_SECRET/);
+    expect(
+      validateEnv({
+        ...valid,
+        NODE_ENV: 'production',
+        PAYMENT_PROVIDER: 'saspay',
+        SASPAY_API_KEY: key,
+        SASPAY_WEBHOOK_SECRET: 'w'.repeat(16),
+      }).PAYMENT_PROVIDER,
+    ).toBe('saspay');
+  });
+
   it('exige les variables SMTP quand EMAIL_PROVIDER=smtp', () => {
     expect(() => validateEnv({ ...valid, EMAIL_PROVIDER: 'smtp' })).toThrow(
       /SMTP_HOST/,

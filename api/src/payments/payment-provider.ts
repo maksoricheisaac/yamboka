@@ -4,6 +4,8 @@
  * sans toucher au reste. En phase 1, seule l'implémentation simulée existe (aucun appel réseau, aucun argent).
  */
 
+import type { FeeTier } from '../billing/fees';
+
 export type ProviderStatus = 'pending' | 'success' | 'failed' | 'cancelled';
 
 export interface InitiatePaymentRequest {
@@ -69,6 +71,28 @@ export class ProviderAuthError extends ProviderUnavailableError {}
 export abstract class PaymentProvider {
   /** Nom stocké dans Payment.gateway. */
   abstract readonly name: string;
+
+  /**
+   * Vrai quand rejouer `initiate` avec la même `idempotencyKey` et le même corps renvoie la réponse du premier
+   * appel au lieu de créer un 2e paiement. Alors, une panne ou un délai dépassé à l'initiation ne prouve pas
+   * l'échec : le paiement reste INITIATED et sera rejoué puis vérifié, jamais déclaré échoué ni recréé.
+   */
+  readonly idempotent: boolean = false;
+
+  /** Au-delà, un paiement jamais confirmé est déclaré échoué (un succès tardif confirmé reste crédité). */
+  readonly pendingTtlMs: number = 24 * 3600 * 1000;
+
+  /** Code du réseau chez le fournisseur pour un opérateur, ou null s'il n'en utilise pas. */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  networkFor(_operator: 'MTN' | 'AIRTEL'): string | null {
+    return null;
+  }
+
+  /** Paliers de frais d'encaissement d'un réseau, ou null quand le fournisseur n'en facture pas (simulé). */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  getPayinTiers(_country: string, _network: string): Promise<FeeTier[] | null> {
+    return Promise.resolve(null);
+  }
 
   abstract initiate(
     request: InitiatePaymentRequest,

@@ -373,6 +373,9 @@ model Payment {
   feeSnapshot               Json?
   /// Clé d'idempotence du fournisseur : unique par intention de paiement, réutilisée à chaque nouvelle tentative réseau.
   idempotencyKey            String?        @unique
+  /// Requête d'initiation EXACTE envoyée au fournisseur (sans secret). Rejouée à l'identique après un délai dépassé :
+  /// une Idempotency-Key réutilisée avec un corps différent est refusée (409) et ne protégerait plus du doublon.
+  providerRequest           Json?
   checkoutUrl               String? // redirection exigée par certains réseaux
   /// Constatés par la vérification du fournisseur (frais client, montant débité).
   clientFee                 Int?
@@ -393,6 +396,26 @@ model Payment {
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
+}
+
+/// Notification de paiement reçue d'un fournisseur, signature VÉRIFIÉE. Sert à dédupliquer les rejeux et à tracer ce qui
+/// a déclenché une vérification. Son contenu n'est jamais utilisé pour créditer : seule la vérification auprès du
+/// fournisseur décide. Pas de clé étrangère : une notification peut arriver avant que la référence soit enregistrée.
+model PaymentWebhookEvent {
+  id           String    @id @default(uuid()) @db.Uuid
+  gateway      String
+  /// Identifiant de la transaction chez le fournisseur (= Payment.externalReference).
+  providerTxId String
+  event        String
+  paymentId    String?   @db.Uuid
+  /// Résumé expurgé (statut, montant, devise) : ni numéro de téléphone ni en-tête.
+  payload      Json
+  receivedAt   DateTime  @default(now())
+  processedAt  DateTime?
+
+  @@unique([gateway, providerTxId, event])
+  @@index([paymentId])
+  @@index([receivedAt])
 }
 
 /// Tarif d'encaissement imposé par l'administrateur pour un pays et un réseau. Optionnel : la source principale
