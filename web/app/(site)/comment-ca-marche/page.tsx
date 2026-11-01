@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
+import Image from "next/image";
+import { getMedia } from "@/lib/media";
+import { pageMetadata } from "@/lib/seo";
 import { CtaBand, PageHero, Section, SectionHeading } from "@/components/site/blocks";
 import { FaqList } from "@/components/site/faq-list";
 import { FAQ } from "@/content/faq";
 
-export const metadata: Metadata = {
-  title: "Comment ça marche",
-  description:
-    "Du compte à la création : inscription, achat de crédits, création d’une vidéo en 3 étapes, suivi et téléchargement. Le parcours Yamboka expliqué pas à pas.",
-  alternates: { canonical: "/comment-ca-marche" },
-};
+export const metadata: Metadata = pageMetadata({ title: "Comment ça marche", description: "Du compte à la création : inscription, achat de crédits, création d’une vidéo en 3 étapes, suivi et téléchargement. Le parcours Yamboka expliqué pas à pas.", path: "/comment-ca-marche" });
 
 const JOURNEY = [
   {
@@ -17,18 +15,13 @@ const JOURNEY = [
     note: "Tant que l’adresse n’est pas vérifiée, vous pouvez explorer l’application, mais pas acheter ni créer.",
   },
   {
-    title: "Recevez vos crédits de bienvenue",
-    text: "Après la vérification de votre adresse, des crédits de bienvenue sont ajoutés une seule fois à votre compte pour essayer le service.",
-    note: "Par défaut 4 crédits, valables 30 jours.",
-  },
-  {
     title: "Achetez des crédits",
     text: "Choisissez un pack, votre opérateur (MTN ou Airtel) et votre numéro, puis confirmez sur votre téléphone. L’écran se met à jour tout seul. Vos crédits sont ajoutés après confirmation du paiement.",
     note: "Le paiement mobile money ouvrira au lancement.",
   },
   {
     title: "Créez votre vidéo ou votre image",
-    text: "Trois étapes : votre vidéo source, le personnage (vos photos) ou un modèle, puis la confirmation avec le coût exact, votre solde restant et le consentement.",
+    text: "Trois étapes : le style, votre photo, puis la confirmation avec le coût exact, votre solde restant et le consentement.",
     note: "Si votre solde est insuffisant, le pack le plus adapté vous est proposé.",
   },
   {
@@ -39,9 +32,10 @@ const JOURNEY = [
 ];
 
 export default function HowItWorksPage() {
+  const { comment } = getMedia();
   return (
     <>
-      <PageHero
+      <PageHero path="/comment-ca-marche"
         eyebrow="Comment ça marche"
         title="Du compte à la création, pas à pas"
         lead="Chaque écran est pensé pour un téléphone et pour des connexions lentes."
@@ -50,7 +44,7 @@ export default function HowItWorksPage() {
         <SectionHeading id="journey-title" title="Le parcours complet" />
         <ol className="space-y-6">
           {JOURNEY.map((step, i) => (
-            <li key={step.title} className="grid gap-4 rounded-2xl border bg-card p-6 shadow-soft sm:grid-cols-[4rem_1fr]">
+            <li key={step.title} className={`grid gap-4 rounded-2xl border bg-card p-6 shadow-soft ${comment[i] ? "sm:grid-cols-[4rem_1fr_9rem]" : "sm:grid-cols-[4rem_1fr]"}`}>
               <span
                 aria-hidden
                 className="grid size-12 place-items-center rounded-xl bg-primary font-heading text-xl font-bold text-primary-foreground"
@@ -62,6 +56,11 @@ export default function HowItWorksPage() {
                 <p className="mt-1.5 text-muted-foreground">{step.text}</p>
                 <p className="mt-3 text-sm font-medium text-primary">{step.note}</p>
               </div>
+              {comment[i] && (
+                <div className="relative mx-auto aspect-[540/1170] w-36 overflow-hidden rounded-2xl border bg-muted shadow-soft sm:w-full">
+                  <Image src={comment[i]!.src} alt={comment[i]!.alt} fill unoptimized sizes="9rem" className="object-cover object-top" />
+                </div>
+              )}
             </li>
           ))}
         </ol>
@@ -73,8 +72,8 @@ export default function HowItWorksPage() {
         />
         <ul className="grid gap-4 md:grid-cols-2">
           {[
-            "Vidéo source : MP4 ou MOV, de 4 à 15 secondes, 50 Mo maximum après compression.",
-            "Photos du personnage : 1 à 4 images JPG, PNG ou WebP, 10 Mo maximum chacune.",
+            "Photo : une image JPG, PNG ou WebP, 10 Mo maximum (elle est réduite automatiquement avant l’envoi).",
+            "Le coût en crédits s’affiche avant de lancer, et les crédits sont restitués si la création échoue.",
             "Au plus 2 créations en cours en même temps par compte.",
             "Une création sans résultat après une heure est déclarée échouée et remboursée.",
             "Les fichiers que vous envoyez sont supprimés 7 jours après la génération.",

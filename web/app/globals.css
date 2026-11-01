@@ -168,3 +168,91 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Animations « studio vidéo » : tout est en CSS (transform/opacity) pour rester fluide sur un téléphone d'entrée
+ * de gamme. Elles sont coupées par « réduire les animations » (règle globale ci-dessus) ; les composants qui
+ * dépendent d'un minuteur JS testent aussi `prefers-reduced-motion`.
+ */
+@theme inline {
+  --animate-marquee: marquee 38s linear infinite;
+  --animate-marquee-reverse: marquee-reverse 46s linear infinite;
+  --animate-dance: dance 1.6s ease-in-out infinite;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-rec: rec 1.2s steps(2, jump-none) infinite;
+  --animate-scan: scan 2.4s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  --animate-orbit: orbit 18s linear infinite;
+  --animate-grain: grain 0.9s steps(6) infinite;
+  --animate-pop: pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes marquee { to { transform: translateX(-50%); } }
+@keyframes marquee-reverse { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+@keyframes dance {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50% { transform: translateY(-9px) rotate(3deg); }
+}
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+@keyframes rec { 0% { opacity: 1; } 100% { opacity: 0.15; } }
+@keyframes scan { 0%, 100% { transform: translateY(-4%); opacity: 0; } 15%, 85% { opacity: 1; } 50% { transform: translateY(104%); } }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes orbit { to { transform: rotate(360deg); } }
+@keyframes grain {
+  0% { transform: translate(0, 0); } 20% { transform: translate(-3%, 2%); } 40% { transform: translate(2%, -3%); }
+  60% { transform: translate(-2%, -1%); } 80% { transform: translate(3%, 3%); } 100% { transform: translate(0, 0); }
+}
+@keyframes pop { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
+
+/* Grain de pellicule : bruit SVG répété, très discret. */
+.film-grain::after {
+  content: "";
+  position: absolute;
+  inset: -10%;
+  pointer-events: none;
+  opacity: 0.07;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: var(--animate-grain);
+}
+/* Perforations d'une pellicule. */
+.film-holes {
+  background-image: radial-gradient(circle at 50% 50%, var(--background) 0 3px, transparent 3.5px);
+  background-size: 18px 12px;
+  background-repeat: repeat-x;
+}
+/* Projecteur qui suit le pointeur (variables posées par SpotlightCard). */
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), color-mix(in oklch, var(--accent), transparent 72%), transparent 70%);
+}
+.spotlight:hover::before { opacity: 1; }
+
+/*
+ * Hero : le rideau « vidéo de départ → création ». Une seule animation, en transform/clip-path.
+ * Avec « réduire les animations », on fige l'état final (la création visible).
+ */
+@keyframes hero-wipe {
+  0%, 12% { clip-path: inset(0 0 0 0); }
+  48%, 62% { clip-path: inset(0 100% 0 0); }
+  98%, 100% { clip-path: inset(0 0 0 0); }
+}
+@keyframes hero-edge {
+  0%, 12% { transform: translateX(0); opacity: 0; }
+  16% { opacity: 1; }
+  44% { opacity: 1; }
+  48%, 62% { transform: translateX(-100%); opacity: 0; }
+  66% { opacity: 1; }
+  94% { opacity: 1; }
+  98%, 100% { transform: translateX(0); opacity: 0; }
+}
+.hero-wipe { animation: hero-wipe 10s ease-in-out infinite; }
+.hero-edge { animation: hero-edge 10s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .hero-wipe { animation: none; clip-path: inset(0 100% 0 0); }
+  .hero-edge { animation: none; display: none; }
+}

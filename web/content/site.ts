@@ -4,7 +4,7 @@ export const SITE = {
   name: 'Yamboka',
   tagline: 'Créez des vidéos et des images par IA, payées en mobile money.',
   description:
-    'Yamboka est une plateforme en français pour créer des vidéos et des images par intelligence artificielle, avec des crédits prépayés à partir de 500 FCFA. Né à Brazzaville, pensé pour l’Afrique.',
+    'Yamboka est une plateforme en français pour créer des vidéos et des images par intelligence artificielle, avec des crédits prépayés à partir de 5 000 FCFA. Né à Brazzaville, pensé pour l’Afrique.',
   url: process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000',
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3001',
   /** Numéro WhatsApp international sans « + » (ex. 242060000000). Le bouton est masqué s’il est absent. */
@@ -19,13 +19,15 @@ export interface NavItem {
   href: string;
 }
 
+/** Navigation principale : toutes les cibles sont des pages existantes (aucun lien mort). */
 export const MAIN_NAV: NavItem[] = [
+  { label: 'Accueil', href: '/' },
+  { label: 'Exemples', href: '/galerie' },
   { label: 'Fonctionnalités', href: '/fonctionnalites' },
-  { label: 'Comment ça marche', href: '/comment-ca-marche' },
   { label: 'Tarifs', href: '/tarifs' },
-  { label: 'Galerie', href: '/galerie' },
-  { label: 'Cas d’usage', href: '/cas-utilisation' },
 ];
+
+export const CTA_LABEL = 'Créer mon compte';
 
 export const FOOTER_NAV: { title: string; links: NavItem[] }[] = [
   {

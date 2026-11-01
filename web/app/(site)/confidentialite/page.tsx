@@ -1,18 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
 import { PageHero, Prose } from "@/components/site/blocks";
 import { LegalDraftNotice } from "@/components/site/legal-notice";
 
-export const metadata: Metadata = {
-  title: "Politique de confidentialité",
-  description:
-    "Quelles données Yamboka collecte, combien de temps elles sont conservées, où elles sont stockées et comment demander leur suppression.",
-  alternates: { canonical: "/confidentialite" },
-};
+export const metadata: Metadata = pageMetadata({ title: "Politique de confidentialité", description: "Quelles données Yamboka collecte, combien de temps elles sont conservées, où elles sont stockées et comment demander leur suppression.", path: "/confidentialite" });
 
 export default function PrivacyPage() {
   return (
     <>
-      <PageHero eyebrow="Légal" title="Politique de confidentialité" lead="Nous limitons les données au strict nécessaire." />
+      <PageHero path="/confidentialite" eyebrow="Légal" title="Politique de confidentialité" lead="Nous limitons les données au strict nécessaire." />
       <Prose>
         <LegalDraftNotice />
         <h2>Données collectées</h2>

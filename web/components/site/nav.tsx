@@ -14,16 +14,17 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { MAIN_NAV, loginUrl, signupUrl } from "@/content/site";
+import { CTA_LABEL, MAIN_NAV, loginUrl, signupUrl } from "@/content/site";
 
+/** Accueil : correspondance exacte (sinon « / » serait actif partout). */
 function isActive(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
+  return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function DesktopNav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Navigation principale" className="hidden items-center gap-1 lg:flex">
+    <nav aria-label="Navigation principale" className="hidden items-center gap-0.5 lg:flex">
       {MAIN_NAV.map((item) => {
         const active = isActive(pathname, item.href);
         return (
@@ -31,8 +32,8 @@ export function DesktopNav() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted ${
-              active ? "text-primary" : "text-foreground/80"
+            className={`relative rounded-full px-4 py-2 text-sm font-medium transition-colors hover:bg-muted ${
+              active ? "bg-primary/10 text-primary" : "text-foreground/80"
             }`}
           >
             {item.label}
@@ -65,7 +66,7 @@ export function MobileNav() {
               <Link
                 href={item.href}
                 aria-current={isActive(pathname, item.href) ? "page" : undefined}
-                className="rounded-lg px-3 py-3 text-base font-medium hover:bg-muted aria-[current=page]:bg-muted aria-[current=page]:text-primary"
+                className="rounded-xl px-3 py-3.5 text-base font-medium hover:bg-muted aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary"
               >
                 {item.label}
               </Link>
@@ -73,11 +74,11 @@ export function MobileNav() {
           ))}
         </nav>
         <div className="mt-auto flex flex-col gap-2 p-4">
-          <Button asChild size="lg">
-            <a href={signupUrl}>Créer un compte</a>
+          <Button asChild size="lg" className="rounded-full">
+            <a href={signupUrl}>{CTA_LABEL}</a>
           </Button>
-          <Button asChild size="lg" variant="outline">
-            <a href={loginUrl}>Se connecter</a>
+          <Button asChild size="lg" variant="outline" className="rounded-full">
+            <a href={loginUrl}>Connexion</a>
           </Button>
         </div>
       </SheetContent>
