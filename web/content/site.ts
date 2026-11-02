@@ -7,12 +7,16 @@ export const SITE = {
     'Yamboka est une plateforme en français pour créer des vidéos et des images par intelligence artificielle, avec des crédits prépayés à partir de 500 FCFA. Né à Brazzaville, pensé pour l’Afrique.',
   url: process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000',
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3001',
+  apiUrl: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000',
   /** Numéro WhatsApp international sans « + » (ex. 242060000000). Le bouton est masqué s’il est absent. */
   whatsapp: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? '',
 } as const;
 
 export const signupUrl = `${SITE.appUrl}/inscription`;
 export const loginUrl = `${SITE.appUrl}/connexion`;
+/** Espaces privés (le contrôle d'accès reste côté application et API) : /app pour un client, /admin pour un administrateur. */
+export const userSpaceUrl = `${SITE.appUrl}/app`;
+export const adminSpaceUrl = `${SITE.appUrl}/admin`;
 
 export interface NavItem {
   label: string;

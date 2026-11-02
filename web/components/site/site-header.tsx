@@ -1,6 +1,5 @@
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Button } from "@/components/ui/button";
-import { loginUrl, signupUrl } from "@/content/site";
+import { HeaderAuthActions } from "./auth-actions";
 import { Logo } from "./logo";
 import { DesktopNav, MobileNav } from "./nav";
 
@@ -18,12 +17,7 @@ export function SiteHeader() {
         <DesktopNav />
         <div className="flex items-center gap-1">
           <ThemeToggle />
-          <Button asChild variant="ghost" className="hidden sm:inline-flex">
-            <a href={loginUrl}>Se connecter</a>
-          </Button>
-          <Button asChild className="hidden sm:inline-flex">
-            <a href={signupUrl}>Commencer</a>
-          </Button>
+          <HeaderAuthActions />
           <MobileNav />
         </div>
       </div>

@@ -14,7 +14,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { MAIN_NAV, loginUrl, signupUrl } from "@/content/site";
+import { MAIN_NAV } from "@/content/site";
+import { MobileAuthActions } from "./auth-actions";
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -73,12 +74,7 @@ export function MobileNav() {
           ))}
         </nav>
         <div className="mt-auto flex flex-col gap-2 p-4">
-          <Button asChild size="lg">
-            <a href={signupUrl}>Créer un compte</a>
-          </Button>
-          <Button asChild size="lg" variant="outline">
-            <a href={loginUrl}>Se connecter</a>
-          </Button>
+          <MobileAuthActions />
         </div>
       </SheetContent>
     </Sheet>
