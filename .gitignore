@@ -7,5 +7,7 @@ dist/
 coverage/
 *.log
 .DS_Store
-playwright-report/
-test-results/
+tests/report/
+tests/results/
+
+.next-pwtmp/

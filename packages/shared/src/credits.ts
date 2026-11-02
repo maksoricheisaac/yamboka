@@ -8,12 +8,12 @@ export interface BalanceView {
 
 export type LedgerEntryType =
   | 'PURCHASE'
-  | 'BONUS'
+  | 'FIRST_PURCHASE_BONUS'
   | 'WELCOME'
   | 'RESERVE'
   | 'CAPTURE'
-  | 'REFUND'
-  | 'ADJUSTMENT'
+  | 'RELEASE'
+  | 'ADMIN_ADJUST'
   | 'EXPIRE';
 
 export interface LedgerEntryView {

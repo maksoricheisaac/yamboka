@@ -63,8 +63,8 @@ describe('File de tâches BullMQ (e2e, Redis requis)', () => {
     const { client, userId } = await finance.verifiedClient(app);
     const pack = await helpers
       .prismaOf(app)
-      .creditPack.findFirstOrThrow({ where: { name: 'Créateur' } });
-    const created = await client.post('/v1/payments', {
+      .creditPack.findFirstOrThrow({ where: { name: 'Starter' } });
+    const created = await client.post('/api/payments', {
       packId: pack.id,
       operator: 'MTN',
       phone: '242061234567',
@@ -83,7 +83,7 @@ describe('File de tâches BullMQ (e2e, Redis requis)', () => {
   it('le callback met une tâche en file, le worker crédite, une seule fois malgré cinq callbacks', async () => {
     const { client, userId, payment } = await purchase();
     await client
-      .post(`/v1/payments/${payment.id}/simulate`, {
+      .post(`/api/payments/${payment.id}/simulate`, {
         outcome: 'success',
         callbacks: 5,
       })
@@ -99,14 +99,14 @@ describe('File de tâches BullMQ (e2e, Redis requis)', () => {
         .filter((r) => r.paymentId === payment.id)
         .map((r) => `${r.type}:${r.amount}`)
         .sort(),
-    ).toEqual(['BONUS:3', 'PURCHASE:100']);
-    expect((await client.get('/v1/auth/me')).body.user.credits).toBe(107);
+    ).toEqual(['FIRST_PURCHASE_BONUS:250', 'PURCHASE:1250']);
+    expect((await client.get('/api/auth/me')).body.user.credits).toBe(1500);
   });
 
   it('un callback falsifié passe aussi par la file et ne crédite rien', async () => {
     const { client, payment } = await purchase();
     await client
-      .post(`/v1/payments/${payment.id}/simulate`, {
+      .post(`/api/payments/${payment.id}/simulate`, {
         outcome: 'forged_callback',
         callbacks: 3,
       })
@@ -118,7 +118,7 @@ describe('File de tâches BullMQ (e2e, Redis requis)', () => {
       (c) => c.waiting + c.active === 0,
     );
     expect(await status(payment.id)).toBe('PENDING');
-    expect((await client.get('/v1/auth/me')).body.user.credits).toBe(4);
+    expect((await client.get('/api/auth/me')).body.user.credits).toBe(0);
   });
 
   it('la tâche de rattrapage récupère un paiement dont le callback a été perdu', async () => {
@@ -132,7 +132,7 @@ describe('File de tâches BullMQ (e2e, Redis requis)', () => {
       () => status(payment.id),
       (s) => s === 'SUCCESS',
     );
-    expect((await client.get('/v1/auth/me')).body.user.credits).toBe(107);
+    expect((await client.get('/api/auth/me')).body.user.credits).toBe(1500);
   });
 
   it('planifie les tâches récurrentes : rattrapage toutes les 2 min, expiration chaque nuit', async () => {

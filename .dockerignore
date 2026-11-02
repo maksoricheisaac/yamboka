@@ -1,0 +1,23 @@
+# Le contexte de build est la racine du dépôt : aucun secret ni artefact local ne doit entrer dans une image.
+.git
+.claude
+.mcp.json
+node_modules
+**/node_modules
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+**/.next
+**/.next-*
+**/dist
+**/dist-e2e
+**/coverage
+**/*.log
+**/*.tsbuildinfo
+api/storage
+tests
+docs
+scripts
+graphify-out

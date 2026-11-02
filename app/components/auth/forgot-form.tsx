@@ -5,11 +5,11 @@ import { forgotPasswordSchema, type ForgotPasswordInput } from "@yamboka/shared"
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiPost, applyApiError } from "@/lib/api-client";
 import { useHydrated } from "@/lib/use-hydrated";
 import { Field, describedBy } from "./field";
+import { SubmitButton } from "./submit-button";
 
 export function ForgotForm() {
   const hydrated = useHydrated();
@@ -58,9 +58,9 @@ export function ForgotForm() {
           {...register("email")}
         />
       </Field>
-      <Button type="submit" size="lg" className="w-full" disabled={!hydrated || isSubmitting}>
-        {isSubmitting ? "Envoi…" : "Envoyer le lien"}
-      </Button>
+      <SubmitButton disabled={!hydrated} loading={isSubmitting} loadingLabel="Envoi…">
+        Envoyer le lien
+      </SubmitButton>
     </form>
   );
 }

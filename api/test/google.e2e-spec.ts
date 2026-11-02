@@ -10,7 +10,7 @@ import {
   PASSWORD,
   createApp,
   prismaOf,
-  tokenFromEmail,
+  otpFromEmail,
   uniqueEmail,
 } from './helpers';
 
@@ -46,18 +46,18 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
 
   /** Démarre le flux et renvoie le paramètre state attendu par Google. */
   async function start(client: Client): Promise<string> {
-    const res = await client.get('/v1/auth/google');
+    const res = await client.get('/api/auth/google');
     expect(res.status).toBe(302);
     return new URL(res.headers.location).searchParams.get('state')!;
   }
 
   async function callback(client: Client, state: string, p: GoogleProfile) {
     fetchProfile.mockResolvedValue(p);
-    return client.get(`/v1/auth/google/callback?code=abc&state=${state}`);
+    return client.get(`/api/auth/google/callback?code=abc&state=${state}`);
   }
 
   it('redirige vers Google avec state, PKCE (S256) et des cookies httpOnly', async () => {
-    const res = await new Client(app).get('/v1/auth/google');
+    const res = await new Client(app).get('/api/auth/google');
     expect(res.status).toBe(302);
     const url = new URL(res.headers.location);
     expect(url.origin + url.pathname).toBe(
@@ -83,28 +83,28 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
     expect(fetchProfile).not.toHaveBeenCalled();
   });
 
-  it('crée un compte vérifié avec crédits de bienvenue, sans mot de passe, et demande les CGU', async () => {
+  it('crée un compte vérifié sans crédit offert, sans mot de passe, et demande les CGU', async () => {
     const client = new Client(app);
     const p = profile();
     const res = await callback(client, await start(client), p);
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe(`${APP}/app`);
-    const me = await client.get('/v1/auth/me').expect(200);
+    const me = await client.get('/api/auth/me').expect(200);
     expect(me.body.user).toMatchObject({
       email: p.email,
       firstName: 'Grace',
       emailVerified: true,
-      credits: 4,
+      credits: 0,
       googleLinked: true,
       hasPassword: false,
       legalAccepted: false,
     });
 
-    const accepted = await client.post('/v1/me/legal-acceptances').expect(200);
+    const accepted = await client.post('/api/me/legal-acceptances').expect(200);
     expect(accepted.body.user.legalAccepted).toBe(true);
     // Aucune connexion par mot de passe n'est possible sur un compte Google seul.
-    const pwd = await new Client(app).post('/v1/auth/login', {
+    const pwd = await new Client(app).post('/api/auth/login', {
       email: p.email,
       password: PASSWORD,
     });
@@ -120,8 +120,8 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
       ...p,
       email: uniqueEmail('autre'),
     });
-    const a = (await first.get('/v1/auth/me')).body.user.id;
-    const b = (await second.get('/v1/auth/me')).body.user.id;
+    const a = (await first.get('/api/auth/me')).body.user.id;
+    const b = (await second.get('/api/auth/me')).body.user.id;
     expect(a).toBe(b);
   });
 
@@ -129,20 +129,20 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
     const client = new Client(app);
     const { email } = await client.register();
     await client
-      .post('/v1/auth/verify-email', { token: tokenFromEmail(app, email) })
+      .post('/api/auth/verify-email', { code: otpFromEmail(app, email) })
       .expect(200);
-    const id = (await client.get('/v1/auth/me')).body.user.id;
+    const id = (await client.get('/api/auth/me')).body.user.id;
 
     const g = new Client(app);
     await callback(g, await start(g), profile({ email }));
-    expect((await g.get('/v1/auth/me')).body.user).toMatchObject({
+    expect((await g.get('/api/auth/me')).body.user).toMatchObject({
       id,
       googleLinked: true,
       hasPassword: true,
     });
     expect(
       (
-        await new Client(app).post('/v1/auth/login', {
+        await new Client(app).post('/api/auth/login', {
           email,
           password: PASSWORD,
         })
@@ -154,15 +154,15 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
     // Un tiers a pu s'inscrire avec l'adresse d'autrui : son mot de passe ne doit pas survivre à la liaison.
     const attacker = new Client(app);
     const { email } = await attacker.register();
-    expect((await attacker.get('/v1/auth/me')).status).toBe(200);
+    expect((await attacker.get('/api/auth/me')).status).toBe(200);
 
     const owner = new Client(app);
     await callback(owner, await start(owner), profile({ email }));
 
-    expect((await attacker.get('/v1/auth/me')).status).toBe(401);
+    expect((await attacker.get('/api/auth/me')).status).toBe(401);
     expect(
       (
-        await new Client(app).post('/v1/auth/login', {
+        await new Client(app).post('/api/auth/login', {
           email,
           password: PASSWORD,
         })
@@ -171,7 +171,7 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
     const user = await prisma.user.findUniqueOrThrow({ where: { email } });
     expect(user.passwordHash).toBeNull();
     expect(user.emailVerifiedAt).not.toBeNull();
-    expect((await owner.get('/v1/auth/me')).status).toBe(200);
+    expect((await owner.get('/api/auth/me')).status).toBe(200);
   });
 
   it("n'accepte jamais une adresse que Google n'a pas vérifiée", async () => {
@@ -196,26 +196,31 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
     expect(res.headers.location).toBe(
       `${APP}/connexion?erreur=compte_suspendu`,
     );
-    expect((await again.get('/v1/auth/me')).status).toBe(401);
+    expect((await again.get('/api/auth/me')).status).toBe(401);
   });
 
   it('une erreur renvoyée par Google ramène à la page de connexion', async () => {
     const client = new Client(app);
     await start(client);
     const res = await client.get(
-      '/v1/auth/google/callback?error=access_denied',
+      '/api/auth/google/callback?error=access_denied',
     );
     expect(res.headers.location).toBe(`${APP}/connexion?erreur=google_refuse`);
   });
 
   it('indique si la connexion Google est disponible', async () => {
-    const on = await new Client(app).get('/v1/auth/providers').expect(200);
-    expect(on.body).toEqual({ google: true });
+    const on = await new Client(app).get('/api/auth/providers').expect(200);
+    expect(on.body).toMatchObject({ google: true });
+    expect(on.body.emailOtp).toEqual({
+      length: 6,
+      ttlMinutes: 10,
+      resendCooldownSeconds: 0,
+    });
     jest
       .spyOn(app.get(GoogleOAuthClient), 'isConfigured')
       .mockReturnValue(false);
-    const off = await new Client(app).get('/v1/auth/providers').expect(200);
-    expect(off.body).toEqual({ google: false });
+    const off = await new Client(app).get('/api/auth/providers').expect(200);
+    expect(off.body).toMatchObject({ google: false });
   });
 
   it('renvoie 503 si Google n’est pas configuré', async () => {
@@ -223,7 +228,7 @@ describe('Connexion Google (e2e, client Google simulé)', () => {
       .spyOn(app.get(GoogleOAuthClient), 'isConfigured')
       .mockReturnValue(false);
     const res = await request(app.getHttpServer())
-      .get('/v1/auth/google')
+      .get('/api/auth/google')
       .set('Origin', APP_ORIGIN);
     expect(res.status).toBe(503);
     expect(res.body.code).toBe('GOOGLE_NOT_CONFIGURED');

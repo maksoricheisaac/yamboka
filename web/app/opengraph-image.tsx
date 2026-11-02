@@ -1,10 +1,19 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { ImageResponse } from "next/og";
+import { getMedia } from "@/lib/media";
 
 export const alt = "Yamboka — Vidéos et images par IA, payées en mobile money";
 export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
+// Si `public/images/partage.jpg` existe (visuel 1200 × 630 avec une vraie création), il est servi tel quel ;
+// sinon l’image est générée ci-dessous. Le type annoncé suit le choix.
+const PARTAGE_PATH = path.join(process.cwd(), "public", "images", "partage.jpg");
+export const contentType = getMedia().partage ? "image/jpeg" : "image/png";
 
 export default function OpengraphImage() {
+  if (getMedia().partage) {
+    return new Response(readFileSync(PARTAGE_PATH), { headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=3600" } });
+  }
   return new ImageResponse(
     (
       <div
@@ -27,7 +36,7 @@ export default function OpengraphImage() {
           <div style={{ fontSize: 76, fontWeight: 800, lineHeight: 1.05, maxWidth: 980 }}>
             Vos vidéos et images par IA, payées en mobile money.
           </div>
-          <div style={{ fontSize: 34, color: "#f2b632" }}>À partir de 500 FCFA · Né à Brazzaville</div>
+          <div style={{ fontSize: 34, color: "#f2b632" }}>À partir de 5 000 FCFA · Né à Brazzaville</div>
         </div>
       </div>
     ),

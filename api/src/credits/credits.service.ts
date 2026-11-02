@@ -5,15 +5,16 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { firstPurchaseBonusCredits } from '../billing/bonus';
 import { lockUserRow } from '../common/locks';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreditLot, computeExpirations } from './expiry';
+import { allocateFifo, spendableTotal } from './fifo';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
-/** Types de lignes qui créent des crédits avec une échéance (lots soumis à l'expiration FIFO). */
-const LOT_TYPES = ['PURCHASE', 'BONUS', 'WELCOME', 'ADJUSTMENT'] as const;
+/** Validité d'un lot créé par un ajustement manuel quand l'administrateur n'en précise pas. */
+const DEFAULT_ADJUST_LOT_MONTHS = 12;
 
 export class InsufficientCreditsException extends HttpException {
   constructor(required: number, available: number) {
@@ -40,16 +41,23 @@ export interface LedgerEntryView {
 }
 
 /**
- * Registre de crédits en ajout seul (RG-02) : le solde est TOUJOURS la somme des mouvements.
- * Toute opération qui lit le solde puis écrit (réservation, capture, remboursement, ajustement)
- * verrouille d'abord la ligne de l'utilisateur (SELECT … FOR UPDATE) : deux requêtes concurrentes
- * pour un même utilisateur s'exécutent l'une après l'autre. Les références uniques rendent chaque
+ * Crédits : journal immuable + lots avec échéance.
+ *
+ * - `CreditLedger` (ajout seul, RG-02) est la source de vérité : le solde est la somme des mouvements.
+ * - `CreditLot` porte, pour chaque entrée de crédits, ce qui reste à dépenser et son échéance. Il est mis à jour
+ *   dans la MÊME transaction que le mouvement qui l'explique, donc la somme des lots égale toujours le solde.
+ * - On dépense en priorité le lot qui expire le plus tôt (FIFO). Une réservation note, lot par lot, ce qu'elle a
+ *   prélevé (`LotAllocation`) pour restituer les crédits au bon lot en cas d'échec.
+ *
+ * Toute opération qui lit puis écrit prend d'abord un verrou de ligne sur l'utilisateur : deux requêtes
+ * simultanées pour un même utilisateur s'exécutent l'une après l'autre. Les références uniques rendent chaque
  * opération idempotente.
  */
 @Injectable()
 export class CreditsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Solde = somme du journal. */
   async getBalance(userId: string, db: Db = this.prisma): Promise<number> {
     const { _sum } = await db.creditLedger.aggregate({
       where: { userId },
@@ -64,82 +72,132 @@ export class CreditsService {
     return row?.creditValue ?? 25;
   }
 
-  // ───────────── Bienvenue et achats ─────────────
+  // ───────────── Achat et bonus de premier achat ─────────────
 
   /**
-   * Crédits de bienvenue, une seule fois par compte : la référence `welcome:<userId>` est unique,
-   * donc un second appel (ou un appel concurrent) n'a aucun effet. Retourne vrai si les crédits ont été ajoutés.
-   */
-  async grantWelcome(
-    db: Db,
-    userId: string,
-    amount: number,
-    expiresAt: Date,
-  ): Promise<boolean> {
-    if (amount <= 0) return false;
-    const result = await db.creditLedger.createMany({
-      data: [
-        {
-          userId,
-          amount,
-          type: 'WELCOME',
-          reference: `welcome:${userId}`,
-          expiresAt,
-          note: 'Crédits de bienvenue',
-        },
-      ],
-      skipDuplicates: true,
-    });
-    return result.count === 1;
-  }
-
-  /**
-   * Crédite un achat confirmé : un mouvement PURCHASE (crédits de base) et, s'il y a un bonus, un mouvement BONUS.
-   * Références `pay:<réf>` et `bonus:<réf>` : un même paiement ne peut créditer qu'une seule fois (RG-05).
-   * À appeler dans la transaction qui fait passer le paiement à SUCCESS.
+   * Crédite un achat confirmé : un lot PURCHASE et, s'il s'agit du premier achat réussi du compte, un lot distinct
+   * FIRST_PURCHASE_BONUS de même validité. À appeler dans la transaction qui fait passer le paiement à SUCCESS.
+   *
+   * - Références `pay:<réf>` et `firstbonus:<réf>` : un paiement ne crédite qu'une fois (RG-05).
+   * - Le verrou utilisateur sérialise deux confirmations simultanées : la seconde voit déjà le premier achat.
+   * - Un index unique en base garantit un seul bonus par compte même si ce code était contourné.
    */
   async grantPurchase(
-    db: Db,
+    tx: Prisma.TransactionClient,
     p: {
       userId: string;
       paymentId: string;
       reference: string;
       baseCredits: number;
-      bonusCredits: number;
       expiresAt: Date;
+      /** Pourcentage de bonus de premier achat promis pour ce paiement (0 = aucun). */
+      bonusPercent: number;
     },
-  ): Promise<void> {
-    const rows: Prisma.CreditLedgerCreateManyInput[] = [
-      {
-        userId: p.userId,
-        amount: p.baseCredits,
-        type: 'PURCHASE',
-        reference: `pay:${p.reference}`,
-        paymentId: p.paymentId,
-        expiresAt: p.expiresAt,
-        note: 'Achat de crédits',
-      },
-    ];
-    if (p.bonusCredits > 0) {
-      rows.push({
-        userId: p.userId,
-        amount: p.bonusCredits,
-        type: 'BONUS',
-        reference: `bonus:${p.reference}`,
-        paymentId: p.paymentId,
-        expiresAt: p.expiresAt,
-        note: 'Bonus du pack',
+  ): Promise<{ created: boolean; bonusCredits: number }> {
+    await lockUserRow(tx, p.userId);
+
+    const payRef = `pay:${p.reference}`;
+    const bonusRef = `firstbonus:${p.reference}`;
+    const already = await tx.creditLedger.findUnique({
+      where: { reference: payRef },
+    });
+    if (already) {
+      const bonus = await tx.creditLedger.findUnique({
+        where: { reference: bonusRef },
       });
+      return { created: false, bonusCredits: bonus?.amount ?? 0 };
     }
-    await db.creditLedger.createMany({ data: rows, skipDuplicates: true });
+
+    await this.addLot(tx, {
+      userId: p.userId,
+      amount: p.baseCredits,
+      type: 'PURCHASE',
+      reference: payRef,
+      paymentId: p.paymentId,
+      expiresAt: p.expiresAt,
+      note: 'Achat de crédits',
+    });
+
+    let bonusCredits = 0;
+    if (p.bonusPercent > 0) {
+      const previousBonus = await tx.creditLedger.count({
+        where: {
+          userId: p.userId,
+          type: 'FIRST_PURCHASE_BONUS',
+          reference: { startsWith: 'firstbonus:' },
+        },
+      });
+      const previousPurchases = await tx.payment.count({
+        where: {
+          userId: p.userId,
+          status: 'SUCCESS',
+          id: { not: p.paymentId },
+        },
+      });
+      if (previousBonus === 0 && previousPurchases === 0) {
+        bonusCredits = firstPurchaseBonusCredits(p.baseCredits, p.bonusPercent);
+        if (bonusCredits > 0) {
+          await this.addLot(tx, {
+            userId: p.userId,
+            amount: bonusCredits,
+            type: 'FIRST_PURCHASE_BONUS',
+            reference: bonusRef,
+            paymentId: p.paymentId,
+            expiresAt: p.expiresAt,
+            note: 'Bonus de premier achat',
+          });
+        }
+      }
+    }
+    return { created: true, bonusCredits };
   }
 
-  // ───────────── Génération : réserver, capturer, rembourser ─────────────
+  /** Écrit un mouvement qui crée des crédits ET le lot qui les porte (même transaction). */
+  private async addLot(
+    tx: Prisma.TransactionClient,
+    p: {
+      userId: string;
+      amount: number;
+      type: 'PURCHASE' | 'FIRST_PURCHASE_BONUS' | 'ADMIN_ADJUST';
+      reference: string;
+      expiresAt: Date;
+      paymentId?: string;
+      note?: string;
+      createdById?: string;
+    },
+  ): Promise<void> {
+    const row = await tx.creditLedger.create({
+      data: {
+        userId: p.userId,
+        amount: p.amount,
+        type: p.type,
+        reference: p.reference,
+        paymentId: p.paymentId,
+        expiresAt: p.expiresAt,
+        note: p.note,
+        createdById: p.createdById,
+      },
+    });
+    await tx.creditLot.create({
+      data: {
+        userId: p.userId,
+        kind: p.type,
+        initialAmount: p.amount,
+        remaining: p.amount,
+        expiresAt: p.expiresAt,
+        ledgerId: row.id,
+        paymentId: p.paymentId,
+      },
+    });
+  }
+
+  // ───────────── Génération : réserver, capturer, libérer ─────────────
 
   /**
-   * Réserve les crédits d'une génération (RG-06, RG-07). À appeler DANS la transaction qui crée la génération :
-   * le verrou garantit que deux réservations concurrentes ne dépensent jamais deux fois le même solde.
-   * Idempotent : une seconde réservation pour la même génération ne débite pas une seconde fois.
+   * Réserve les crédits d'une génération (RG-06, RG-07) en les prélevant sur les lots qui expirent le plus tôt.
+   * À appeler DANS la transaction qui crée la génération : le verrou garantit que deux réservations concurrentes
+   * ne dépensent jamais deux fois le même solde. Idempotent : une seconde réservation pour la même génération
+   * ne débite pas une seconde fois.
    */
   async reserve(
     tx: Prisma.TransactionClient,
@@ -157,10 +215,16 @@ export class CreditsService {
     const existing = await tx.creditLedger.findUnique({ where: { reference } });
     if (existing) return { created: false };
 
-    const balance = await this.getBalance(p.userId, tx);
-    if (balance < p.amount)
-      throw new InsufficientCreditsException(p.amount, balance);
+    const now = new Date();
+    await this.expireDueLots(tx, p.userId, now);
+    const lots = await tx.creditLot.findMany({
+      where: { userId: p.userId, remaining: { gt: 0 } },
+    });
+    const available = spendableTotal(lots, now);
+    if (available < p.amount)
+      throw new InsufficientCreditsException(p.amount, available);
 
+    const { takes } = allocateFifo(lots, p.amount, now);
     await tx.creditLedger.create({
       data: {
         userId: p.userId,
@@ -171,6 +235,19 @@ export class CreditsService {
         note: 'Réservation pour une création',
       },
     });
+    for (const take of takes) {
+      await tx.creditLot.update({
+        where: { id: take.lotId },
+        data: { remaining: { decrement: take.amount } },
+      });
+      await tx.lotAllocation.create({
+        data: {
+          lotId: take.lotId,
+          generationId: p.generationId,
+          amount: take.amount,
+        },
+      });
+    }
     return { created: true };
   }
 
@@ -179,15 +256,15 @@ export class CreditsService {
     return this.settle(generationId, 'capture');
   }
 
-  /** Échec, annulation ou délai dépassé : les crédits réservés sont restitués (REFUND). */
-  async refund(generationId: string): Promise<{ created: boolean }> {
-    return this.settle(generationId, 'refund');
+  /** Échec technique, annulation ou délai dépassé : les crédits réservés sont restitués (RELEASE). */
+  async release(generationId: string): Promise<{ created: boolean }> {
+    return this.settle(generationId, 'release');
   }
 
-  /** Clôt une réservation une seule fois : soit capturée, soit remboursée, jamais les deux. */
+  /** Clôt une réservation une seule fois : soit capturée, soit libérée, jamais les deux. */
   private async settle(
     generationId: string,
-    kind: 'capture' | 'refund',
+    kind: 'capture' | 'release',
   ): Promise<{ created: boolean }> {
     const reservation = await this.prisma.creditLedger.findUnique({
       where: { reference: `reserve:${generationId}` },
@@ -201,13 +278,25 @@ export class CreditsService {
 
     return this.prisma.$transaction(async (tx) => {
       await lockUserRow(tx, reservation.userId);
-      const other = kind === 'capture' ? 'refund' : 'capture';
 
-      if (
-        await tx.creditLedger.findUnique({
-          where: { reference: `${other}:${generationId}` },
-        })
-      ) {
+      // « refund: » est l'ancien préfixe des libérations : il compte toujours comme une libération.
+      const releaseRefs = [`release:${generationId}`, `refund:${generationId}`];
+      const captureRef = `capture:${generationId}`;
+      const done = await tx.creditLedger.findFirst({
+        where: {
+          reference: {
+            in: kind === 'capture' ? [captureRef] : releaseRefs,
+          },
+        },
+      });
+      if (done) return { created: false };
+
+      const opposite = await tx.creditLedger.findFirst({
+        where: {
+          reference: { in: kind === 'capture' ? releaseRefs : [captureRef] },
+        },
+      });
+      if (opposite) {
         throw new ConflictException({
           code: kind === 'capture' ? 'ALREADY_REFUNDED' : 'ALREADY_CAPTURED',
           message:
@@ -216,36 +305,79 @@ export class CreditsService {
               : 'Les crédits de cette création ont déjà été débités définitivement.',
         });
       }
-      if (
-        await tx.creditLedger.findUnique({
-          where: { reference: `${kind}:${generationId}` },
-        })
-      ) {
-        return { created: false };
+
+      if (kind === 'capture') {
+        await tx.creditLedger.create({
+          data: {
+            userId: reservation.userId,
+            amount: 0,
+            type: 'CAPTURE',
+            reference: captureRef,
+            generationId,
+            note: 'Débit définitif',
+          },
+        });
+        return { created: true };
       }
 
+      const reserved = -reservation.amount;
+      const restored = await this.restoreToLots(tx, generationId);
+      // Réservation sans détail par lot (antérieure aux lots) : le reste revient dans un lot neuf.
+      const shortfall = reserved - restored;
+      if (shortfall > 0) {
+        const expiresAt = new Date();
+        expiresAt.setUTCMonth(
+          expiresAt.getUTCMonth() + DEFAULT_ADJUST_LOT_MONTHS,
+        );
+        await tx.creditLot.create({
+          data: {
+            userId: reservation.userId,
+            kind: 'ADMIN_ADJUST',
+            initialAmount: shortfall,
+            remaining: shortfall,
+            expiresAt,
+          },
+        });
+      }
       await tx.creditLedger.create({
-        data:
-          kind === 'capture'
-            ? {
-                userId: reservation.userId,
-                amount: 0,
-                type: 'CAPTURE',
-                reference: `capture:${generationId}`,
-                generationId,
-                note: 'Débit définitif',
-              }
-            : {
-                userId: reservation.userId,
-                amount: -reservation.amount,
-                type: 'REFUND',
-                reference: `refund:${generationId}`,
-                generationId,
-                note: 'Remboursement automatique',
-              },
+        data: {
+          userId: reservation.userId,
+          amount: reserved,
+          type: 'RELEASE',
+          reference: releaseRefs[0],
+          generationId,
+          note: 'Crédits restitués',
+        },
       });
+      // Si un lot a expiré entre-temps, les crédits qui y reviennent expirent aussitôt.
+      await this.expireDueLots(tx, reservation.userId, new Date());
       return { created: true };
     });
+  }
+
+  /** Rend à chaque lot ce que la réservation lui avait pris ; retourne le total restitué. */
+  private async restoreToLots(
+    tx: Prisma.TransactionClient,
+    generationId: string,
+  ): Promise<number> {
+    const allocations = await tx.lotAllocation.findMany({
+      where: { generationId },
+    });
+    let restored = 0;
+    for (const a of allocations) {
+      const back = a.amount - a.returned;
+      if (back <= 0) continue;
+      await tx.creditLot.update({
+        where: { id: a.lotId },
+        data: { remaining: { increment: back } },
+      });
+      await tx.lotAllocation.update({
+        where: { id: a.id },
+        data: { returned: a.amount },
+      });
+      restored += back;
+    }
+    return restored;
   }
 
   // ───────────── Ajustement administratif ─────────────
@@ -257,6 +389,11 @@ export class CreditsService {
     reason: string;
     adminId: string;
     expiresAt?: Date;
+    /** Exécuté dans la même transaction (ex. écriture du journal d'audit) : tout réussit ou rien. */
+    onCommit?: (
+      tx: Prisma.TransactionClient,
+      reference: string,
+    ) => Promise<void>;
   }): Promise<{ reference: string; balance: number }> {
     const reason = p.reason?.trim();
     if (!reason || reason.length < 3) {
@@ -274,94 +411,110 @@ export class CreditsService {
 
     return this.prisma.$transaction(async (tx) => {
       await lockUserRow(tx, p.userId);
-      const balance = await this.getBalance(p.userId, tx);
-      if (balance + p.amount < 0)
-        throw new InsufficientCreditsException(-p.amount, balance);
+      const now = new Date();
+      await this.expireDueLots(tx, p.userId, now);
       const reference = `adjust:${randomUUID()}`;
-      await tx.creditLedger.create({
-        data: {
+
+      if (p.amount > 0) {
+        const expiresAt = p.expiresAt ?? new Date(now);
+        if (!p.expiresAt)
+          expiresAt.setUTCMonth(
+            expiresAt.getUTCMonth() + DEFAULT_ADJUST_LOT_MONTHS,
+          );
+        await this.addLot(tx, {
           userId: p.userId,
           amount: p.amount,
-          type: 'ADJUSTMENT',
+          type: 'ADMIN_ADJUST',
           reference,
+          expiresAt,
           note: reason,
           createdById: p.adminId,
-          expiresAt: p.amount > 0 ? p.expiresAt : undefined,
-        },
-      });
-      return { reference, balance: balance + p.amount };
+        });
+      } else {
+        // Retrait : pris sur les lots qui expirent le plus tôt, comme une consommation.
+        const lots = await tx.creditLot.findMany({
+          where: { userId: p.userId, remaining: { gt: 0 } },
+        });
+        const available = spendableTotal(lots, now);
+        if (available + p.amount < 0)
+          throw new InsufficientCreditsException(-p.amount, available);
+        const { takes } = allocateFifo(lots, -p.amount, now);
+        await tx.creditLedger.create({
+          data: {
+            userId: p.userId,
+            amount: p.amount,
+            type: 'ADMIN_ADJUST',
+            reference,
+            note: reason,
+            createdById: p.adminId,
+          },
+        });
+        for (const take of takes) {
+          await tx.creditLot.update({
+            where: { id: take.lotId },
+            data: { remaining: { decrement: take.amount } },
+          });
+        }
+      }
+      await p.onCommit?.(tx, reference);
+      return { reference, balance: await this.getBalance(p.userId, tx) };
     });
   }
 
-  // ───────────── Expiration (job quotidien) ─────────────
+  // ───────────── Expiration ─────────────
 
   /**
-   * Écrit les mouvements EXPIRE des lots échus (RG-08). Idempotent : la référence `expire:<lot>` est unique,
-   * donc relancer le job ne fait rien de plus. Retourne le nombre de mouvements écrits.
+   * Expire les lots échus d'un utilisateur (EXPIRE, montant = ce qui reste). Appelée sous le verrou utilisateur.
+   * Un lot qui reçoit à nouveau des crédits après son expiration (libération tardive) expire de nouveau : la
+   * référence porte donc un numéro d'ordre. Retourne le nombre de mouvements écrits.
+   */
+  private async expireDueLots(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    now: Date,
+  ): Promise<number> {
+    const due = await tx.creditLot.findMany({
+      where: { userId, remaining: { gt: 0 }, expiresAt: { lte: now } },
+    });
+    for (const lot of due) {
+      const previous = await tx.creditLedger.count({
+        where: { userId, reference: { startsWith: `expire:${lot.id}` } },
+      });
+      await tx.creditLedger.create({
+        data: {
+          userId,
+          amount: -lot.remaining,
+          type: 'EXPIRE',
+          reference:
+            previous === 0
+              ? `expire:${lot.id}`
+              : `expire:${lot.id}:${previous}`,
+          note: 'Crédits expirés',
+        },
+      });
+      await tx.creditLot.update({
+        where: { id: lot.id },
+        data: { remaining: 0 },
+      });
+    }
+    return due.length;
+  }
+
+  /**
+   * Job d'expiration (RG-08) : écrit les mouvements EXPIRE des lots échus. Idempotent (un lot vidé n'est plus
+   * candidat) et sûr en concurrence (verrou utilisateur). Retourne le nombre de mouvements écrits.
    */
   async runExpiry(now = new Date()): Promise<number> {
-    const candidates = await this.prisma.creditLedger.findMany({
-      where: {
-        amount: { gt: 0 },
-        type: { in: [...LOT_TYPES] },
-        expiresAt: { lte: now },
-      },
+    const candidates = await this.prisma.creditLot.findMany({
+      where: { remaining: { gt: 0 }, expiresAt: { lte: now } },
       select: { userId: true },
       distinct: ['userId'],
     });
-
     let written = 0;
     for (const { userId } of candidates) {
       written += await this.prisma.$transaction(async (tx) => {
         await lockUserRow(tx, userId);
-        const rows = await tx.creditLedger.findMany({ where: { userId } });
-
-        const lots: CreditLot[] = rows
-          .filter(
-            (r) =>
-              r.amount > 0 &&
-              r.expiresAt &&
-              (LOT_TYPES as readonly string[]).includes(r.type),
-          )
-          .map((r) => ({
-            id: r.id,
-            amount: r.amount,
-            expiresAt: r.expiresAt!,
-            createdAt: r.createdAt,
-          }));
-
-        const expired = new Map<string, number>();
-        for (const r of rows) {
-          if (r.type === 'EXPIRE' && r.reference.startsWith('expire:')) {
-            expired.set(r.reference.slice('expire:'.length), -r.amount);
-          }
-        }
-
-        // Consommation nette : réservations et ajustements négatifs, nets des remboursements.
-        let consumption = 0;
-        for (const r of rows) {
-          if (
-            r.type === 'RESERVE' ||
-            r.type === 'REFUND' ||
-            (r.type === 'ADJUSTMENT' && r.amount < 0)
-          ) {
-            consumption -= r.amount;
-          }
-        }
-
-        const toExpire = computeExpirations(lots, expired, consumption, now);
-        if (toExpire.length === 0) return 0;
-        const result = await tx.creditLedger.createMany({
-          data: toExpire.map((e) => ({
-            userId,
-            amount: -e.amount,
-            type: 'EXPIRE' as const,
-            reference: `expire:${e.lotId}`,
-            note: 'Crédits expirés',
-          })),
-          skipDuplicates: true,
-        });
-        return result.count;
+        return this.expireDueLots(tx, userId, now);
       });
     }
     return written;

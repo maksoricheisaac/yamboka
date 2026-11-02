@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { FOOTER_NAV, SITE } from "@/content/site";
+import { getMedia } from "@/lib/media";
 import { Logo } from "./logo";
 
 export function SiteFooter() {
+  const { anyReal } = getMedia();
   return (
     <footer className="mt-24 border-t bg-secondary/40">
       <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-[1.4fr_repeat(3,1fr)]">
@@ -34,7 +36,7 @@ export function SiteFooter() {
       <div className="border-t">
         <p className="mx-auto w-full max-w-6xl px-4 py-5 text-xs text-muted-foreground sm:px-6">
           © {SITE.name}. Brazzaville, République du Congo. Les exemples présentés sur ce site
-          sont des démonstrations illustratives.
+          {anyReal ? "sont générés avec Yamboka ; les illustrations restantes sont étiquetées « Démo »." : "sont des démonstrations illustratives."}
         </p>
       </div>
     </footer>

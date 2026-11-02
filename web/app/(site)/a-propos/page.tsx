@@ -1,21 +1,27 @@
 import type { Metadata } from "next";
+import Image from "next/image";
+import { getMedia } from "@/lib/media";
+import { pageMetadata } from "@/lib/seo";
 import { CtaBand, PageHero, Prose } from "@/components/site/blocks";
 
-export const metadata: Metadata = {
-  title: "À propos",
-  description:
-    "Yamboka, « du pays, de chez nous » en lingala : une plateforme de création vidéo et image par IA née à Brazzaville, pensée pour l’Afrique du mobile money.",
-  alternates: { canonical: "/a-propos" },
-};
+export const metadata: Metadata = pageMetadata({ title: "À propos", description: "Yamboka, « du pays, de chez nous » en lingala : une plateforme de création vidéo et image par IA née à Brazzaville, pensée pour l’Afrique du mobile money.", path: "/a-propos" });
 
 export default function AboutPage() {
+  const { aPropos } = getMedia();
   return (
     <>
-      <PageHero
+      <PageHero path="/a-propos"
         eyebrow="À propos"
         title="Né à Brazzaville, pensé pour l’Afrique"
         lead="Yamboka veut rendre la création vidéo par IA accessible à celles et ceux que les outils internationaux laissent de côté."
       />
+      {aPropos && (
+        <div className="mx-auto w-full max-w-3xl px-4 pt-12 sm:px-6 sm:pt-16">
+          <div className="relative aspect-video overflow-hidden rounded-2xl bg-muted">
+            <Image src={aPropos.src} alt={aPropos.alt} fill unoptimized priority sizes="(min-width: 768px) 48rem, 100vw" className="object-cover" />
+          </div>
+        </div>
+      )}
       <Prose>
         <h2>Pourquoi ce nom</h2>
         <p>
@@ -34,7 +40,7 @@ export default function AboutPage() {
         <h2>Notre approche</h2>
         <ul>
           <li>Une interface entièrement en français, simple, sans jargon.</li>
-          <li>Des crédits prépayés à partir de 500 FCFA, sans abonnement.</li>
+          <li>Des crédits prépayés à partir de 5 000 FCFA, sans abonnement.</li>
           <li>Un parcours de création en trois étapes, avec le prix affiché avant chaque action.</li>
           <li>Des modèles adaptés aux usages locaux : danse, publicité, anniversaire, mode.</li>
           <li>Un usage responsable : consentement, filigrane, modération et signalement.</li>

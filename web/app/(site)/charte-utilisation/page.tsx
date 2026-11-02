@@ -1,18 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
 import { PageHero, Prose } from "@/components/site/blocks";
 import { LegalDraftNotice } from "@/components/site/legal-notice";
 
-export const metadata: Metadata = {
-  title: "Charte d’utilisation",
-  description:
-    "Règles d’usage responsable de Yamboka : contenus interdits, consentement, filigrane, signalement et modération.",
-  alternates: { canonical: "/charte-utilisation" },
-};
+export const metadata: Metadata = pageMetadata({ title: "Charte d’utilisation", description: "Règles d’usage responsable de Yamboka : contenus interdits, consentement, filigrane, signalement et modération.", path: "/charte-utilisation" });
 
 export default function CharterPage() {
   return (
     <>
-      <PageHero eyebrow="Légal" title="Charte d’utilisation responsable" lead="Créer librement, sans nuire à personne." />
+      <PageHero path="/charte-utilisation" eyebrow="Légal" title="Charte d’utilisation responsable" lead="Créer librement, sans nuire à personne." />
       <Prose>
         <LegalDraftNotice />
         <h2>Contenus interdits</h2>

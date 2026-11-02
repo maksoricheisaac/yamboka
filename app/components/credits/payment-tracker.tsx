@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PaymentView, SimulationOutcome } from "@yamboka/shared";
-import { CheckCircle2, Clock, FlaskConical, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, ExternalLink, FlaskConical, Loader2, TriangleAlert, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -10,7 +10,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { apiGet, apiPost, ApiError } from "@/lib/api-client";
 import { formatFcfa, formatNumber, formatPhone } from "@/lib/format";
-import { OPERATOR_LABELS } from "./labels";
+import { OPERATOR_LABELS, providerLabel } from "./labels";
+
+/** Motif posé par le serveur quand aucune confirmation n'est arrivée à temps (voir PaymentsService). */
+const TIMEOUT_REASON = "Délai de confirmation dépassé";
 
 const POLL_MS = 3000;
 /** On interroge toutes les 3 s pendant 5 minutes au plus (cahier des tâches), puis on s'arrête. */
@@ -33,7 +36,7 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
   const [timedOut, setTimedOut] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
-  const { data: payment } = useQuery({
+  const { data: payment, isError } = useQuery({
     queryKey: ["payment", initial.id],
     queryFn: async () => (await apiGet<{ payment: PaymentView }>(`/payments/${initial.id}`)).payment,
     initialData: initial,
@@ -45,6 +48,8 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
   });
 
   const open = payment.status === "PENDING" || payment.status === "INITIATED";
+  // INITIATED : la demande n'a pas encore été confirmée comme reçue par le fournisseur (délai, panne passagère).
+  const sending = payment.status === "INITIATED";
 
   useEffect(() => {
     if (!open) return;
@@ -75,20 +80,57 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      <ol aria-label="Étapes du paiement" className="grid grid-cols-3 gap-2 text-center text-xs font-medium">
+        {[
+          { label: "Demande envoyée", done: !sending },
+          { label: "Validation sur le téléphone", done: !open },
+          { label: payment.status === "SUCCESS" ? "Crédits ajoutés" : payment.status === "FAILED" || payment.status === "CANCELLED" ? "Aucun crédit ajouté" : "Crédits ajoutés", done: payment.status === "SUCCESS" },
+        ].map((s, i) => (
+          <li key={s.label} className="space-y-1.5">
+            <span className={`block h-1.5 rounded-full transition-colors motion-reduce:transition-none ${s.done ? (payment.status === "FAILED" || payment.status === "CANCELLED" ? "bg-destructive" : "bg-primary") : open && i === (payment.status === "INITIATED" ? 0 : 1) ? "animate-pulse bg-accent motion-reduce:animate-none" : "bg-muted"}`} />
+            <span className={s.done ? "text-foreground" : "text-muted-foreground"}>{s.label}</span>
+          </li>
+        ))}
+      </ol>
       <div className="space-y-4 rounded-2xl border bg-card p-6 shadow-soft" aria-live="polite">
         {open && (
           <>
             <div className="flex items-center gap-3">
               {timedOut ? <Clock className="size-7 text-muted-foreground" aria-hidden /> : <Loader2 className="size-7 animate-spin text-primary" aria-hidden />}
               <h1 className="text-2xl font-bold">
-                {timedOut ? "Toujours en attente de confirmation" : "En attente de votre confirmation"}
+                {timedOut ? "Toujours en attente de confirmation" : sending ? "Envoi de votre demande de paiement" : "En attente de votre confirmation"}
               </h1>
             </div>
+            {isError && (
+              <Alert className="border-accent bg-accent/15" role="status">
+                <TriangleAlert className="size-4" aria-hidden />
+                <AlertDescription>
+                  Impossible de vérifier l’état du paiement pour le moment. Nous réessayons automatiquement : votre paiement n’est pas perdu.
+                </AlertDescription>
+              </Alert>
+            )}
             {timedOut ? (
               <p className="text-muted-foreground">
                 Nous n’avons pas encore reçu la confirmation. Si vous avez payé, vos crédits seront ajoutés dès qu’elle arrivera : vous
                 pouvez quitter cette page. Vous pouvez aussi suivre l’achat dans <Link href="/app/achats" className="font-medium text-primary underline">vos achats</Link>.
               </p>
+            ) : sending ? (
+              <p className="text-muted-foreground">
+                Nous contactons votre opérateur, cela peut prendre quelques instants. Si une demande de paiement arrive sur votre téléphone, validez-la.
+                Inutile de recommencer : cette page se met à jour toute seule, et vous ne serez débité qu’une fois.
+              </p>
+            ) : payment.checkoutUrl ? (
+              <div className="space-y-3">
+                <p className="text-muted-foreground">
+                  Pour payer <strong className="text-foreground">{formatFcfa(payment.amountFcfa)}</strong>, continuez sur la page de paiement sécurisée.
+                  Une fois le paiement validé, revenez ici : cette page se met à jour toute seule.
+                </p>
+                <Button asChild>
+                  <a href={payment.checkoutUrl} rel="noopener noreferrer">
+                    Continuer vers le paiement <ExternalLink className="size-4" aria-hidden />
+                  </a>
+                </Button>
+              </div>
             ) : (
               <ol className="list-decimal space-y-1.5 pl-5 text-muted-foreground">
                 <li>
@@ -132,6 +174,12 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
             <p className="text-muted-foreground">
               {payment.failureReason ?? "Le paiement n’a pas abouti."} Aucun crédit n’a été ajouté et rien n’a été débité par Yamboka.
             </p>
+            {payment.failureReason === TIMEOUT_REASON && (
+              <p className="rounded-lg border bg-muted/60 p-3 text-sm">
+                Si vous avez malgré tout validé le paiement sur votre téléphone, ne le refaites pas : vos crédits seront ajoutés automatiquement
+                dès que l’opérateur le confirmera. Vous pouvez suivre l’état dans <Link href="/app/achats" className="font-medium text-primary underline">vos achats</Link>.
+              </p>
+            )}
             <Button asChild>
               <Link href="/app/credits">Réessayer</Link>
             </Button>
@@ -145,6 +193,8 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
           <dd className="font-medium">{formatFcfa(payment.amountFcfa)}</dd>
           <dt className="text-muted-foreground">Crédits</dt>
           <dd className="font-medium">{formatNumber(payment.credits)}</dd>
+          <dt className="text-muted-foreground">Paiement via</dt>
+          <dd className="font-medium">{providerLabel(payment.provider)}</dd>
           <dt className="text-muted-foreground">Référence</dt>
           <dd className="break-all font-mono text-xs">{payment.reference ?? "—"}</dd>
         </dl>

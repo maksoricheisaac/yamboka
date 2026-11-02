@@ -17,14 +17,15 @@ import {
 import { MAIN_NAV } from "@/content/site";
 import { MobileAuthActions } from "./auth-actions";
 
+/** Accueil : correspondance exacte (sinon « / » serait actif partout). */
 function isActive(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
+  return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function DesktopNav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Navigation principale" className="hidden items-center gap-1 lg:flex">
+    <nav aria-label="Navigation principale" className="hidden items-center gap-0.5 lg:flex">
       {MAIN_NAV.map((item) => {
         const active = isActive(pathname, item.href);
         return (
@@ -32,8 +33,8 @@ export function DesktopNav() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted ${
-              active ? "text-primary" : "text-foreground/80"
+            className={`relative rounded-full px-4 py-2 text-sm font-medium transition-colors hover:bg-muted ${
+              active ? "bg-primary/10 text-primary" : "text-foreground/80"
             }`}
           >
             {item.label}
@@ -66,7 +67,7 @@ export function MobileNav() {
               <Link
                 href={item.href}
                 aria-current={isActive(pathname, item.href) ? "page" : undefined}
-                className="rounded-lg px-3 py-3 text-base font-medium hover:bg-muted aria-[current=page]:bg-muted aria-[current=page]:text-primary"
+                className="rounded-xl px-3 py-3.5 text-base font-medium hover:bg-muted aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary"
               >
                 {item.label}
               </Link>

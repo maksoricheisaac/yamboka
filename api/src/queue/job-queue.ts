@@ -13,3 +13,4 @@ export abstract class JobQueue {
 
 export const QUEUE_PAYMENTS = 'payments';
 export const QUEUE_CREDITS = 'credits';
+export const QUEUE_GENERATIONS = 'generations';

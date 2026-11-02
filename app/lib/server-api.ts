@@ -9,7 +9,7 @@ const API = process.env.API_INTERNAL_URL ?? "http://localhost:4000";
 export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  const res = await fetch(`${API}/v1/auth/me`, {
+  const res = await fetch(`${API}/api/auth/me`, {
     headers: { cookie: `${SESSION_COOKIE}=${token}` },
     cache: "no-store",
   });
@@ -19,21 +19,28 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   return ((await res.json()) as { user: SessionUser }).user;
 });
 
-/** Méthodes de connexion proposées (le bouton Google n'apparaît que s'il est configuré). */
-export async function getAuthProviders(): Promise<{ google: boolean }> {
+export interface AuthProviders {
+  google: boolean;
+  emailOtp: { length: number; ttlMinutes: number; resendCooldownSeconds: number };
+}
+
+const DEFAULT_PROVIDERS: AuthProviders = { google: false, emailOtp: { length: 6, ttlMinutes: 10, resendCooldownSeconds: 60 } };
+
+/** Méthodes de connexion proposées (le bouton Google n'apparaît que s'il est configuré) et paramètres des codes e-mail. */
+export async function getAuthProviders(): Promise<AuthProviders> {
   try {
-    const res = await fetch(`${API}/v1/auth/providers`, { cache: "no-store" });
-    if (!res.ok) return { google: false };
-    return (await res.json()) as { google: boolean };
+    const res = await fetch(`${API}/api/auth/providers`, { cache: "no-store" });
+    if (!res.ok) return DEFAULT_PROVIDERS;
+    return (await res.json()) as AuthProviders;
   } catch {
-    return { google: false };
+    return DEFAULT_PROVIDERS;
   }
 }
 
 /** Lecture d'une route authentifiée de l'API depuis un composant serveur (cookie de session transmis). */
 export async function serverGet<T>(path: string): Promise<T> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  const res = await fetch(`${API}/v1${path}`, {
+  const res = await fetch(`${API}/api${path}`, {
     headers: token ? { cookie: `${SESSION_COOKIE}=${token}` } : {},
     cache: "no-store",
   });
@@ -43,7 +50,7 @@ export async function serverGet<T>(path: string): Promise<T> {
 
 /** Lecture d'une route publique de l'API (packs, produits). */
 export async function publicGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API}/v1${path}`, { cache: "no-store" });
+  const res = await fetch(`${API}/api${path}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`API ${path} : ${res.status}`);
   return (await res.json()) as T;
 }
@@ -51,7 +58,7 @@ export async function publicGet<T>(path: string): Promise<T> {
 /** Comme serverGet, mais renvoie null si la ressource n'existe pas (404) : permet un notFound() propre. */
 export async function serverGetOrNull<T>(path: string): Promise<T | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  const res = await fetch(`${API}/v1${path}`, {
+  const res = await fetch(`${API}/api${path}`, {
     headers: token ? { cookie: `${SESSION_COOKIE}=${token}` } : {},
     cache: "no-store",
   });

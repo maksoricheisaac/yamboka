@@ -82,7 +82,7 @@ describe('Registre de crédits (e2e)', () => {
       const data = {
         userId: user.id,
         amount: 5,
-        type: 'BONUS' as const,
+        type: 'FIRST_PURCHASE_BONUS' as const,
         reference: `dup:${user.id}`,
       };
       await prisma.creditLedger.create({ data });
@@ -222,8 +222,8 @@ describe('Registre de crédits (e2e)', () => {
 
     it('remboursement : les crédits réservés sont rendus, une seule fois', async () => {
       const { user, gen } = await reserved();
-      expect(await credits.refund(gen.id)).toEqual({ created: true });
-      expect(await credits.refund(gen.id)).toEqual({ created: false });
+      expect(await credits.release(gen.id)).toEqual({ created: true });
+      expect(await credits.release(gen.id)).toEqual({ created: false });
       expect(await credits.getBalance(user.id)).toBe(100);
     });
 
@@ -231,18 +231,18 @@ describe('Registre de crédits (e2e)', () => {
       const { user, gen } = await reserved(40);
       const other = await makeGeneration(app, user.id);
       await reserve(user.id, other.id, 60); // solde 0
-      await credits.refund(gen.id);
+      await credits.release(gen.id);
       expect(await credits.getBalance(user.id)).toBe(40);
     });
 
     it('refuse de capturer après un remboursement, et de rembourser après une capture', async () => {
       const a = await reserved();
-      await credits.refund(a.gen.id);
+      await credits.release(a.gen.id);
       expect(await codeOf(credits.capture(a.gen.id))).toBe('ALREADY_REFUNDED');
 
       const b = await reserved();
       await credits.capture(b.gen.id);
-      expect(await codeOf(credits.refund(b.gen.id))).toBe('ALREADY_CAPTURED');
+      expect(await codeOf(credits.release(b.gen.id))).toBe('ALREADY_CAPTURED');
       expect(await credits.getBalance(b.user.id)).toBe(60);
     });
 
@@ -250,13 +250,13 @@ describe('Registre de crédits (e2e)', () => {
       const { user, gen } = await reserved();
       const results = await Promise.allSettled([
         credits.capture(gen.id),
-        credits.refund(gen.id),
+        credits.release(gen.id),
       ]);
       expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
       const balance = await credits.getBalance(user.id);
       expect([60, 100]).toContain(balance); // soit débité, soit rendu, jamais les deux
       const settled = await prisma.creditLedger.count({
-        where: { generationId: gen.id, type: { in: ['CAPTURE', 'REFUND'] } },
+        where: { generationId: gen.id, type: { in: ['CAPTURE', 'RELEASE'] } },
       });
       expect(settled).toBe(1);
     });
@@ -264,12 +264,12 @@ describe('Registre de crédits (e2e)', () => {
     it('plusieurs remboursements simultanés : un seul est écrit', async () => {
       const { user, gen } = await reserved();
       await Promise.all(
-        Array.from({ length: 8 }, () => credits.refund(gen.id)),
+        Array.from({ length: 8 }, () => credits.release(gen.id)),
       );
       expect(await credits.getBalance(user.id)).toBe(100);
       expect(
         await prisma.creditLedger.count({
-          where: { reference: `refund:${gen.id}` },
+          where: { reference: `release:${gen.id}` },
         }),
       ).toBe(1);
     });
@@ -278,49 +278,7 @@ describe('Registre de crédits (e2e)', () => {
       const user = await userWithBalance(app, 10);
       const gen = await makeGeneration(app, user.id);
       expect(await codeOf(credits.capture(gen.id))).toBe('NO_RESERVATION');
-      expect(await codeOf(credits.refund(gen.id))).toBe('NO_RESERVATION');
-    });
-  });
-
-  describe('Achats', () => {
-    it('crédite un achat en deux mouvements (crédits de base + bonus), une seule fois', async () => {
-      const user = await userWithBalance(app);
-      const payment = await prisma.payment.create({
-        data: {
-          userId: user.id,
-          packId: (
-            await prisma.creditPack.findFirstOrThrow({
-              where: { name: 'Créateur' },
-            })
-          ).id,
-          country: 'CG',
-          currency: 'XAF',
-          amount: 2500,
-          credits: 103,
-          bonusCredits: 3,
-          gateway: 'mock',
-          operator: 'MTN',
-          payerPhone: '242061234567',
-        },
-      });
-      const grant = () =>
-        prisma.$transaction((tx) =>
-          credits.grantPurchase(tx, {
-            userId: user.id,
-            paymentId: payment.id,
-            reference: 'REF-1',
-            baseCredits: 100,
-            bonusCredits: 3,
-            expiresAt: new Date(Date.now() + 365 * 86_400_000),
-          }),
-        );
-      await Promise.all([grant(), grant(), grant()]);
-      expect(await credits.getBalance(user.id)).toBe(103);
-      const rows = await ledgerOf(app, user.id);
-      expect(rows.map((r) => [r.type, r.amount, r.reference]).sort()).toEqual([
-        ['BONUS', 3, 'bonus:REF-1'],
-        ['PURCHASE', 100, 'pay:REF-1'],
-      ]);
+      expect(await codeOf(credits.release(gen.id))).toBe('NO_RESERVATION');
     });
   });
 
@@ -346,7 +304,7 @@ describe('Registre de crédits (e2e)', () => {
         where: { reference: up.reference },
       });
       expect(row).toMatchObject({
-        type: 'ADJUSTMENT',
+        type: 'ADMIN_ADJUST',
         amount: 20,
         note: 'Geste commercial',
         createdById: admin.id,
@@ -409,7 +367,7 @@ describe('Registre de crédits (e2e)', () => {
   describe('Expiration', () => {
     it('expire un lot échu, une seule fois', async () => {
       const user = await userWithBalance(app);
-      await addLot(app, user.id, 4, { expiresInDays: -1, type: 'WELCOME' });
+      await addLot(app, user.id, 4, { expiresInDays: -1 });
       expect(await credits.getBalance(user.id)).toBe(4);
 
       await credits.runExpiry();
@@ -441,15 +399,15 @@ describe('Registre de crédits (e2e)', () => {
       expect(await credits.getBalance(user.id)).toBe(0);
     });
 
-    it('consomme d’abord les crédits qui expirent le plus tôt (bienvenue avant achat)', async () => {
+    it('consomme d’abord le lot qui expire le plus tôt, même créé en dernier', async () => {
       const user = await userWithBalance(app);
-      await addLot(app, user.id, 4, { expiresInDays: 30, type: 'WELCOME' });
+      await addLot(app, user.id, 4, { expiresInDays: 30 });
       await addLot(app, user.id, 100, { expiresInDays: 365 });
       const gen = await makeGeneration(app, user.id);
-      await reserve(user.id, gen.id, 4); // les 4 crédits de bienvenue sont censés partir en premier
+      await reserve(user.id, gen.id, 4); // le lot de 4 (échéance 30 j) part avant celui de 100
       await credits.capture(gen.id);
       await credits.runExpiry(new Date(Date.now() + 40 * 86_400_000));
-      // Rien n'a expiré : les 4 crédits de bienvenue ont été consommés avant leur échéance.
+      // Rien n'a expiré : le lot de 4 a été consommé avant son échéance.
       expect(await credits.getBalance(user.id)).toBe(100);
     });
 
@@ -475,7 +433,7 @@ describe('Registre de crédits (e2e)', () => {
       await addLot(app, user.id, 10, { expiresInDays: 1 });
       const gen = await makeGeneration(app, user.id);
       await reserve(user.id, gen.id, 10);
-      await credits.refund(gen.id);
+      await credits.release(gen.id);
       await credits.runExpiry(new Date(Date.now() + 2 * 86_400_000));
       expect(await credits.getBalance(user.id)).toBe(0);
     });

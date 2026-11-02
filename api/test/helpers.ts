@@ -26,7 +26,7 @@ export async function createApp(): Promise<INestApplication> {
     imports: [AppModule],
     controllers: [ProbeController as Type<unknown>],
   }).compile();
-  const app = moduleRef.createNestApplication();
+  const app = moduleRef.createNestApplication({ rawBody: true });
   configureApp(app);
   await app.init();
   return app;
@@ -87,7 +87,7 @@ export class Client {
     overrides: Record<string, unknown> = {},
   ): Promise<{ res: request.Response; email: string }> {
     const body = signupBody(overrides);
-    const res = await this.post('/v1/auth/register', body);
+    const res = await this.post('/api/auth/register', body);
     return { res, email: body.email };
   }
 }
@@ -111,7 +111,7 @@ export const prismaOf = (app: INestApplication) => app.get(PrismaService);
 export async function rawSession(app: INestApplication) {
   const body = signupBody();
   const res = await request(app.getHttpServer())
-    .post('/v1/auth/register')
+    .post('/api/auth/register')
     .set('Origin', APP_ORIGIN)
     .set('X-Forwarded-For', freshIp())
     .send(body)
@@ -121,4 +121,12 @@ export async function rawSession(app: INestApplication) {
     .find((c) => c.startsWith('yamboka_session='))!
     .split(';')[0];
   return { cookie, email: body.email };
+}
+
+/** Extrait le code à usage unique (6 chiffres) du dernier e-mail envoyé à cette adresse. */
+export function otpFromEmail(app: INestApplication, to: string): string {
+  const mail = lastEmailFor(app, to);
+  const match = mail?.text.match(/^(\d{4,10})$/m);
+  if (!match) throw new Error(`Aucun code dans l'e-mail envoyé à ${to}`);
+  return match[1];
 }

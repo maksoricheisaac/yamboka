@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { PaymentReceipt, PaymentView } from "@yamboka/shared";
-import { OPERATOR_LABELS } from "@/components/credits/labels";
+import { OPERATOR_LABELS, providerLabel } from "@/components/credits/labels";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime, formatFcfa, formatNumber, formatPhone } from "@/lib/format";
@@ -46,6 +46,8 @@ export default async function ReceiptPage({ params }: PageProps<"/app/achats/[id
         <dd className="font-medium">
           {OPERATOR_LABELS[r.operator]} — {formatPhone(r.payerPhone)}
         </dd>
+        <dt className="text-muted-foreground">Fournisseur</dt>
+        <dd className="font-medium">{providerLabel(r.provider)}</dd>
         <dt className="text-muted-foreground">Référence</dt>
         <dd className="break-all font-mono text-xs">{r.reference}</dd>
       </dl>

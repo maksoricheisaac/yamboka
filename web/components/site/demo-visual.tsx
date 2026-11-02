@@ -20,15 +20,19 @@ export function DemoVisual({
   video = false,
   label,
   className = "",
+  ratio,
 }: {
   kind: DemoKind;
   video?: boolean;
   label: string;
   className?: string;
+  /** Proportions CSS (ex. « 16/10 ») ; 4/5 par défaut. */
+  ratio?: string;
 }) {
   const p = PALETTES[kind];
   return (
     <figure
+      style={ratio ? { aspectRatio: ratio } : undefined}
       className={`relative isolate aspect-[4/5] overflow-hidden rounded-2xl bg-linear-to-br ${p.bg} ${className}`}
     >
       <svg viewBox="0 0 200 250" className="absolute inset-0 size-full" role="img" aria-label={`Illustration : ${label}`}>

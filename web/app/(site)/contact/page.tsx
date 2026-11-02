@@ -1,22 +1,19 @@
 import { MessageCircle } from "lucide-react";
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
 import Link from "next/link";
 import { PageHero, Section } from "@/components/site/blocks";
 import { Button } from "@/components/ui/button";
 import { whatsappLink } from "@/content/site";
 
-export const metadata: Metadata = {
-  title: "Contact",
-  description: "Contactez l’équipe Yamboka par WhatsApp pour toute question sur le service, les crédits ou un contenu.",
-  alternates: { canonical: "/contact" },
-};
+export const metadata: Metadata = pageMetadata({ title: "Contact", description: "Contactez l’équipe Yamboka par WhatsApp pour toute question sur le service, les crédits ou un contenu.", path: "/contact" });
 
 export default function ContactPage() {
   const link = whatsappLink("Bonjour Yamboka, j’ai une question :");
 
   return (
     <>
-      <PageHero
+      <PageHero path="/contact"
         eyebrow="Contact"
         title="Parlons-en"
         lead="Une question sur le service, vos crédits ou une création ? Écrivez-nous."

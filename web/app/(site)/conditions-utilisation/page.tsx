@@ -1,18 +1,15 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
 import Link from "next/link";
 import { PageHero, Prose } from "@/components/site/blocks";
 import { LegalDraftNotice } from "@/components/site/legal-notice";
 
-export const metadata: Metadata = {
-  title: "Conditions d’utilisation",
-  description: "Conditions générales d’utilisation de Yamboka : compte, crédits, créations, responsabilités et suspension.",
-  alternates: { canonical: "/conditions-utilisation" },
-};
+export const metadata: Metadata = pageMetadata({ title: "Conditions d’utilisation", description: "Conditions générales d’utilisation de Yamboka : compte, crédits, créations, responsabilités et suspension.", path: "/conditions-utilisation" });
 
 export default function TermsPage() {
   return (
     <>
-      <PageHero eyebrow="Légal" title="Conditions d’utilisation" lead="Les règles qui s’appliquent à l’utilisation de Yamboka." />
+      <PageHero path="/conditions-utilisation" eyebrow="Légal" title="Conditions d’utilisation" lead="Les règles qui s’appliquent à l’utilisation de Yamboka." />
       <Prose>
         <LegalDraftNotice />
         <h2>Le service</h2>
@@ -31,9 +28,9 @@ export default function TermsPage() {
 
         <h2>Crédits</h2>
         <ul>
-          <li>1 crédit = 25 FCFA (valeur indicative susceptible d’évoluer).</li>
+          <li>Une vidéo de 10 secondes consomme 100 crédits ; le coût exact est affiché avant chaque création et peut évoluer.</li>
           <li>Les crédits ne sont ni remboursables en argent, ni transférables entre comptes.</li>
-          <li>Les crédits achetés expirent 12 mois après l’achat ; les crédits de bienvenue après 30 jours.</li>
+          <li>Les crédits achetés expirent 12 mois après l’achat.</li>
           <li>Les crédits sont réservés au lancement d’une création, débités si elle réussit, restitués si elle échoue.</li>
         </ul>
 

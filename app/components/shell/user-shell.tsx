@@ -1,52 +1,51 @@
-import type { ReactNode } from "react";
 import { Coins } from "lucide-react";
-import { LogoutButton } from "@/components/auth/logout-button";
-import { Logo } from "@/components/logo";
+import Link from "next/link";
 import { QueryProvider } from "@/components/query-provider";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationBell } from "@/components/notifications/notification-bell";
+import { ClapperLoader } from "@/components/studio/clapper";
+import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
 import { requireUser } from "@/lib/auth";
 import { formatFcfa, formatNumber } from "@/lib/format";
-import { UserNav } from "./user-nav";
+import { AppShell } from "./app-shell";
 
 /** Coque de l'espace utilisateur. Lit la session : doit toujours être rendue dans un <Suspense>. */
 export async function UserShell({ children }: { children: ReactNode }) {
   const user = await requireUser();
+  // Un administrateur n'est pas présenté avec l'interface client : son espace est /admin.
+  if (user.role === "ADMIN") redirect("/admin");
   const valueFcfa = user.credits * user.creditValueFcfa;
   return (
-    <>
-      <header className="sticky top-0 z-30 border-b bg-background/90 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-          <Logo />
-          <div className="flex items-center gap-1 sm:gap-2">
-            <p
-              className="flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-sm font-semibold"
-              aria-label={`Solde : ${user.credits} crédits`}
-              title={`≈ ${formatFcfa(valueFcfa)}`}
-            >
-              <Coins className="size-4 text-primary" aria-hidden />
-              {formatNumber(user.credits)}
-              <span className="hidden font-normal text-muted-foreground sm:inline">
-                crédits · ≈ {formatFcfa(valueFcfa)}
-              </span>
-            </p>
-            <span className="hidden text-sm text-muted-foreground md:inline">{user.firstName}</span>
-            <ThemeToggle />
-            <LogoutButton />
-          </div>
-        </div>
-      </header>
-      <UserNav />
-      <main id="contenu" className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
-        <QueryProvider>{children}</QueryProvider>
-      </main>
-    </>
+    <AppShell
+      variant="user"
+      user={{ name: `${user.firstName} ${user.lastName}`.trim(), email: user.email, role: user.role }}
+      headerExtra={
+        <>
+        <QueryProvider><NotificationBell /></QueryProvider>
+        <Link
+          href="/app/credits"
+          className="flex h-10 items-center gap-1.5 rounded-full bg-secondary px-3 text-sm font-semibold outline-none transition-colors hover:bg-secondary/70 focus-visible:ring-3 focus-visible:ring-ring/60 active:scale-95"
+          aria-label={`Solde : ${user.credits} crédits. Ouvrir mes crédits`}
+          title={`≈ ${formatFcfa(valueFcfa)}`}
+        >
+          <Coins className="size-4 text-primary" aria-hidden />
+          {formatNumber(user.credits)}
+          <span className="hidden font-normal text-muted-foreground sm:inline">
+            crédits · ≈ {formatFcfa(valueFcfa)}
+          </span>
+        </Link>
+        </>
+      }
+    >
+      {children}
+    </AppShell>
   );
 }
 
 export function ShellSkeleton() {
   return (
-    <div className="flex flex-1 items-center justify-center" role="status" aria-live="polite">
-      <p className="text-muted-foreground">Chargement de votre espace…</p>
+    <div className="flex min-h-dvh flex-1 items-center justify-center">
+      <ClapperLoader label="Chargement de votre espace…" />
     </div>
   );
 }

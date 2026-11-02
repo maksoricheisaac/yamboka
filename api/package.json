@@ -25,9 +25,15 @@
     "postinstall": "prisma generate",
     "lint:fix": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit",
-    "e2e:serve": "pnpm build && tsx scripts/prepare-e2e.ts && node dist/main.js"
+    "email:test": "tsx scripts/email-test.ts",
+    "storage:test": "tsx scripts/storage-test.ts",
+    "seed:demo-presets": "tsx scripts/seed-demo-presets.ts",
+    "generation:test": "tsx scripts/generation-test.ts",
+    "e2e:serve": "tsc -p tsconfig.build.json --outDir dist-e2e && tsx scripts/prepare-e2e.ts && node dist-e2e/main.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1155.0",
+    "@aws-sdk/s3-request-presigner": "^3.1155.0",
     "@nestjs/bullmq": "^12.0.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^12.0.1",
@@ -46,6 +52,7 @@
     "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
     "nestjs-pino": "^5.3.1",
+    "nodemailer": "^10.2.0",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "pino-http": "^11.0.0",
@@ -63,6 +70,7 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.0.0",
     "dotenv": "^18.0.8",

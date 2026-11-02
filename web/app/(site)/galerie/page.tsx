@@ -1,64 +1,35 @@
 import type { Metadata } from "next";
-import { CtaBand, PageHero, Section, SectionHeading } from "@/components/site/blocks";
-import { DemoKind, DemoVisual } from "@/components/site/demo-visual";
+import { Gallery } from "@/components/gallery/gallery";
+import { CtaBand, PageHero, Section } from "@/components/site/blocks";
+import { getMedia } from "@/lib/media";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Galerie",
+export const metadata: Metadata = pageMetadata({
+  title: "Exemples",
   description:
     "Des idées de créations : danse, publicité de boutique, anniversaire, mode et événements. Illustrations de démonstration de Yamboka.",
-  alternates: { canonical: "/galerie" },
-};
-
-const CATEGORIES: {
-  title: string;
-  text: string;
-  items: { kind: DemoKind; label: string; video: boolean }[];
-}[] = [
-  {
-    title: "Danse et créateurs",
-    text: "Faites danser un personnage sur le mouvement de votre propre vidéo, pour TikTok et les statuts WhatsApp.",
-    items: [
-      { kind: "danse", label: "Danse afro", video: true },
-      { kind: "portrait", label: "Portrait stylisé", video: false },
-    ],
-  },
-  {
-    title: "Commerces et publicité",
-    text: "Une courte pub pour une boutique, un restaurant ou un salon, à partir d’une simple vidéo de téléphone.",
-    items: [
-      { kind: "boutique", label: "Pub de boutique", video: true },
-      { kind: "mode", label: "Mode et vitrine", video: false },
-    ],
-  },
-  {
-    title: "Fêtes et événements",
-    text: "Anniversaires, mariages, concerts, églises, associations : des contenus personnalisés pour inviter et remercier.",
-    items: [
-      { kind: "anniversaire", label: "Anniversaire", video: true },
-      { kind: "evenement", label: "Invitation d’événement", video: false },
-    ],
-  },
-];
+  path: "/galerie",
+});
 
 export default function GalleryPage() {
+  const { gallery, galleryComplete } = getMedia();
   return (
     <>
       <PageHero
-        eyebrow="Galerie"
-        title="Des idées de créations pour vous inspirer"
-        lead="Ces visuels sont des illustrations de démonstration, pas des résultats générés. Les vraies créations seront publiées avec l’accord de leurs auteurs."
+        path="/galerie"
+        eyebrow="Exemples"
+        title="À quoi peuvent ressembler vos créations"
+        lead={
+          galleryComplete
+            ? "Touchez un exemple pour l’agrandir. Ces exemples ont été générés avec Yamboka."
+            : "Touchez un exemple pour l’agrandir. Les visuels étiquetés « Démo » sont des illustrations ; les vraies créations seront publiées avec l’accord de leurs auteurs."
+        }
       />
-      {CATEGORIES.map((cat, i) => (
-        <Section key={cat.title} tone={i % 2 ? "muted" : "default"} labelledBy={`cat-${i}`}>
-          <SectionHeading id={`cat-${i}`} title={cat.title} lead={cat.text} />
-          <div className="grid grid-cols-2 gap-4 sm:max-w-xl">
-            {cat.items.map((item) => (
-              <DemoVisual key={item.label} kind={item.kind} video={item.video} label={item.label} />
-            ))}
-          </div>
-        </Section>
-      ))}
-      <CtaBand />
+      <Section labelledBy="gallery-title">
+        <h2 id="gallery-title" className="sr-only">Galerie d’exemples</h2>
+        <Gallery items={gallery} />
+      </Section>
+      <CtaBand title="Une idée en tête ?" lead="Créez un compte : le coût de chaque création s’affiche avant de confirmer." />
     </>
   );
 }
