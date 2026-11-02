@@ -27,7 +27,7 @@ describe('Notifications, préférences et e-mails (e2e)', () => {
     creations = app.get(CreationsService);
     outbox = app.get(ConsoleEmailProvider);
     // Un style d'affiche publié, pour pouvoir lancer des créations.
-    const product = await prisma.generationProduct.findUniqueOrThrow({ where: { code: 'IMAGE_SOUL2' } });
+    const product = await prisma.generationProduct.findUniqueOrThrow({ where: { code: 'IMAGE_EDIT_GROK' } });
     const exists = await prisma.preset.findFirst({ where: { name: 'Affiche notifications', visible: true } });
     if (!exists) {
       await prisma.preset.create({
@@ -117,7 +117,7 @@ describe('Notifications, préférences et e-mails (e2e)', () => {
   describe('E-mails des événements', () => {
     it('création terminée : notification interne + e-mail avec lien direct, une seule fois', async () => {
       const { client, userId, email } = await verifiedClient(app);
-      await addLot(app, userId, 10);
+      await addLot(app, userId, 40);
       const { creation } = (await create(client, 'Affiche test').expect(201)).body;
       expect(creation.status).toBe('COMPLETED');
 
@@ -137,7 +137,7 @@ describe('Notifications, préférences et e-mails (e2e)', () => {
 
     it('préférence désactivée : la création se termine, la notification existe, aucun e-mail', async () => {
       const { client, userId, email } = await verifiedClient(app);
-      await addLot(app, userId, 10);
+      await addLot(app, userId, 40);
       await client.patch('/v1/preferences', { emailPrefs: { generationReady: false } }).expect(200);
       const { creation } = (await create(client, 'Affiche test').expect(201)).body;
       expect(creation.status).toBe('COMPLETED');
@@ -150,7 +150,7 @@ describe('Notifications, préférences et e-mails (e2e)', () => {
 
     it('échec : notifications d’échec et de remboursement, e-mails selon chaque préférence', async () => {
       const { client, userId, email } = await verifiedClient(app);
-      await addLot(app, userId, 10);
+      await addLot(app, userId, 40);
       await client.patch('/v1/preferences', { emailPrefs: { creditsRefunded: false } }).expect(200);
       const { creation } = (await create(client, MOCK_FAIL_MARKER).expect(201)).body;
       expect(creation.status).toBe('FAILED');
@@ -168,7 +168,7 @@ describe('Notifications, préférences et e-mails (e2e)', () => {
 
     it('un e-mail en panne ne fait pas échouer la création, et il est repris ensuite', async () => {
       const { client, userId, email } = await verifiedClient(app);
-      await addLot(app, userId, 10);
+      await addLot(app, userId, 40);
       const spy = jest.spyOn(app.get(EmailService), 'sendNotificationEmail').mockRejectedValueOnce(new Error('SMTP indisponible'));
       const { creation } = (await create(client, 'Affiche test').expect(201)).body;
       spy.mockRestore();

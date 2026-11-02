@@ -1,3 +1,4 @@
+import { modelSpecOf } from '../generation/models';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { PackView, ProductView, QuoteView } from '@yamboka/shared';
 import { CreditsService } from '../credits/credits.service';
@@ -49,7 +50,14 @@ export class CatalogService {
       }),
       this.prisma.generationProduct.findMany({ where: { active: true } }),
     ]);
-    const image = products.find((p) => p.billingUnit === 'IMAGE');
+    // Équivalent « images » : le produit qui fabrique réellement une affiche à partir d'une photo (pas un modèle texte → image
+    // qui ignorerait la photo), le plus ancien en cas d'égalité : le résultat ne dépend pas de l'ordre de lecture en base.
+    const image = products
+      .filter(
+        (p) =>
+          p.billingUnit === 'IMAGE' && modelSpecOf(p.providerModel)?.usesPhoto,
+      )
+      .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())[0];
     const perSecond = await this.referenceCreditsPerSecond(products);
 
     return packs.map((p) => {

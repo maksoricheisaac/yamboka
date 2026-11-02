@@ -1,6 +1,6 @@
 import type { CreationFormat } from "@yamboka/shared";
 import { ImageIcon } from "lucide-react";
-import { ratioOf } from "@/lib/creations";
+import { previewWidthClass, ratioOf } from "@/lib/creations";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,9 +20,8 @@ export function CreationPreview({
   children?: React.ReactNode;
   className?: string;
 }) {
-  const portrait = format === "9:16";
   return (
-    <figure className={cn("mx-auto w-full", portrait ? "max-w-[8rem] sm:max-w-[13rem] lg:max-w-[15rem]" : format === "1:1" ? "max-w-[10rem] sm:max-w-[16rem] lg:max-w-[18rem]" : "max-w-[15rem] sm:max-w-xs", className)}>
+    <figure className={cn("mx-auto w-full", previewWidthClass(format), className)}>
       <div
         className={cn(
           "relative isolate overflow-hidden rounded-2xl transition-[aspect-ratio] duration-300 motion-reduce:transition-none",

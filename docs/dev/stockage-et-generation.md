@@ -23,7 +23,7 @@ Pour tester R2 sans modifier le `.env` : `STORAGE_DRIVER=r2 pnpm --filter api st
 
 | `GENERATION_PROVIDER` | Effet |
 |---|---|
-| `mock` (défaut) | simulée, aucun appel réseau, aucun coût |
+| `mock` (défaut) | simulée, aucun appel réseau, aucun coût. **Aucune IA n'est utilisée** : l'image rendue est une image de substitution marquée « SIMULATION », jamais la photo de l'utilisateur ; l'interface l'affiche clairement. **À ne jamais laisser actif en production** : sans `GENERATION_PROVIDER=higgsfield` dans le `.env`, aucune vraie création n'est produite |
 | `higgsfield` | appels **réels et payants** à l'API Higgsfield ; exige `HF_API_KEY_ID` et `HF_API_KEY_SECRET` |
 
 Authentification : `Authorization: Key <identifiant>:<secret>`, uniquement depuis le serveur. La console Higgsfield
@@ -61,6 +61,45 @@ Suivi : tâche BullMQ `advance-generations` toutes les 10 s (sans Redis : à cha
 
 - Mock : `MOCK_GENERATION_SECONDS` règle la durée ; un texte contenant `__echec__` fait échouer la création simulée.
 - Styles de démonstration (développement seulement) : `pnpm --filter api seed:demo-presets`.
-- **Non vérifié avec le fournisseur réel** : seuls les paramètres du transfert de mouvement sont documentés ; ceux des
-  styles affiche et pub (`prompt`, `aspect_ratio`) sont à confirmer avant `GENERATION_PROVIDER=higgsfield`.
+- Styles de démonstration : ils pointent vers le produit `IMAGE_EDIT_GROK` (voir ci-dessous).
 - Pas encore faits : « Affiche à partir d'une description », « Animer cette affiche », purge automatique des fichiers expirés.
+
+## Modèles, paramètres et formats (vérifiés le 1er novembre 2026)
+
+Registre : `api/src/generation/models.ts`. **Higgsfield accepte sans erreur les champs qu'un modèle ne connaît pas** :
+Soul v2 a accepté `image_urls` puis ignoré la photo. Une requête « acceptée » ne prouve donc rien ; le registre dit quoi envoyer
+à chaque modèle, et un modèle absent du registre n'est jamais appelé (la création est refusée avant tout débit).
+
+| Produit | Modèle | Photo | Paramètres envoyés | Coût fournisseur |
+|---|---|---|---|---|
+| `IMAGE_EDIT_GROK` (affiches) | `xai/grok-imagine-image-2.0` | utilisée | `prompt`, `image_urls`, `aspect_ratio` | 0,07 $ / image (estimation officielle) → 17 crédits |
+| `IMAGE_SOUL2` | `higgsfield-ai/soul/v2/standard` | **ignorée** (texte → image) | `prompt`, `aspect_ratio` | 0,004 $ / image — non utilisable pour une affiche à partir d'une photo |
+| `VIDEO_LIGHT_480` (tendances) | `higgsfield/genjutsu-light/motion-transfer/v1.0` | utilisée | `video_url`, `image_urls`, `resolution` | 0,05 $ par seconde **facturée** = sortie + vidéos de référence |
+
+Pourquoi Grok pour les affiches : essais réels avec la même photo et le même texte. Soul ignore la photo ; Qwen Image 3 Edit et
+Marketing Studio l'utilisent mais **inventent du texte non demandé** (« Collection Wax », « Affirmez votre style »…) ; Grok n'écrit que
+le texte demandé. Qualité et résolution : valeurs par défaut du fournisseur.
+
+**Formats proposés** : `1:1`, `4:3`, `3:2`, `3:4`, `2:3`, `16:9`, `9:16` — tous acceptés nativement par Grok et Soul (vérifié par
+l'estimation gratuite `POST /estimate/{modèle}`, qui valide aussi les paramètres). `4:5` et `21:9` sont refusés par ces modèles et ne sont
+pas proposés. Le format est demandé au modèle, jamais obtenu en recadrant. Chaque résultat est contrôlé : des proportions qui s'écartent de
+plus de 3 % du format demandé font échouer la création (crédits restitués). Écart constaté : Marketing Studio rend 880 × 1168 pour du 3:4.
+
+**Contrôle des résultats** (`api/src/creations/output-check.ts`) : le type est lu dans les octets, pas dans l'en-tête HTTP ; une image doit
+avoir des dimensions lisibles et le bon format ; une vidéo doit être un vrai MP4 (`ftyp` + `moov`). Sinon : échec, crédits restitués, message
+explicite (`MODERATION`, `TIMEOUT`, `NO_RESULT`, `BAD_RESULT`, `FORMAT`, `UNSUPPORTED`, `PROVIDER`, `CANCELED`). Le détail technique du
+fournisseur n'est jamais montré à l'utilisateur.
+
+**Sans style choisi**, aucun style n'est attaché (avant : le premier style publié du type, dont le nom devenait le titre et le texte par défaut
+était ajouté à la description). Un style rattaché à un modèle qui ne sait pas le réaliser n'est ni proposé ni accepté.
+
+**Facturation** : réservation à la création, capture au succès, restitution à l'échec — exclusives, jamais deux fois. Un délai dépassé après
+une capture déjà faite ne rembourse pas et ne bloque pas la création.
+
+### Outils d'essai (payants, `--yes` obligatoire)
+
+```bash
+# Prix annoncé par le fournisseur, SANS générer (gratuit) : voir api/src/generation/higgsfield-generation.provider.ts (estimate)
+# Essai réel d'un modèle avec une photo (et une vidéo) :
+GENERATION_PROVIDER=higgsfield pnpm --filter api exec tsx scripts/generation-probe.ts --yes   --model xai/grok-imagine-image-2.0 --image photo.webp --out resultat   --input '{"prompt":"…","image_urls":["@IMAGE@"],"aspect_ratio":"3:4"}'
+```

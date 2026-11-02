@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, apiGet, apiUpload } from "@/lib/api-client";
-import { FORMATS, KINDS, KIND_ORDER, PROMPT_HINTS, credits, isRunning } from "@/lib/creations";
+import { FORMATS, KINDS, KIND_ORDER, PROMPT_HINTS, credits, isRunning, ratioValue } from "@/lib/creations";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CreationMedia } from "./creation-media";
@@ -35,8 +35,11 @@ type FieldErrors = Partial<Record<"photo" | "style" | "prompt" | "consent", stri
 
 /** Un pictogramme à la proportion exacte du format : on comprend sans lire. */
 function RatioGlyph({ format }: { format: CreationFormat }) {
-  const size = format === "9:16" ? "h-6 w-[0.8rem]" : format === "1:1" ? "size-5" : "h-3.5 w-6";
-  return <span aria-hidden className={cn("block rounded-[3px] border-2 border-current", size)} />;
+  const r = ratioValue(format);
+  const box = 28; // le grand côté du pictogramme, en pixels
+  const width = r >= 1 ? box : Math.round(box * r);
+  const height = r >= 1 ? Math.round(box / r) : box;
+  return <span aria-hidden className="block rounded-[3px] border-2 border-current" style={{ width, height }} />;
 }
 
 export function Studio({ styles, balance, emailVerified, initialKind, initialStyleId, initialPrompt }: StudioProps) {
@@ -237,18 +240,23 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
         {!fun && (
           <section className="space-y-2.5" aria-labelledby="format-title">
             <h2 id="format-title" className="font-heading text-base font-bold">Format</h2>
-            <div role="radiogroup" aria-labelledby="format-title" className="grid grid-cols-3 gap-2">
+            <div role="radiogroup" aria-labelledby="format-title" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
               {FORMATS.map((f) => (
                 <label key={f.value} className="cursor-pointer">
                   <input type="radio" name="format" value={f.value} checked={format === f.value} onChange={() => setFormat(f.value)} disabled={tracking} className="peer sr-only" />
                   <span className="flex h-full min-h-20 flex-col items-center justify-center gap-1.5 rounded-xl border bg-card px-2 py-2.5 text-muted-foreground transition-colors peer-checked:border-primary peer-checked:bg-primary/8 peer-checked:text-primary peer-checked:ring-2 peer-checked:ring-primary/30 peer-focus-visible:ring-3 peer-focus-visible:ring-ring/70 peer-disabled:opacity-60">
-                    <RatioGlyph format={f.value} />
+                    <span className="grid h-8 place-items-center">
+                      <RatioGlyph format={f.value} />
+                    </span>
                     <span className="text-sm font-semibold text-foreground">{f.label}</span>
                     <span className="text-[0.7rem] leading-none">{f.value}</span>
                   </span>
                 </label>
               ))}
             </div>
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {FORMATS.find((f) => f.value === format)?.where}
+            </p>
           </section>
         )}
 

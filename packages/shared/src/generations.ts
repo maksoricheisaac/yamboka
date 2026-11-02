@@ -11,7 +11,12 @@ import { z } from 'zod';
 export const CREATION_KINDS = ['affiche', 'pub', 'fun'] as const;
 export type CreationKind = (typeof CREATION_KINDS)[number];
 
-export const CREATION_FORMATS = ['9:16', '1:1', '16:9'] as const;
+/**
+ * Formats d'image proposés. Tous sont acceptés nativement par les modèles utilisés (vérifié auprès de l'API
+ * Higgsfield) : le format est demandé au modèle, jamais obtenu en recadrant après coup. Le 4:5 et le 21:9 sont
+ * refusés par ces modèles : ils ne sont pas proposés.
+ */
+export const CREATION_FORMATS = ['1:1', '4:3', '3:2', '3:4', '2:3', '16:9', '9:16'] as const;
 export type CreationFormat = (typeof CREATION_FORMATS)[number];
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -48,7 +53,8 @@ export interface CreationOptions {
 export interface CreationView {
   id: string;
   kind: CreationKind;
-  styleName: string;
+  /** Style choisi par l'utilisateur, ou null s'il n'en a pas choisi (aucun nom n'est inventé). */
+  styleName: string | null;
   status: CreationStatus;
   /** Style (preset) utilisé, pour relancer une création identique. */
   styleId: string | null;
@@ -65,6 +71,8 @@ export interface CreationView {
   expiresAt: string | null;
   /** Le résultat est une vidéo (sinon une image). */
   isVideo: boolean;
+  /** Vrai quand la création vient du fournisseur SIMULÉ : aucune IA n'a été utilisée. */
+  simulated: boolean;
   /** URLs de l'API (privées : exigent la session du propriétaire). */
   thumbnailUrl: string | null;
   fileUrl: string | null;

@@ -16,7 +16,7 @@ const STORAGE_DIR = process.env.LOCAL_STORAGE_DIR ?? './storage';
 const THUMB = join(__dirname, '..', '..', 'web', 'public', 'demos', 'danse-apres.webp');
 
 const STYLES = [
-  { name: 'Affiche e2e', category: 'affiche', type: 'LOOK', product: 'IMAGE_SOUL2' },
+  { name: 'Affiche e2e', category: 'affiche', type: 'LOOK', product: 'IMAGE_EDIT_GROK' },
   { name: 'Pub e2e', category: 'pub', type: 'LOOK', product: 'VIDEO_LIGHT_480' },
   { name: 'Tendance e2e', category: 'danse', type: 'MOTION', product: 'VIDEO_LIGHT_480' },
 ] as const;

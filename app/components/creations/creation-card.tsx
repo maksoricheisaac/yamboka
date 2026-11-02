@@ -49,7 +49,7 @@ export function CreationCard({ creation, priority = false }: { creation: Creatio
         <span className="absolute right-2 top-2 rounded-full bg-foreground/70 px-1.5 py-0.5 text-[0.65rem] font-semibold text-background">{creation.options.format}</span>
       </div>
       <div className="space-y-1.5 p-3">
-        <p className="truncate text-sm font-semibold">{creation.styleName}</p>
+        <p className="truncate text-sm font-semibold">{creation.styleName ?? KINDS[creation.kind].label}</p>
         <StatusPill creation={creation} />
       </div>
     </Link>

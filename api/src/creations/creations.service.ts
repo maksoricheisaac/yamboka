@@ -29,6 +29,8 @@ import {
   GenerationRejectedError,
   GenerationUnavailableError,
 } from '../generation/generation-provider';
+import { mockImagePng } from '../generation/mock-image';
+import { modelSpecOf } from '../generation/models';
 import type {
   GenerationProduct,
   MediaFile,
@@ -40,6 +42,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { StorageDriver } from '../storage/storage-driver';
 import { sniffImage } from './image-sniff';
+import {
+  checkOutput,
+  OutputRejectedError,
+  type FailureCode,
+} from './output-check';
 
 export interface UploadedImage {
   buffer: Buffer;
@@ -55,6 +62,25 @@ const GENERATION_TIMEOUT_MS = 60 * 60_000;
 const MAX_OUTPUT_BYTES = 200 * 1024 * 1024;
 const FAILURE_MESSAGE =
   'La création n’a pas abouti. Vos crédits ont été restitués.';
+
+/** Message montré à l'utilisateur selon la raison de l'échec : jamais le texte brut du fournisseur. */
+const FAILURE_MESSAGES: Record<FailureCode, string> = {
+  MODERATION:
+    'Votre photo ou votre description a été refusée par le contrôle de contenu. Vos crédits ont été restitués.',
+  TIMEOUT:
+    'La création a pris trop de temps. Vos crédits ont été restitués : vous pouvez réessayer.',
+  NO_RESULT:
+    'Le service n’a pas fourni de résultat. Vos crédits ont été restitués : vous pouvez réessayer.',
+  BAD_RESULT:
+    'Le résultat reçu n’était pas exploitable. Vos crédits ont été restitués : vous pouvez réessayer.',
+  FORMAT:
+    'Le résultat ne respectait pas le format demandé. Vos crédits ont été restitués : vous pouvez réessayer.',
+  UNSUPPORTED:
+    'Ce type de création n’est pas disponible pour le moment. Vos crédits ont été restitués.',
+  PROVIDER:
+    'Le service de création n’a pas pu terminer votre demande. Vos crédits ont été restitués : vous pouvez réessayer.',
+  CANCELED: 'La création a été annulée. Vos crédits ont été restitués.',
+};
 
 type GenerationRow = Prisma.GenerationGetPayload<{
   include: {
@@ -141,11 +167,14 @@ export class CreationsService {
       where: { visible: true, product: { active: true } },
       include: {
         product: true,
-        media: { where: { role: 'PRESET_THUMBNAIL' } },
+        media: {
+          where: { role: { in: ['PRESET_THUMBNAIL', 'PRESET_EXAMPLE_VIDEO'] } },
+        },
       },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
     return presets
+      .filter((p) => this.canProduce(p, p.media))
       .map((p): StyleView => {
         const quote = quoteOf(p.product);
         return {
@@ -157,7 +186,9 @@ export class CreationsService {
           kind: kindOf(p, p.product),
           credits: quote.credits,
           seconds: quote.billableSeconds,
-          thumbnailUrl: p.media.some((m) => !m.purgedAt)
+          thumbnailUrl: p.media.some(
+            (m) => m.role === 'PRESET_THUMBNAIL' && !m.purgedAt,
+          )
             ? `/v1/creations/styles/${p.id}/thumbnail`
             : null,
         };
@@ -212,13 +243,16 @@ export class CreationsService {
       });
     }
 
-    const preset = await this.resolvePreset(input);
-    const quote = quoteOf(preset.product);
+    const { preset, product } = await this.resolveTarget(input);
+    this.assertCanProduce(product, preset, input.format);
+    const quote = quoteOf(product);
     if (input.kind !== 'fun' && !input.prompt) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
         message: 'Données invalides.',
-        details: [{ field: 'prompt', message: 'Décrivez ce que vous souhaitez.' }],
+        details: [
+          { field: 'prompt', message: 'Décrivez ce que vous souhaitez.' },
+        ],
       });
     }
 
@@ -251,8 +285,8 @@ export class CreationsService {
           data: {
             id: generationId,
             userId,
-            productId: preset.productId,
-            presetId: preset.id,
+            productId: product.id,
+            presetId: preset?.id ?? null,
             creditsCost: quote.credits,
             billableSeconds: quote.billableSeconds,
             prompt: this.composePrompt(preset, options),
@@ -292,35 +326,115 @@ export class CreationsService {
   }
 
   /**
-   * Style utilisé : celui demandé, ou, pour une affiche ou une pub, le premier style publié du type (le coût en
-   * dépend). Une tendance (fun) exige un style explicite.
+   * Style et produit utilisés. Un style n'est attaché que s'il a été CHOISI : l'inventer (le premier style publié)
+   * ajoutait son nom comme titre et son texte par défaut à la description, sans que l'utilisateur l'ait demandé.
+   * Sans style, le produit est choisi d'après ce que son modèle sait faire (affiche : un modèle qui utilise la photo).
    */
-  private async resolvePreset(input: CreateCreationInput) {
+  private async resolveTarget(input: CreateCreationInput): Promise<{
+    preset: Awaited<ReturnType<CreationsService['loadStyle']>> | null;
+    product: GenerationProduct;
+  }> {
     const bad = (message: string) =>
       new BadRequestException({ code: 'STYLE_UNAVAILABLE', message });
-    const candidates = await this.prisma.preset.findMany({
-      where: {
-        visible: true,
-        product: { active: true },
-        ...(input.styleId ? { id: input.styleId } : {}),
-      },
-      include: { product: true },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-    });
-    const matching = candidates.filter(
-      (p) => kindOf(p, p.product) === input.kind,
-    );
     if (input.styleId) {
-      if (!matching[0]) throw bad('Ce style n’est pas disponible.');
-      return matching[0];
+      const preset = await this.loadStyle(input.styleId);
+      if (!preset || kindOf(preset, preset.product) !== input.kind) {
+        throw bad('Ce style n’est pas disponible.');
+      }
+      return { preset, product: preset.product };
     }
     if (input.kind === 'fun') throw bad('Choisissez une tendance.');
-    if (!matching[0]) throw bad('Ce type de création n’est pas disponible pour le moment.');
-    return matching[0];
+    const products = await this.prisma.generationProduct.findMany({
+      where: {
+        active: true,
+        billingUnit: input.kind === 'affiche' ? 'IMAGE' : 'SECOND',
+      },
+      orderBy: [{ createdAt: 'asc' }],
+    });
+    const product = products.find((p) => {
+      const spec = modelSpecOf(p.providerModel);
+      // Une vidéo « pub » sans style n'a pas de vidéo de référence : seul le simulé peut la fabriquer.
+      return input.kind === 'affiche'
+        ? !!spec?.usesPhoto
+        : this.provider.name === 'mock';
+    });
+    if (!product) {
+      throw bad('Ce type de création n’est pas disponible pour le moment.');
+    }
+    return { preset: null, product };
   }
 
-  private composePrompt(preset: Preset, o: CreationOptions): string | null {
-    const parts = [preset.defaultPrompt, o.prompt].filter(Boolean);
+  private loadStyle(id: string) {
+    return this.prisma.preset.findFirst({
+      where: { id, visible: true, product: { active: true } },
+      include: { product: true, media: true },
+    });
+  }
+
+  /** Un style est proposé seulement si son modèle sait le réaliser (sinon la création échouerait après débit). */
+  private canProduce(
+    preset: Pick<Preset, 'type'> & { product: GenerationProduct },
+    media: Pick<MediaFile, 'role' | 'purgedAt'>[],
+  ): boolean {
+    try {
+      this.assertCanProduce(preset.product, preset, undefined, media);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Refuse AVANT tout débit ce que le modèle ne peut pas faire : modèle inconnu, modèle qui ignorerait la photo,
+   * format non pris en charge, style vidéo sans vidéo de référence. Le simulé reste indulgent sur les vidéos
+   * de référence manquantes (aucun coût, aucun appel réel).
+   */
+  private assertCanProduce(
+    product: GenerationProduct,
+    preset:
+      | (Pick<Preset, 'type'> & {
+          media?: Pick<MediaFile, 'role' | 'purgedAt'>[];
+        })
+      | null,
+    format?: string,
+    media?: Pick<MediaFile, 'role' | 'purgedAt'>[],
+  ): void {
+    const unavailable = (message: string) =>
+      new BadRequestException({ code: 'STYLE_UNAVAILABLE', message });
+    const spec = modelSpecOf(product.providerModel);
+    if (!spec) {
+      if (this.provider.name === 'mock') return;
+      throw unavailable(
+        'Ce type de création n’est pas disponible pour le moment.',
+      );
+    }
+    if (!spec.usesPhoto) {
+      throw unavailable(
+        'Ce style ne peut pas partir d’une photo : il n’est pas disponible pour le moment.',
+      );
+    }
+    if (spec.needsReferenceVideo && this.provider.name !== 'mock') {
+      const hasVideo = (media ?? preset?.media ?? []).some(
+        (m) => m.role === 'PRESET_EXAMPLE_VIDEO' && !m.purgedAt,
+      );
+      if (preset?.type !== 'MOTION' || !hasVideo) {
+        throw unavailable('Ce style n’est pas disponible pour le moment.');
+      }
+    }
+    if (
+      format &&
+      spec.formats &&
+      !(spec.formats as readonly string[]).includes(format)
+    ) {
+      throw unavailable('Ce format n’est pas disponible pour ce style.');
+    }
+  }
+
+  private composePrompt(
+    preset: Preset | null,
+    o: CreationOptions,
+  ): string | null {
+    const parts = [preset?.defaultPrompt, o.prompt].filter(Boolean);
     return parts.length ? parts.join('. ') : null;
   }
 
@@ -429,18 +543,21 @@ export class CreationsService {
     return {
       id: g.id,
       kind,
-      styleName: g.preset?.name ?? 'Création',
+      styleName: g.preset?.name ?? null,
       status: statusOf(g.status),
       styleId: g.presetId,
       prompt: promptOf(options),
       credits: g.creditsCost,
       refunded: failed,
-      errorMessage: failed ? FAILURE_MESSAGE : null,
+      errorMessage: failed
+        ? (FAILURE_MESSAGES[g.failureCode as FailureCode] ?? FAILURE_MESSAGE)
+        : null,
       options,
       createdAt: g.createdAt.toISOString(),
       completedAt: g.completedAt?.toISOString() ?? null,
       expiresAt: g.outputExpiresAt?.toISOString() ?? null,
       isVideo,
+      simulated: (g.providerRequestId ?? '').startsWith('MOCK-'),
       thumbnailUrl: posterOk ? `${base}/file?variant=thumb` : null,
       fileUrl: ready ? `${base}/file` : null,
       downloadUrl: ready ? `${base}/file?download=1` : null,
@@ -577,11 +694,12 @@ export class CreationsService {
     if (Date.now() - g.createdAt.getTime() > GENERATION_TIMEOUT_MS) {
       if (g.providerStatusUrl) {
         await this.provider
-          .cancel(g.providerStatusUrl.replace('status', 'cancel'))
+          .cancel(g.providerStatusUrl.replace(/status(?=\?|$)/, 'cancel'))
           .catch(() => undefined);
       }
-      await this.fail(g, 'Délai dépassé.');
-      return;
+      // Si les crédits ont déjà été consommés (résultat obtenu juste avant), fail() ne rembourse pas : on laisse
+      // alors le suivi normal terminer la création au lieu de la bloquer.
+      if (await this.fail(g, 'Délai dépassé.', 'TIMEOUT')) return;
     }
 
     try {
@@ -604,7 +722,11 @@ export class CreationsService {
         e instanceof GenerationRejectedError ||
         e instanceof GenerationAuthError
       ) {
-        await this.fail(g as GenerationRow, e.message);
+        await this.fail(
+          g as GenerationRow,
+          e.message,
+          e instanceof OutputRejectedError ? e.failureCode : 'PROVIDER',
+        );
         return;
       }
       throw e;
@@ -613,35 +735,64 @@ export class CreationsService {
 
   private async submit(g: GenerationRow): Promise<void> {
     const inputMedia = g.media.find((m) => m.role === 'INPUT_IMAGE');
-    if (!inputMedia) return this.fail(g, 'Photo introuvable.');
+    if (!inputMedia)
+      return void (await this.fail(g, 'Photo introuvable.', 'BAD_RESULT'));
     const options = (g.options as unknown as CreationOptions | null) ?? {
       format: '9:16',
     };
+    const spec = modelSpecOf(g.product.providerModel);
+    const mock = this.provider.name === 'mock';
+    if (!spec && !mock) {
+      return void (await this.fail(
+        g,
+        `Modèle non géré : ${g.product.providerModel}`,
+        'UNSUPPORTED',
+      ));
+    }
+    // Un modèle qui n'utilise pas la photo ne doit jamais la recevoir « pour faire semblant » : elle serait ignorée.
+    if (spec && !spec.usesPhoto) {
+      return void (await this.fail(
+        g,
+        `Le modèle ${g.product.providerModel} n’utilise pas la photo`,
+        'UNSUPPORTED',
+      ));
+    }
     const imageUrl = await this.provider.uploadInput(
       await this.storage.get(inputMedia.key),
       inputMedia.mimeType,
     );
 
-    // Paramètres : seul le transfert de mouvement (genjutsu) est documenté dans ce dépôt ; les autres styles
-    // envoient image + texte + format, à confirmer avec la documentation du modèle avant tout usage réel.
-    const input: Record<string, unknown> = { image_urls: [imageUrl] };
-    if (g.product.resolution) input.resolution = g.product.resolution;
-    if (g.preset?.type === 'MOTION') {
-      const example = g.preset.media.find(
+    let videoUrl: string | undefined;
+    if (spec?.needsReferenceVideo || g.preset?.type === 'MOTION') {
+      const example = g.preset?.media.find(
         (m) => m.role === 'PRESET_EXAMPLE_VIDEO' && !m.purgedAt,
       );
       if (example) {
-        input.video_url = await this.provider.uploadInput(
+        videoUrl = await this.provider.uploadInput(
           await this.storage.get(example.key),
           example.mimeType,
         );
-      } else if (this.provider.name !== 'mock') {
-        return this.fail(g, 'Ce style n’a pas de vidéo de référence.');
+      } else if (!mock) {
+        return void (await this.fail(
+          g,
+          'Ce style n’a pas de vidéo de référence.',
+          'UNSUPPORTED',
+        ));
       }
-    } else {
-      input.prompt = g.prompt ?? '';
-      input.aspect_ratio = options.format;
     }
+
+    // Paramètres exacts du modèle (registre vérifié auprès de l'API). Le simulé n'en a pas besoin.
+    const built = spec
+      ? spec.build({
+          prompt: g.prompt ?? '',
+          imageUrl,
+          videoUrl,
+          format: options.format,
+          resolution: g.product.resolution,
+        })
+      : {};
+    // Seul le simulé lit le texte (marqueur d'échec de test) : un vrai modèle ne reçoit que ses paramètres documentés.
+    const input = mock ? { ...built, prompt: g.prompt ?? '' } : built;
 
     const result = await this.provider.submit({
       model: g.product.providerModel,
@@ -669,7 +820,15 @@ export class CreationsService {
       result.status === 'rejected' ||
       result.status === 'canceled'
     ) {
-      await this.fail(g, result.error ?? result.status);
+      await this.fail(
+        g,
+        result.error ?? result.status,
+        result.status === 'rejected'
+          ? 'MODERATION'
+          : result.status === 'canceled'
+            ? 'CANCELED'
+            : 'PROVIDER',
+      );
     } else if (result.status === 'processing' && g.status === 'SUBMITTED') {
       await this.prisma.generation.updateMany({
         where: { id: g.id, status: 'SUBMITTED' },
@@ -679,17 +838,21 @@ export class CreationsService {
   }
 
   private async complete(g: GenerationRow, outputUrl?: string): Promise<void> {
-    if (!outputUrl) return this.fail(g, 'Résultat manquant.');
+    if (!outputUrl) {
+      await this.fail(g, 'Terminé sans fichier.', 'NO_RESULT');
+      return;
+    }
     const isVideo = g.product.billingUnit === 'SECOND';
-    const { body, mime } = await this.fetchOutput(g, outputUrl, isVideo);
-    const ext =
-      mime === 'video/mp4'
-        ? 'mp4'
-        : mime === 'image/png'
-          ? 'png'
-          : mime === 'image/webp'
-            ? 'webp'
-            : 'jpg';
+    const options = (g.options as unknown as CreationOptions | null) ?? {
+      format: '9:16',
+    };
+    const body = await this.fetchOutput(g, outputUrl, isVideo, options.format);
+    // Le fichier est contrôlé AVANT toute capture de crédits : un résultat vide, illisible ou au mauvais format
+    // lève OutputRejectedError, ce qui fait échouer la création et restitue les crédits.
+    const { mime, ext } = checkOutput(body, {
+      isVideo,
+      format: isVideo ? undefined : options.format,
+    });
     const key = `outputs/${g.userId}/${g.id}.${ext}`;
     await this.storage.put(key, body, mime);
 
@@ -729,7 +892,9 @@ export class CreationsService {
         userId: g.userId,
         type: 'GENERATION_READY',
         title: 'Votre création est prête',
-        body: `« ${g.preset?.name ?? 'Création'} » est prête dans Mes créations.`,
+        body: g.preset
+          ? `« ${g.preset.name} » est prête dans Mes créations.`
+          : 'Votre création est prête dans Mes créations.',
         link: `/app/creations/${g.id}`,
         dedupKey: `gen-ready:${g.id}`,
       });
@@ -741,53 +906,66 @@ export class CreationsService {
     else await this.notifications.dispatchEmail(readyNoteId);
   }
 
+  /** Télécharge le résultat. Le simulé fabrique une image de substitution : jamais la photo de l'utilisateur. */
   private async fetchOutput(
     g: GenerationRow,
     url: string,
     isVideo: boolean,
-  ): Promise<{ body: Buffer; mime: string }> {
+    format: string,
+  ): Promise<Buffer> {
     if (url.startsWith('mock://')) {
-      if (isVideo) {
-        return {
-          body: await readFile(join(process.cwd(), 'assets', 'mock-output.mp4')),
-          mime: 'video/mp4',
-        };
-      }
-      const input = g.media.find((m) => m.role === 'INPUT_IMAGE');
-      if (!input) throw new GenerationRejectedError('Photo introuvable.');
-      return { body: await this.storage.get(input.key), mime: input.mimeType };
+      return isVideo
+        ? await readFile(join(process.cwd(), 'assets', 'mock-output.mp4'))
+        : mockImagePng(format);
     }
     if (!url.startsWith('https://')) {
-      throw new GenerationRejectedError('Adresse de résultat refusée.');
+      throw new OutputRejectedError(
+        'BAD_RESULT',
+        'Adresse de résultat refusée.',
+      );
     }
     let res: Response;
     try {
-      res = await fetch(url);
+      res = await fetch(url, { signal: AbortSignal.timeout(120_000) });
     } catch (e) {
       throw new GenerationUnavailableError(
         `Téléchargement impossible : ${String(e)}`,
       );
     }
     if (!res.ok) {
-      throw new GenerationUnavailableError(`Téléchargement : HTTP ${res.status}`);
+      throw new GenerationUnavailableError(
+        `Téléchargement : HTTP ${res.status}`,
+      );
     }
     const body = Buffer.from(await res.arrayBuffer());
     if (body.length > MAX_OUTPUT_BYTES) {
-      throw new GenerationRejectedError('Résultat trop volumineux.');
+      throw new OutputRejectedError('BAD_RESULT', 'Résultat trop volumineux.');
     }
-    const mime = (res.headers.get('content-type') ?? '').split(';')[0].trim();
-    if (
-      !['video/mp4', 'image/png', 'image/jpeg', 'image/webp'].includes(mime)
-    ) {
-      throw new GenerationRejectedError(`Type de résultat inattendu : ${mime}`);
-    }
-    return { body, mime };
+    return body;
   }
 
-  /** Échec : les crédits réservés sont restitués (RELEASE, une seule fois) puis la création est marquée échouée. */
-  private async fail(g: GenerationRow, reason: string): Promise<void> {
-    this.logger.warn(`Création ${g.id} échouée : ${reason}`);
-    await this.credits.release(g.id);
+  /**
+   * Échec : les crédits réservés sont restitués (RELEASE, une seule fois) puis la création est marquée échouée.
+   * Renvoie false, sans rien changer, si les crédits ont déjà été consommés par un succès (capture) : on ne rembourse
+   * jamais une création réussie, ni ne la déclare échouée.
+   */
+  private async fail(
+    g: GenerationRow,
+    reason: string,
+    code: FailureCode = 'PROVIDER',
+  ): Promise<boolean> {
+    this.logger.warn(`Création ${g.id} échouée (${code}) : ${reason}`);
+    try {
+      await this.credits.release(g.id);
+    } catch (e) {
+      if (e instanceof ConflictException) {
+        this.logger.error(
+          `Création ${g.id} : restitution impossible (${e.message}), échec non enregistré`,
+        );
+        return false;
+      }
+      throw e;
+    }
     const noteIds: (string | null)[] = [];
     await this.prisma.$transaction(async (tx) => {
       const claimed = await tx.generation.updateMany({
@@ -795,15 +973,19 @@ export class CreationsService {
         data: {
           status: 'FAILED',
           errorMessage: reason,
+          failureCode: code,
           completedAt: new Date(),
         },
       });
       if (claimed.count === 0) return;
+      const label = g.preset ? `« ${g.preset.name} »` : 'Votre création';
       const failed = await this.notifications.notify(tx, {
         userId: g.userId,
         type: 'GENERATION_FAILED',
         title: 'Création échouée',
-        body: `« ${g.preset?.name ?? 'Création'} » n’a pas abouti.`,
+        body: g.preset
+          ? `${label} n’a pas abouti.`
+          : 'Votre création n’a pas abouti.',
         link: `/app/creations/${g.id}`,
         dedupKey: `gen-failed:${g.id}`,
       });
@@ -818,5 +1000,6 @@ export class CreationsService {
       noteIds.push(failed.id, refund.id);
     });
     for (const id of noteIds) await this.notifications.dispatchEmail(id);
+    return true;
   }
 }

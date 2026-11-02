@@ -555,6 +555,9 @@ model Generation {
   providerRequestId String?
   providerStatusUrl String?
   errorMessage      String?
+  /// Raison normalisée de l'échec (MODERATION, TIMEOUT, NO_RESULT, BAD_RESULT, FORMAT, UNSUPPORTED, PROVIDER, CANCELED) :
+  /// choisit le message montré à l'utilisateur. `errorMessage` garde le détail technique, jamais affiché tel quel.
+  failureCode       String?
   consentAt         DateTime // consentement horodaté (RG-31)
   consentIp         String?
   hidden            Boolean          @default(false)

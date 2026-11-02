@@ -73,6 +73,10 @@ export default defineConfig({
         LOG_LEVEL: 'warn',
         // Génération et stockage simulés (jamais d'appel payant) ; quelques secondes de traitement pour voir la progression.
         GENERATION_PROVIDER: 'mock',
+        // Jamais de vrai paiement (SasPay) : le .env de développement peut contenir PAYMENT_PROVIDER=saspay et une clé réelle.
+        PAYMENT_PROVIDER: 'mock',
+        SASPAY_API_KEY: '',
+        SASPAY_WEBHOOK_SECRET: '',
         MOCK_GENERATION_SECONDS: '4',
         STORAGE_DRIVER: 'local',
         LOCAL_STORAGE_DIR: './storage/e2e',

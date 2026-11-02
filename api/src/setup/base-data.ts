@@ -85,6 +85,21 @@ const PRODUCTS = [
     active: true,
   },
   {
+    code: 'IMAGE_EDIT_GROK',
+    name: 'Image à partir d’une photo (Grok Image 2.0)',
+    providerModel: 'xai/grok-imagine-image-2.0',
+    resolution: null,
+    billingUnit: 'IMAGE',
+    // 0,07 $ par image (estimation officielle) = 40 FCFA ; règle du projet : ⌈40 ÷ 2,5⌉ = 17 crédits.
+    creditsPerUnit: 17,
+    providerCostUsdPerUnit: '0.07',
+    billableMultiplier: 1,
+    minSeconds: null,
+    maxSeconds: null,
+    phase: 'MVP',
+    active: true,
+  },
+  {
     code: 'VIDEO_LIGHT_720',
     name: 'Vidéo Light 720p',
     providerModel: 'higgsfield/genjutsu-light/motion-transfer/v1.0',

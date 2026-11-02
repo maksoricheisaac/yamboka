@@ -30,7 +30,7 @@ describe('Catalogue et devis (e2e)', () => {
       const byName = Object.fromEntries(
         packs.map((p) => [p.name, p.equivalent]),
       );
-      expect(byName.Starter).toEqual({ videoSeconds: 125, images: 625 });
+      expect(byName.Starter).toEqual({ videoSeconds: 125, images: 73 });
       expect(Math.floor(byName.Starter.videoSeconds / 10)).toBe(12);
       expect(Math.floor(byName.Pro.videoSeconds / 10)).toBe(26);
       expect(Math.floor(byName.Business.videoSeconds / 10)).toBe(68);
@@ -40,7 +40,7 @@ describe('Catalogue et devis (e2e)', () => {
       const res = await new Client(app).get('/v1/catalog/products').expect(200);
       expect(
         res.body.products.map((p: { code: string }) => p.code).sort(),
-      ).toEqual(['IMAGE_SOUL2', 'VIDEO_LIGHT_480']);
+      ).toEqual(['IMAGE_EDIT_GROK', 'IMAGE_SOUL2', 'VIDEO_LIGHT_480']);
     });
 
     it('n’expose aucun coût fournisseur', async () => {

@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { MOCK_FAIL_MARKER } from '../src/generation/mock-generation.provider';
 import { CreationsService } from '../src/creations/creations.service';
+import { imageSize } from '../src/creations/image-sniff';
 import { APP_ORIGIN, Client, createApp, prismaOf } from './helpers';
 import { addLot, lotsMatchLedger, verifiedClient } from './finance-helpers';
 
@@ -21,7 +22,7 @@ describe('Créations (e2e)', () => {
     prisma = prismaOf(app);
     creations = app.get(CreationsService);
     const image = await prisma.generationProduct.findUniqueOrThrow({
-      where: { code: 'IMAGE_SOUL2' },
+      where: { code: 'IMAGE_EDIT_GROK' },
     });
     const video = await prisma.generationProduct.findUniqueOrThrow({
       where: { code: 'VIDEO_LIGHT_480' },
@@ -79,7 +80,7 @@ describe('Créations (e2e)', () => {
     const { client } = await verifiedClient(app);
     const res = await client.get('/v1/creations/styles').expect(200);
     const byId = new Map(res.body.styles.map((s: any) => [s.id, s]));
-    expect(byId.get(styles.affiche)).toMatchObject({ kind: 'affiche', credits: 2 });
+    expect(byId.get(styles.affiche)).toMatchObject({ kind: 'affiche', credits: 17 });
     expect(byId.get(styles.pub)).toMatchObject({ kind: 'pub', credits: 50, seconds: 5 });
     expect(byId.get(styles.fun)).toMatchObject({ kind: 'fun', credits: 50 });
     const fun = await client.get('/v1/creations/styles?kind=fun').expect(200);
@@ -96,25 +97,32 @@ describe('Créations (e2e)', () => {
   describe('Succès', () => {
     it('réserve puis consomme les crédits, et le résultat est téléchargeable', async () => {
       const { client, userId } = await verifiedClient(app);
-      await addLot(app, userId, 10);
+      await addLot(app, userId, 40);
       const res = await send(client, body('affiche', { prompt: 'Affiche pour 15 000 FCFA, tél. +242 06 000 00 00' })).expect(201);
       const id = res.body.creation.id;
       expect(res.body.creation).toMatchObject({
         kind: 'affiche',
-        credits: 2,
+        credits: 17,
         status: 'COMPLETED',
         isVideo: false,
+        // Aucun titre inventé, et le fournisseur simulé le dit clairement.
+        styleName: null,
+        styleId: null,
+        simulated: true,
         options: { prompt: 'Affiche pour 15 000 FCFA, tél. +242 06 000 00 00', format: '9:16' },
         prompt: 'Affiche pour 15 000 FCFA, tél. +242 06 000 00 00',
       });
-      expect(await balance(client)).toBe(8);
+      expect(await balance(client)).toBe(23);
 
       const ledger = await prisma.creditLedger.findMany({ where: { generationId: id } });
       expect(ledger.map((l) => l.type).sort()).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await lotsMatchLedger(app, userId)).toEqual({ ledger: 8, lots: 8 });
+      expect(await lotsMatchLedger(app, userId)).toEqual({ ledger: 23, lots: 23 });
 
       const file = await client.get(`/v1/creations/${id}/file?download=1`).expect(200);
       expect(file.headers['content-type']).toContain('image/png');
+      // Le « résultat » simulé n'est JAMAIS la photo envoyée : c'est une image de substitution aux proportions demandées.
+      expect(Buffer.compare(file.body as Buffer, PNG)).not.toBe(0);
+      expect(imageSize(file.body as Buffer)).toEqual({ width: 432, height: 768 });
       expect(file.headers['content-disposition']).toContain('attachment');
       const list = await client.get('/v1/creations').expect(200);
       expect(list.body.items.map((i: any) => i.id)).toContain(id);
@@ -148,14 +156,14 @@ describe('Créations (e2e)', () => {
 
     it('exige le consentement, un style valide et une vraie photo', async () => {
       const { client, userId } = await verifiedClient(app);
-      await addLot(app, userId, 10);
+      await addLot(app, userId, 40);
       await send(client, body('affiche', { consent: 'false' })).expect(400);
       await send(client, body('fun', { styleId: '00000000-0000-4000-8000-000000000000' })).expect(400);
       await send(client, body('affiche'), null).expect(400);
       const fake = await send(client, body('affiche'), Buffer.from('pas une image')).expect(400);
       expect(fake.body.code).toBe('PHOTO_INVALID');
       await send(client, body('affiche', { prompt: 'x'.repeat(601) })).expect(400);
-      expect(await balance(client)).toBe(10);
+      expect(await balance(client)).toBe(40);
     });
 
     it('un prompt unique : obligatoire pour affiche et pub, facultatif pour une tendance', async () => {
@@ -170,17 +178,50 @@ describe('Créations (e2e)', () => {
       await send(client, body('pub', { styleId: styles.affiche })).expect(400);
     });
 
-    it('sans styleId, une affiche utilise le style par défaut du type', async () => {
+    it('sans style choisi, aucun style n’est inventé : ni titre, ni texte ajouté à la description', async () => {
+      // Un style publié « piège » existe : avant, il était attaché d'office (nom en titre, texte par défaut ajouté).
+      const image = await prisma.generationProduct.findUniqueOrThrow({ where: { code: 'IMAGE_EDIT_GROK' } });
+      const trap = await prisma.preset.create({
+        data: { name: 'Boutique en vitrine', category: 'test', type: 'LOOK', productId: image.id, visible: true, sortOrder: -100, defaultPrompt: 'TEXTE PARASITE' },
+      });
+      try {
+        const { client, userId } = await verifiedClient(app);
+        await addLot(app, userId, 40);
+        const res = await send(client, body('affiche', { prompt: 'Ma description exacte' })).expect(201);
+        expect(res.body.creation).toMatchObject({ kind: 'affiche', styleId: null, styleName: null, prompt: 'Ma description exacte' });
+        const row = await prisma.generation.findUniqueOrThrow({ where: { id: res.body.creation.id } });
+        expect(row.presetId).toBeNull();
+        expect(row.prompt).toBe('Ma description exacte');
+      } finally {
+        await prisma.preset.delete({ where: { id: trap.id } });
+      }
+    });
+
+    it('refuse, avant tout débit, un format que le modèle n’accepte pas ou un style sans modèle exploitable', async () => {
       const { client, userId } = await verifiedClient(app);
-      await addLot(app, userId, 10);
-      const res = await send(client, body('affiche')).expect(201);
-      expect(res.body.creation.kind).toBe('affiche');
-      expect(res.body.creation.styleId).toBe(styles.affiche);
+      await addLot(app, userId, 40);
+      // 4:5 et 21:9 sont refusés par les modèles : ils ne font pas partie des formats proposés.
+      await send(client, body('affiche', { format: '4:5' })).expect(400);
+      await send(client, body('affiche', { format: '21:9' })).expect(400);
+      // Un style rattaché à Soul (texte → image, qui ignorerait la photo) est refusé au lieu de livrer autre chose.
+      const soul = await prisma.generationProduct.findUniqueOrThrow({ where: { code: 'IMAGE_SOUL2' } });
+      const preset = await prisma.preset.create({ data: { name: `Soul ${Date.now()}`, category: 'test', type: 'LOOK', productId: soul.id, visible: true } });
+      try {
+        const res = await send(client, body('affiche', { styleId: preset.id })).expect(400);
+        expect(res.body.code).toBe('STYLE_UNAVAILABLE');
+        const listed = await client.get('/v1/creations/styles').expect(200);
+        // Le simulé reste indulgent sur les vidéos de référence, mais jamais sur une photo ignorée.
+        expect(listed.body.styles.map((s: any) => s.id)).not.toContain(preset.id);
+      } finally {
+        await prisma.preset.delete({ where: { id: preset.id } });
+      }
+      expect(await prisma.generation.count({ where: { userId } })).toBe(0);
+      expect(await balance(client)).toBe(40);
     });
 
     it('limite le nombre de créations simultanées', async () => {
       const { client, userId } = await verifiedClient(app);
-      await addLot(app, userId, 10);
+      await addLot(app, userId, 40);
       await prisma.setting.upsert({
         where: { key: 'maxConcurrentGenerationsPerUser' },
         update: { value: 1 },
@@ -226,7 +267,7 @@ describe('Créations (e2e)', () => {
 
     it('annule et rembourse une création sans réponse après le délai', async () => {
       const { client, userId } = await verifiedClient(app);
-      await addLot(app, userId, 10);
+      await addLot(app, userId, 40);
       const provider = (creations as any).provider;
       const spy = jest.spyOn(provider, 'getStatus').mockResolvedValue({ status: 'processing' });
       const res = await send(client, body('affiche')).expect(201);
@@ -236,8 +277,10 @@ describe('Créations (e2e)', () => {
         data: { createdAt: new Date(Date.now() - 61 * 60_000) },
       });
       await creations.advance(res.body.creation.id);
-      expect((await client.get(`/v1/creations/${res.body.creation.id}`)).body.creation.status).toBe('FAILED');
-      expect(await balance(client)).toBe(10);
+      const after = (await client.get(`/v1/creations/${res.body.creation.id}`)).body.creation;
+      expect(after.status).toBe('FAILED');
+      expect(after.errorMessage).toContain('trop de temps');
+      expect(await balance(client)).toBe(40);
     });
   });
 
@@ -245,7 +288,7 @@ describe('Créations (e2e)', () => {
     it('une création n’est visible que de son propriétaire', async () => {
       const a = await verifiedClient(app);
       const b = await verifiedClient(app);
-      await addLot(app, a.userId, 10);
+      await addLot(app, a.userId, 40);
       const { id } = (await send(a.client, body('affiche')).expect(201)).body.creation;
       await b.client.get(`/v1/creations/${id}`).expect(404);
       await b.client.get(`/v1/creations/${id}/file`).expect(404);
@@ -255,7 +298,7 @@ describe('Créations (e2e)', () => {
 
     it('supprime les fichiers mais garde la trace', async () => {
       const { client, userId } = await verifiedClient(app);
-      await addLot(app, userId, 10);
+      await addLot(app, userId, 40);
       const { id } = (await send(client, body('affiche')).expect(201)).body.creation;
       await client.agent.delete(`/v1/creations/${id}`).set('Origin', APP_ORIGIN).expect(204);
       await client.get(`/v1/creations/${id}`).expect(404);
@@ -266,7 +309,7 @@ describe('Créations (e2e)', () => {
 
     it('un signalement gèle la conservation et empêche la suppression', async () => {
       const { client, userId } = await verifiedClient(app);
-      await addLot(app, userId, 10);
+      await addLot(app, userId, 40);
       const { id } = (await send(client, body('affiche')).expect(201)).body.creation;
       await client.post(`/v1/creations/${id}/report`, { reason: 'Contenu inapproprié' }).expect(204);
       await client.post(`/v1/creations/${id}/report`, { reason: 'Contenu inapproprié' }).expect(204);

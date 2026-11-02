@@ -166,6 +166,25 @@ export class HiggsfieldGenerationProvider extends GenerationProvider {
     return { status: 'completed', outputUrl };
   }
 
+  /**
+   * Prix annoncé par Higgsfield pour une demande, SANS la lancer ni la payer (POST /estimate/{modèle}).
+   * Renvoie la réponse brute : sa forme n'est pas garantie par la documentation officielle.
+   */
+  async estimate(
+    model: string,
+    input: Record<string, unknown>,
+  ): Promise<{ status: number; body: unknown }> {
+    const { status, body } = await this.call(
+      `${this.baseUrl}/estimate/${model.replace(/^\/+/, '')}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    );
+    return { status, body };
+  }
+
   async cancel(cancelUrl: string): Promise<void> {
     this.assertOwnUrl(cancelUrl);
     const { status, body } = await this.call(cancelUrl, { method: 'POST' });

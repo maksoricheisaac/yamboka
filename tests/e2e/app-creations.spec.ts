@@ -40,14 +40,17 @@ test.describe('Création : parcours', () => {
     const tabs = page.getByRole('tablist', { name: 'Type de création' });
     for (const name of ['Affiche', 'Vidéo pub', 'Vidéo fun']) await expect(tabs.getByRole('tab', { name })).toBeVisible();
 
-    // Affiche : 2 crédits. Le bouton annonce le coût ET le solde restant (1 500 − 2 = 1 498).
-    await expect(generateButton(page)).toContainText('Générer · 2 crédits');
-    await expect(page.getByText(/Solde après : 1\s?498 crédits/)).toBeVisible();
+    // Affiche : 17 crédits. Le bouton annonce le coût ET le solde restant (1 500 − 17 = 1 483).
+    await expect(generateButton(page)).toContainText('Générer · 17 crédits');
+    await expect(page.getByText(/Solde après : 1\s?483 crédits/)).toBeVisible();
     await expect(page.getByText(/crédits sont restitués/)).toBeVisible();
     // Un seul champ de description : plus de message, de prix ni de téléphone séparés.
     await expect(page.getByLabel('Décrivez ce que vous voulez')).toBeVisible();
     for (const gone of ['Votre message', 'Texte à afficher', 'Prix', 'Téléphone']) await expect(page.getByText(gone, { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('radiogroup').getByText('9:16')).toBeVisible();
+    // Les sept formats sont proposés, chacun avec son ratio.
+    for (const ratio of ['1:1', '4:3', '3:2', '3:4', '2:3', '16:9', '9:16']) {
+      await expect(page.getByRole('radiogroup').getByText(ratio, { exact: true })).toBeVisible();
+    }
 
     await tabs.getByRole('tab', { name: 'Vidéo fun' }).click();
     await expect(generateButton(page)).toContainText('Générer · 50 crédits');
@@ -83,10 +86,12 @@ test.describe('Création : parcours', () => {
 
     // Mes créations : la vignette est « Prête » et mène au détail.
     await page.goto('/app/creations');
-    const card = page.getByRole('link', { name: /Pub e2e — prête/ });
+    // Sans style choisi, aucun nom de style n'est inventé : la carte porte le type de création.
+    const card = page.getByRole('link', { name: /Vidéo pub — prête/ });
     await expect(card).toBeVisible();
     await card.click();
-    await expect(page.getByRole('heading', { level: 1, name: 'Pub e2e' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Votre vidéo publicitaire' })).toBeVisible();
+    await expect(page.getByText('Pub e2e')).toHaveCount(0);
     await expect(page.getByText(/à 15 000 FCFA, texte -20 % ce week-end/)).toBeVisible();
 
     // Signalement.
@@ -130,7 +135,7 @@ test.describe('Création : parcours', () => {
 
   test('sans assez de crédits : message et lien vers la recharge, pas de bouton Générer', async ({ page, request }) => {
     await accountWithCredits(page, request, false);
-    await expect(page.getByText(/Il vous manque 2 crédits/)).toBeVisible();
+    await expect(page.getByText(/Il vous manque 17 crédits/)).toBeVisible();
     await expect(generateButton(page)).toHaveCount(0);
     await page.getByRole('link', { name: 'Recharger mes crédits' }).click();
     await expect(page).toHaveURL(/\/app\/credits$/);
@@ -174,5 +179,57 @@ test.describe('Tendances, navigation et mise en page', () => {
     if (mobile) await expect(tabs.getByRole('link', { name: 'Créer' })).toBeVisible();
     else await expect(tabs).toBeHidden();
     expect(await appAlerts(page).count()).toBe(0);
+  });
+});
+
+test.describe('Création d’affiche : formats et honnêteté du résultat', () => {
+  const GROUPS: Record<string, string> = {
+    '1:1': 'Publications sur les réseaux sociaux',
+    '4:3': 'Affiche horizontale, visuel classique',
+    '3:2': 'Affiche horizontale, photo',
+    '3:4': 'Affiche verticale',
+    '2:3': 'Affiche verticale, poster',
+    '16:9': 'Bannière, visuel très large',
+    '9:16': 'Stories, statuts WhatsApp, mobile',
+  };
+
+  test('chaque format change l’aperçu à ses proportions exactes et précise son usage', async ({ page, request }) => {
+    await accountWithCredits(page, request);
+    await pickPhoto(page); // sur mobile, l'aperçu n'apparaît qu'une fois la photo choisie
+    for (const [ratio, usage] of Object.entries(GROUPS)) {
+      await page.getByRole('radiogroup').getByText(ratio, { exact: true }).click();
+      await expect(page.getByText(usage, { exact: true })).toBeVisible();
+      const [w, h] = ratio.split(':').map(Number);
+      const box = page.locator('figure [style*="aspect-ratio"]:visible').first();
+      await expect(async () => {
+        const r = await box.evaluate((el) => el.getBoundingClientRect());
+        expect(Math.abs(r.width / r.height / (w / h) - 1)).toBeLessThan(0.02);
+      }).toPass({ timeout: 5000 });
+    }
+  });
+
+  test('une affiche sans style choisi n’a ni titre inventé ni texte ajouté, et la simulation est dite clairement', async ({ page, request }) => {
+    await accountWithCredits(page, request);
+    await pickPhoto(page);
+    await page.getByRole('radiogroup').getByText('3:4', { exact: true }).click();
+    await page.getByLabel('Décrivez ce que vous voulez').fill('Affiche pour ma robe, texte PROMO -20 %');
+    await page.getByRole('checkbox', { name: /Je confirme/ }).click();
+    await generateButton(page).click();
+    await expect(page.getByText(/crédits utilisés/)).toBeVisible({ timeout: 40_000 });
+
+    // Mode simulation : annoncé en toutes lettres, jamais présenté comme une création de l'IA.
+    await expect(page.getByText('Simulation · aucune IA utilisée')).toBeVisible();
+    await expect(page.getByText('Généré par IA · Yamboka')).toHaveCount(0);
+    // Le résultat respecte le format demandé (576 × 768 pour du 3:4) et n'est pas la photo envoyée (1 × 1).
+    const img = page.locator('figure img').first();
+    await expect(img).toBeVisible();
+    const size = await img.evaluate((el: HTMLImageElement) => ({ w: el.naturalWidth, h: el.naturalHeight }));
+    expect(size).toEqual({ w: 576, h: 768 });
+    // Aucun nom de style ni titre inventé : titre neutre, et le texte demandé est le seul texte de l'utilisateur.
+    await page.goto('/app/creations');
+    await page.getByRole('link', { name: /^Affiche — prête/ }).first().click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Votre affiche' })).toBeVisible();
+    for (const invented of ['Boutique en vitrine', 'Affiche e2e']) await expect(page.getByText(invented)).toHaveCount(0);
+    await expect(page.getByText('Affiche pour ma robe, texte PROMO -20 %')).toBeVisible();
   });
 });

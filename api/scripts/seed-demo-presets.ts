@@ -20,15 +20,15 @@ interface Demo {
   description: string;
   category: string;
   type: 'LOOK' | 'MOTION';
-  product: 'IMAGE_SOUL2' | 'VIDEO_LIGHT_480';
+  product: 'IMAGE_EDIT_GROK' | 'VIDEO_LIGHT_480';
   thumb: string;
 }
 
 const DEMOS: Demo[] = [
-  { name: 'Boutique en vitrine', description: 'Ton produit mis en scène dans une vitrine.', category: 'affiche', type: 'LOOK', product: 'IMAGE_SOUL2', thumb: 'demos/boutique-apres.webp' },
-  { name: 'Affiche mode', description: 'Une affiche élégante pour tes vêtements.', category: 'affiche', type: 'LOOK', product: 'IMAGE_SOUL2', thumb: 'images/galerie-mode.webp' },
-  { name: 'Portrait de marque', description: 'Un portrait soigné pour ta page.', category: 'affiche', type: 'LOOK', product: 'IMAGE_SOUL2', thumb: 'images/galerie-portrait.webp' },
-  { name: 'Invitation fête', description: 'Une invitation prête à partager.', category: 'affiche', type: 'LOOK', product: 'IMAGE_SOUL2', thumb: 'images/galerie-invitation.webp' },
+  { name: 'Boutique en vitrine', description: 'Ton produit mis en scène dans une vitrine.', category: 'affiche', type: 'LOOK', product: 'IMAGE_EDIT_GROK', thumb: 'demos/boutique-apres.webp' },
+  { name: 'Affiche mode', description: 'Une affiche élégante pour tes vêtements.', category: 'affiche', type: 'LOOK', product: 'IMAGE_EDIT_GROK', thumb: 'images/galerie-mode.webp' },
+  { name: 'Portrait de marque', description: 'Un portrait soigné pour ta page.', category: 'affiche', type: 'LOOK', product: 'IMAGE_EDIT_GROK', thumb: 'images/galerie-portrait.webp' },
+  { name: 'Invitation fête', description: 'Une invitation prête à partager.', category: 'affiche', type: 'LOOK', product: 'IMAGE_EDIT_GROK', thumb: 'images/galerie-invitation.webp' },
   { name: 'Produit qui tourne', description: 'Ton produit présenté sous tous les angles.', category: 'pub', type: 'LOOK', product: 'VIDEO_LIGHT_480', thumb: 'demos/boutique-avant.webp' },
   { name: 'Zoom dynamique', description: 'Un zoom qui attire le regard.', category: 'pub', type: 'LOOK', product: 'VIDEO_LIGHT_480', thumb: 'demos/hero-creation.webp' },
   { name: 'Mise en scène', description: 'Ton produit dans une petite scène.', category: 'pub', type: 'LOOK', product: 'VIDEO_LIGHT_480', thumb: 'demos/boutique-apres.webp' },

@@ -43,14 +43,37 @@ export function isKind(value: string | undefined | null): value is CreationKind 
   return value === "affiche" || value === "pub" || value === "fun";
 }
 
-export const FORMATS: { value: CreationFormat; label: string; where: string; ratio: string }[] = [
-  { value: "9:16", label: "Statut", where: "WhatsApp, TikTok", ratio: "9 / 16" },
-  { value: "1:1", label: "Carré", where: "Facebook, Instagram", ratio: "1 / 1" },
-  { value: "16:9", label: "Paysage", where: "YouTube, écran", ratio: "16 / 9" },
+/**
+ * Formats proposés pour une image. Tous sont demandés TELS QUELS au modèle (paramètre natif, vérifié auprès du
+ * fournisseur) et contrôlés sur le fichier reçu : aucun recadrage après coup, donc aucune déformation.
+ */
+export const FORMATS: { value: CreationFormat; group: string; label: string; where: string; ratio: string }[] = [
+  { value: "1:1", group: "Carré", label: "Carré", where: "Publications sur les réseaux sociaux", ratio: "1 / 1" },
+  { value: "4:3", group: "Paysage", label: "Paysage", where: "Affiche horizontale, visuel classique", ratio: "4 / 3" },
+  { value: "3:2", group: "Paysage", label: "Paysage large", where: "Affiche horizontale, photo", ratio: "3 / 2" },
+  { value: "3:4", group: "Portrait", label: "Portrait", where: "Affiche verticale", ratio: "3 / 4" },
+  { value: "2:3", group: "Portrait", label: "Portrait haut", where: "Affiche verticale, poster", ratio: "2 / 3" },
+  { value: "16:9", group: "Panoramique", label: "Panoramique", where: "Bannière, visuel très large", ratio: "16 / 9" },
+  { value: "9:16", group: "Vertical", label: "Vertical", where: "Stories, statuts WhatsApp, mobile", ratio: "9 / 16" },
 ];
 
 export function ratioOf(format: CreationFormat | undefined): string {
   return FORMATS.find((f) => f.value === format)?.ratio ?? "9 / 16";
+}
+
+/** Largeur ÷ hauteur d'un format (« 3:4 » → 0,75). */
+export function ratioValue(format: CreationFormat | undefined): number {
+  const [w, h] = (format ?? "9:16").split(":").map(Number);
+  return w && h ? w / h : 9 / 16;
+}
+
+/** Largeur maximale d'un résultat ou d'un aperçu : étroit pour un portrait, plus large pour un paysage. */
+export function previewWidthClass(format: CreationFormat | undefined): string {
+  const r = ratioValue(format);
+  if (r < 0.7) return "max-w-[8rem] sm:max-w-[13rem] lg:max-w-[15rem]";
+  if (r < 1) return "max-w-[10rem] sm:max-w-[16rem] lg:max-w-[18rem]";
+  if (r === 1) return "max-w-[10rem] sm:max-w-[16rem] lg:max-w-[18rem]";
+  return "max-w-[15rem] sm:max-w-xs";
 }
 
 /** Pluriel français : « 1 crédit », « 2 crédits », « 0 crédit ». */
@@ -64,7 +87,13 @@ export function isRunning(c: Pick<CreationView, "status">): boolean {
 
 /** Libellé court d'une création pour les lecteurs d'écran et les titres. */
 export function creationTitle(c: Pick<CreationView, "styleName" | "kind">): string {
-  return `${KINDS[c.kind].label} · ${c.styleName}`;
+  return c.styleName ? `${KINDS[c.kind].label} · ${c.styleName}` : KINDS[c.kind].label;
+}
+
+/** Titre de la page d'une création : le style CHOISI par l'utilisateur, sinon un titre neutre (jamais un nom inventé). */
+export function creationHeading(c: Pick<CreationView, "styleName" | "kind">): string {
+  if (c.styleName) return c.styleName;
+  return c.kind === "affiche" ? "Votre affiche" : c.kind === "pub" ? "Votre vidéo publicitaire" : "Votre vidéo tendance";
 }
 
 /** Réduit une photo avant l'envoi : moins de données sur une connexion lente, et plus d'infos de position (EXIF). */

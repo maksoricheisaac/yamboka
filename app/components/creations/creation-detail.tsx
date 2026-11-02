@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toaster";
 import { ApiError, apiDelete, apiGet, apiPost } from "@/lib/api-client";
-import { KINDS, credits, isRunning, mediaUrl, ratioOf } from "@/lib/creations";
+import { KINDS, creationHeading, credits, isRunning, mediaUrl, ratioOf } from "@/lib/creations";
 import { formatDateTime } from "@/lib/format";
 import { CreationMedia } from "./creation-media";
 import { ResultActions } from "./result-actions";
@@ -82,6 +82,15 @@ export function CreationDetail({ initial }: { initial: CreationView }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
       <div className="rounded-3xl border bg-card p-4 shadow-soft sm:p-6">
+        {c.simulated && (
+          <Alert role="status" className="mb-4 border-amber-400 bg-amber-50 text-amber-950">
+            <TriangleAlert className="size-4" aria-hidden />
+            <AlertDescription>
+              <strong>Création simulée.</strong> Le mode simulation est actif : aucune intelligence artificielle n’a été utilisée et l’image ci-dessous n’est
+              qu’une image de substitution.
+            </AlertDescription>
+          </Alert>
+        )}
         {c.status === "COMPLETED" && <CreationMedia creation={c} />}
 
         {isRunning(c) && (
@@ -106,7 +115,7 @@ export function CreationDetail({ initial }: { initial: CreationView }) {
             <p className="font-heading text-xl font-bold">La création n’a pas abouti</p>
             <Alert role="status" className="max-w-md border-success/40 bg-success/10 text-left">
               <ShieldCheck className="size-4 text-success" aria-hidden />
-              <AlertDescription>Vos {credits(c.credits)} ont été restitués. Vous pouvez relancer la création.</AlertDescription>
+              <AlertDescription>{c.errorMessage ?? `Vos ${credits(c.credits)} ont été restitués. Vous pouvez relancer la création.`}</AlertDescription>
             </Alert>
           </div>
         )}
@@ -117,7 +126,7 @@ export function CreationDetail({ initial }: { initial: CreationView }) {
           <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
             <Icon className="size-4" aria-hidden /> {KINDS[c.kind].label}
           </p>
-          <h1 className="text-3xl font-bold">{c.styleName}</h1>
+          <h1 className="text-3xl font-bold">{creationHeading(c)}</h1>
           <StatusPill creation={c} />
         </div>
 
