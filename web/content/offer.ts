@@ -99,7 +99,7 @@ async function fetchPublicPacks(): Promise<ApiPack[] | null> {
   cacheTag('offers');
   try {
     const base = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
-    const res = await fetch(`${base}/v1/catalog/packs/public`, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(`${base}/api/catalog/packs/public`, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) return null;
     return ((await res.json()) as { packs: ApiPack[] }).packs;
   } catch {

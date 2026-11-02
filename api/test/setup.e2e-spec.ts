@@ -27,7 +27,7 @@ describe('Setup Wizard (e2e)', () => {
     secret: string | undefined = SECRET,
   ) => {
     const req = client.agent
-      .post('/v1/setup/complete')
+      .post('/api/setup/complete')
       .set('X-Forwarded-For', client.ip);
     if (secret) req.set('X-Setup-Secret', secret);
     return req.send(payload);
@@ -44,7 +44,7 @@ describe('Setup Wizard (e2e)', () => {
   });
 
   it('avant l’installation : l’état est « non initialisé » et ne divulgue rien', async () => {
-    const res = await new Client(app).get('/v1/setup/status').expect(200);
+    const res = await new Client(app).get('/api/setup/status').expect(200);
     expect(res.body).toEqual({ initialized: false, secretConfigured: true });
   });
 
@@ -53,14 +53,14 @@ describe('Setup Wizard (e2e)', () => {
     expect(
       (
         await client.agent
-          .post('/v1/setup/check')
+          .post('/api/setup/check')
           .set('X-Forwarded-For', client.ip)
       ).status,
     ).toBe(401);
     expect(
       (
         await client.agent
-          .post('/v1/setup/check')
+          .post('/api/setup/check')
           .set('X-Forwarded-For', client.ip)
           .set('X-Setup-Secret', 'faux'.repeat(10))
       ).status,
@@ -74,7 +74,7 @@ describe('Setup Wizard (e2e)', () => {
   it('le diagnostic est lisible et sans secret ni identifiant de base', async () => {
     const client = new Client(app);
     const res = await client.agent
-      .post('/v1/setup/check')
+      .post('/api/setup/check')
       .set('X-Forwarded-For', client.ip)
       .set('X-Setup-Secret', SECRET)
       .expect(200);
@@ -149,9 +149,9 @@ describe('Setup Wizard (e2e)', () => {
 
   it('une fois installé : l’assistant est verrouillé, même avec le bon secret', async () => {
     const client = new Client(app);
-    expect((await client.get('/v1/setup/status')).body.initialized).toBe(true);
+    expect((await client.get('/api/setup/status')).body.initialized).toBe(true);
     const check = await client.agent
-      .post('/v1/setup/check')
+      .post('/api/setup/check')
       .set('X-Forwarded-For', client.ip)
       .set('X-Setup-Secret', SECRET);
     expect(check.status).toBe(403);
@@ -164,7 +164,7 @@ describe('Setup Wizard (e2e)', () => {
   it('le verrou survit à la perte de la ligne d’état (restauration) tant qu’un administrateur existe', async () => {
     await prisma.installState.deleteMany();
     const client = new Client(app);
-    expect((await client.get('/v1/setup/status')).body.initialized).toBe(true);
+    expect((await client.get('/api/setup/status')).body.initialized).toBe(true);
     expect(await prisma.installState.count()).toBe(1);
     expect((await complete(client, body())).status).toBe(403);
   });
@@ -182,9 +182,9 @@ describe('Setup Wizard (e2e)', () => {
   it('aucune route ne permet de réinitialiser l’installation', async () => {
     const client = new Client(app);
     for (const [method, url] of [
-      ['delete', '/v1/setup'],
-      ['post', '/v1/setup/reset'],
-      ['post', '/v1/setup/status'],
+      ['delete', '/api/setup'],
+      ['post', '/api/setup/reset'],
+      ['post', '/api/setup/status'],
     ] as const) {
       const res = await client.agent[method](url)
         .set('X-Forwarded-For', client.ip)

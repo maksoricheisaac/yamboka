@@ -24,6 +24,8 @@ const envSchema = z.object({
     .min(16, 'REVALIDATE_SECRET doit contenir au moins 16 caractères')
     .optional(),
   API_URL: z.string().url().default('http://localhost:4000'),
+  /** Adresse du site public joignable depuis l'API (réseau Docker interne) pour rafraîchir ses offres. Défaut : WEB_URL. */
+  WEB_INTERNAL_URL: z.string().url().optional(),
   SESSION_TTL_DAYS: z.coerce.number().int().positive().default(30),
   /** Domaine du cookie de session (ex. .yamboka.com) ; vide en local. */
   COOKIE_DOMAIN: z.string().optional(),
@@ -173,7 +175,13 @@ const smtpSchema = envSchema.superRefine((env, ctx) => {
 });
 
 export function validateEnv(raw: Record<string, unknown>): Env {
-  const parsed = smtpSchema.safeParse(raw);
+  // Docker Compose transmet les variables facultatives non renseignées sous forme de chaîne vide : on les traite comme absentes.
+  const present = Object.fromEntries(
+    Object.entries(raw).filter(
+      ([, v]) => !(typeof v === 'string' && v.trim() === ''),
+    ),
+  );
+  const parsed = smtpSchema.safeParse(present);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `${i.path.join('.')}: ${i.message}`)

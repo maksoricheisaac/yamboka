@@ -1,0 +1,202 @@
+# Environnement PRODUCTION — VPS géré par Dokploy, Traefik partagé en frontal.
+# Variables : .env.prod  →  docker compose --env-file .env.prod -f docker/docker-compose.prod.yml up -d --build
+# Aucun port publié sur l'hôte ; routage via l'onglet Domains de Dokploy. Les secrets viennent uniquement de .env.prod / de l'onglet Environment de Dokploy.
+
+# Ce fichier est généré par scripts/gen-compose-remote.py : modifier le modèle, pas ce fichier.
+#
+# Les chemins relatifs (context, volumes) se résolvent depuis ce dossier (docker/) : le contexte de build est
+# la racine du dépôt (`..`). Les variables sont interpolées depuis --env-file (ou depuis l'onglet Environment de
+# Dokploy) ; le routage (domaines, ports, chemins, certificats) n'est PAS ici : il se saisit dans l'onglet Domains
+# de Dokploy (voir README). Chaque conteneur ne reçoit que celles listées ci-dessous, jamais le fichier complet.
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME est requis (ex. yamboka-prod)}
+
+x-restart: &restart
+  restart: unless-stopped
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+x-api-build: &api-build
+  context: ..
+  dockerfile: docker/Dockerfile
+  target: api
+
+services:
+  postgres:
+    <<: [*restart, *logging]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER est requis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est requis}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB est requis}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [internal]
+
+  redis:
+    <<: [*restart, *logging]
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  # Migrations Prisma : exécutées à chaque déploiement avant le démarrage de l'API, puis le conteneur s'arrête.
+  migrate:
+    <<: *logging
+    build: *api-build
+    image: ${COMPOSE_PROJECT_NAME}-api:${IMAGE_TAG:-latest}
+    command: ["node_modules/.bin/prisma", "migrate", "deploy"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [internal]
+
+  api:
+    <<: [*restart, *logging]
+    build: *api-build
+    image: ${COMPOSE_PROJECT_NAME}-api:${IMAGE_TAG:-latest}
+    # NODE_ENV=production partout à distance : cookies Secure, Swagger et routes de développement désactivés.
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      API_URL: ${API_URL:?API_URL est requis}
+      APP_URL: ${APP_URL:?APP_URL est requis}
+      WEB_URL: ${WEB_URL:?WEB_URL est requis}
+      # Appel interne vers le site public (rafraîchissement des offres), sans repasser par Traefik.
+      WEB_INTERNAL_URL: http://web-${ENV_NAME}:3000
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET est requis (32 caractères minimum)}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      # Cookie limité à l'hôte (aucun attribut Domain) : volontairement non configurable, pour qu'une session
+      # de production ne soit jamais envoyée aux autres environnements du même domaine.
+      COOKIE_DOMAIN: ""
+      # Un seul proxy de confiance : Traefik.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      SETUP_SECRET: ${SETUP_SECRET:-}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER est requis (console ou smtp)}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_REPLY_TO: ${EMAIL_REPLY_TO:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:?PAYMENT_PROVIDER est requis (mock ou saspay)}
+      SASPAY_API_BASE_URL: ${SASPAY_API_BASE_URL:-}
+      SASPAY_API_KEY: ${SASPAY_API_KEY:-}
+      SASPAY_WEBHOOK_SECRET: ${SASPAY_WEBHOOK_SECRET:-}
+      GENERATION_PROVIDER: ${GENERATION_PROVIDER:?GENERATION_PROVIDER est requis (mock ou higgsfield)}
+      MOCK_GENERATION_SECONDS: ${MOCK_GENERATION_SECONDS:-0}
+      HF_API_KEY_ID: ${HF_API_KEY_ID:-}
+      HF_API_KEY_SECRET: ${HF_API_KEY_SECRET:-}
+      HF_API_URL: ${HF_API_URL:-}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:?STORAGE_DRIVER est requis (local ou r2)}
+      LOCAL_STORAGE_DIR: /srv/storage
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-}
+    volumes:
+      - storage:/srv/storage
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      internal:
+        # Nom unique par environnement : le nom de service « api » existerait aussi sur dokploy-network,
+        # partagé avec les autres environnements du serveur.
+        aliases: ["api-${ENV_NAME}"]
+      dokploy-network:
+
+  web:
+    <<: [*restart, *logging]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: web
+      args:
+        # Figées dans le bundle au build : publiques par nature, jamais de secret ici.
+        NEXT_PUBLIC_SITE_URL: ${WEB_URL:?WEB_URL est requis}
+        NEXT_PUBLIC_APP_URL: ${APP_URL:?APP_URL est requis}
+        NEXT_PUBLIC_WHATSAPP_NUMBER: ${NEXT_PUBLIC_WHATSAPP_NUMBER:-}
+    image: ${COMPOSE_PROJECT_NAME}-web:${IMAGE_TAG:-latest}
+    environment:
+      API_INTERNAL_URL: http://api-${ENV_NAME}:4000
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      internal:
+        aliases: ["web-${ENV_NAME}"]
+      dokploy-network:
+
+  app:
+    <<: [*restart, *logging]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: app
+      args:
+        NEXT_PUBLIC_SITE_URL: ${WEB_URL:?WEB_URL est requis}
+        API_INTERNAL_URL: http://api-${ENV_NAME}:4000
+    image: ${COMPOSE_PROJECT_NAME}-app:${IMAGE_TAG:-latest}
+    environment:
+      API_INTERNAL_URL: http://api-${ENV_NAME}:4000
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/connexion').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - internal
+      - dokploy-network
+
+networks:
+  # Réseau propre à l'environnement : api, base de données, cache.
+  internal:
+  # Réseau du Traefik de Dokploy : uniquement web, app et api (jamais postgres, redis ni migrate).
+  dokploy-network:
+    external: true
+
+volumes:
+  pgdata:
+  redisdata:
+  storage:

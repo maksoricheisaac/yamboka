@@ -17,10 +17,8 @@ Node 24+, pnpm 12+, Docker Desktop (PostgreSQL 16 et Redis en conteneurs). Windo
 
 ```bash
 pnpm install                                   # un seul lockfile à la racine ; compile aussi packages/shared
-docker compose -f docker/docker-compose.dev.yml up -d
-cp api/.env.example api/.env                   # puis renseigner SESSION_SECRET et ADMIN_PASSWORD (développement seulement)
-cp web/.env.example web/.env.local
-cp app/.env.example app/.env.local
+cp .env.example .env.local                     # fichier UNIQUE à la racine ; renseigner SESSION_SECRET et ADMIN_PASSWORD (développement seulement), voir README.md
+docker compose --env-file .env.local -f docker/docker-compose.local.yml up -d
 pnpm --filter api db:migrate                   # applique les migrations
 pnpm --filter api db:seed                      # données de base + administrateur de développement
 ```
@@ -28,7 +26,7 @@ pnpm --filter api db:seed                      # données de base + administrate
 ## Lancer
 
 ```bash
-pnpm dev:api    # http://localhost:4000  (Swagger : /docs, santé : /health)
+pnpm dev:api    # http://localhost:4000  (Swagger : /api/docs, santé : /api/health)
 pnpm dev:web    # http://localhost:3000
 pnpm dev:app    # http://localhost:3001
 ```
@@ -89,5 +87,5 @@ Voir [docs/dev/base-de-donnees.md](docs/dev/base-de-donnees.md) (migrations, reg
 
 ## Sécurité
 
-- Les fichiers `.env*` sont ignorés par Git ; seuls les `.env.example` (sans secret) sont suivis.
+- Les fichiers `.env*` sont ignorés par Git ; seul le `.env.example` de la racine (sans secret) est suivi. Configuration et déploiement : [README.md](../README.md).
 - Aucun secret dans les applications Next.js : seules les variables `NEXT_PUBLIC_*` atteignent le navigateur.

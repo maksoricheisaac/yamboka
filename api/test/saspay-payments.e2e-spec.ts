@@ -157,7 +157,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
   beforeEach(() => fake.reset());
 
   const buy = async (client: Client, pack = 'Starter') =>
-    client.post('/v1/payments', {
+    client.post('/api/payments', {
       packId: (
         await prisma.creditPack.findFirstOrThrow({ where: { name: pack } })
       ).id,
@@ -166,7 +166,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
     });
 
   const creditsOf = async (client: Client) =>
-    (await client.get('/v1/auth/me')).body.user.credits as number;
+    (await client.get('/api/auth/me')).body.user.credits as number;
 
   /** Statut « succès » chez SasPay pour le montant réellement demandé. */
   const confirm = (
@@ -497,7 +497,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
     ) {
       const ts = opts.ts ?? nowTs();
       const req = request(app.getHttpServer())
-        .post('/v1/webhooks/saspay')
+        .post('/api/webhooks/saspay')
         .set('Content-Type', 'application/json');
       if (opts.headers !== false) {
         req
@@ -670,7 +670,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
     beforeAll(async () => {
       admin = new Client(app);
       await admin
-        .post('/v1/auth/login', {
+        .post('/api/auth/login', {
           email: TEST_ENV.ADMIN_EMAIL,
           password: TEST_ENV.ADMIN_PASSWORD,
         })
@@ -679,7 +679,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
 
     const find = async (ref: string) => {
       const res = await admin.get(
-        `/v1/admin/payments?provider=saspay&q=${encodeURIComponent(ref)}`,
+        `/api/admin/payments?provider=saspay&q=${encodeURIComponent(ref)}`,
       );
       expect(res.status).toBe(200);
       return res.body.items as Array<Record<string, any>>;
@@ -698,11 +698,11 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
         issue: null,
       });
       const mock = await admin.get(
-        `/v1/admin/payments?provider=mock&q=${encodeURIComponent(row.externalReference!)}`,
+        `/api/admin/payments?provider=mock&q=${encodeURIComponent(row.externalReference!)}`,
       );
       expect(mock.body.items).toEqual([]);
       const byStatus = await admin.get(
-        '/v1/admin/payments?provider=saspay&status=PENDING',
+        '/api/admin/payments?provider=saspay&status=PENDING',
       );
       expect(
         byStatus.body.items.every(
@@ -734,7 +734,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       });
       const ts = String(Math.floor(Date.now() / 1000));
       await request(app.getHttpServer())
-        .post('/v1/webhooks/saspay')
+        .post('/api/webhooks/saspay')
         .set('Content-Type', 'application/json')
         .set('X-Webhook-Timestamp', ts)
         .set(
@@ -745,9 +745,9 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
         )
         .send(raw)
         .expect(200);
-      await admin.post(`/v1/admin/payments/${id}/verify`).expect(200);
+      await admin.post(`/api/admin/payments/${id}/verify`).expect(200);
 
-      const res = await admin.get(`/v1/admin/payments/${id}`);
+      const res = await admin.get(`/api/admin/payments/${id}`);
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({
         provider: 'saspay',
@@ -785,17 +785,17 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       });
       // Le fournisseur dit « en attente » : l'administrateur ne peut rien forcer.
       const pending = await admin
-        .post(`/v1/admin/payments/${id}/verify`)
+        .post(`/api/admin/payments/${id}/verify`)
         .expect(200);
       expect(pending.body.status).toBe('PENDING');
       expect(await creditsOf(client)).toBe(0);
 
       confirm(ref);
       expect(
-        (await admin.post(`/v1/admin/payments/${id}/verify`).expect(200)).body
+        (await admin.post(`/api/admin/payments/${id}/verify`).expect(200)).body
           .status,
       ).toBe('SUCCESS');
-      await admin.post(`/v1/admin/payments/${id}/verify`).expect(200);
+      await admin.post(`/api/admin/payments/${id}/verify`).expect(200);
       expect(await creditsOf(client)).toBe(1500);
       expect(
         await prisma.creditLedger.count({ where: { paymentId: id } }),
@@ -817,7 +817,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       await buy(client);
       const p = await prisma.payment.findFirstOrThrow({ where: { userId } });
       expect(p.status).toBe('INITIATED');
-      const res = await admin.post(`/v1/admin/payments/${p.id}/verify`);
+      const res = await admin.post(`/api/admin/payments/${p.id}/verify`);
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('PENDING');
       const after = await prisma.payment.findUniqueOrThrow({
@@ -830,7 +830,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
     it('aucune route ne permet de forcer un statut ni de créditer un paiement', async () => {
       const { client, id } = await started();
       for (const action of ['status', 'credit', 'confirm', 'force']) {
-        const path = `/v1/admin/payments/${id}/${action}`;
+        const path = `/api/admin/payments/${id}/${action}`;
         const res = await admin.post(path, { status: 'SUCCESS' });
         expect([path, res.status]).toEqual([path, 404]);
       }
@@ -839,7 +839,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
 
     it('le journal exporté contient fournisseur, réseau et montants, sans secret', async () => {
       const { row } = await started();
-      const res = await admin.get('/v1/admin/finance/export.csv');
+      const res = await admin.get('/api/admin/finance/export.csv');
       expect(res.status).toBe(200);
       const csv = res.text;
       expect(csv).toContain('fournisseur');
@@ -851,15 +851,15 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
     it('fiche et vérification réservées aux administrateurs', async () => {
       const { client, id } = await started();
       const anon = new Client(app);
-      expect((await anon.get(`/v1/admin/payments/${id}`)).status).toBe(401);
-      expect((await client.get(`/v1/admin/payments/${id}`)).status).toBe(403);
+      expect((await anon.get(`/api/admin/payments/${id}`)).status).toBe(401);
+      expect((await client.get(`/api/admin/payments/${id}`)).status).toBe(403);
       expect(
-        (await client.post(`/v1/admin/payments/${id}/verify`)).status,
+        (await client.post(`/api/admin/payments/${id}/verify`)).status,
       ).toBe(403);
       expect(
         (
           await admin.get(
-            `/v1/admin/payments/00000000-0000-4000-8000-000000000000`,
+            `/api/admin/payments/00000000-0000-4000-8000-000000000000`,
           )
         ).status,
       ).toBe(404);
@@ -870,8 +870,8 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
     it('un utilisateur ne voit pas le paiement d’un autre', async () => {
       const { id } = await started();
       const other = (await verifiedClient(app)).client;
-      expect((await other.get(`/v1/payments/${id}`)).status).toBe(404);
-      expect((await other.get('/v1/payments')).body.payments).toEqual([]);
+      expect((await other.get(`/api/payments/${id}`)).status).toBe(404);
+      expect((await other.get('/api/payments')).body.payments).toEqual([]);
     });
   });
 });

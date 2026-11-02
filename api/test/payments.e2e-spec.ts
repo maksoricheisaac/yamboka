@@ -32,7 +32,7 @@ describe('Paiements simulés (e2e)', () => {
     pack = 'Starter',
     overrides: Record<string, unknown> = {},
   ) {
-    return client.post('/v1/payments', {
+    return client.post('/api/payments', {
       packId: await packId(pack),
       operator: 'MTN',
       phone: PHONE,
@@ -45,10 +45,10 @@ describe('Paiements simulés (e2e)', () => {
     id: string,
     outcome: string,
     callbacks = 1,
-  ) => client.post(`/v1/payments/${id}/simulate`, { outcome, callbacks });
+  ) => client.post(`/api/payments/${id}/simulate`, { outcome, callbacks });
 
   const creditsOf = async (client: Client) =>
-    (await client.get('/v1/auth/me')).body.user.credits as number;
+    (await client.get('/api/auth/me')).body.user.credits as number;
   const ledgerOfPayment = (paymentId: string) =>
     prisma.creditLedger.findMany({
       where: { paymentId },
@@ -99,14 +99,14 @@ describe('Paiements simulés (e2e)', () => {
 
     it('enregistre le numéro dans le profil au premier achat (UF-21), sans l’écraser ensuite', async () => {
       const { client } = await verifiedClient(app);
-      expect((await client.get('/v1/auth/me')).body.user.phone).toBeNull();
+      expect((await client.get('/api/auth/me')).body.user.phone).toBeNull();
       await buy(client, 'Starter');
       // Enregistré au format E.164, même si le client envoie l'ancien format.
-      expect((await client.get('/v1/auth/me')).body.user.phone).toBe(
+      expect((await client.get('/api/auth/me')).body.user.phone).toBe(
         `+${PHONE}`,
       );
       await buy(client, 'Starter', { phone: '242069999000' });
-      expect((await client.get('/v1/auth/me')).body.user.phone).toBe(
+      expect((await client.get('/api/auth/me')).body.user.phone).toBe(
         `+${PHONE}`,
       );
     });
@@ -134,7 +134,7 @@ describe('Paiements simulés (e2e)', () => {
 
     it('refuse un pack inexistant ou désactivé', async () => {
       const { client } = await verifiedClient(app);
-      const unknown = await client.post('/v1/payments', {
+      const unknown = await client.post('/api/payments', {
         packId: '00000000-0000-4000-8000-000000000000',
         operator: 'MTN',
         phone: PHONE,
@@ -224,7 +224,7 @@ describe('Paiements simulés (e2e)', () => {
       expect(notif.body).toContain('1500 crédits');
 
       const receipt = await client
-        .get(`/v1/payments/${id}/receipt`)
+        .get(`/api/payments/${id}/receipt`)
         .expect(200);
       expect(receipt.body.receipt).toMatchObject({
         amountFcfa: 5000,
@@ -359,7 +359,7 @@ describe('Paiements simulés (e2e)', () => {
       const posts = await Promise.all(
         Array.from({ length: 8 }, () =>
           request(app.getHttpServer())
-            .post('/v1/webhooks/payment')
+            .post('/api/webhooks/payment')
             .send({ reference }),
         ),
       );
@@ -431,7 +431,7 @@ describe('Paiements simulés (e2e)', () => {
       const { client } = await verifiedClient(app);
       const { body } = await buy(client);
       const res = await request(app.getHttpServer())
-        .post('/v1/webhooks/payment')
+        .post('/api/webhooks/payment')
         .send({
           reference: body.payment.reference,
           status: 'success',
@@ -440,7 +440,7 @@ describe('Paiements simulés (e2e)', () => {
         });
       expect(res.status).toBe(200);
       expect(
-        (await client.get(`/v1/payments/${body.payment.id}`)).body.payment
+        (await client.get(`/api/payments/${body.payment.id}`)).body.payment
           .status,
       ).toBe('PENDING');
       expect(await creditsOf(client)).toBe(0);
@@ -448,14 +448,14 @@ describe('Paiements simulés (e2e)', () => {
 
     it('référence inconnue ou corps invalide : réponse neutre, rien ne se passe', async () => {
       const unknown = await request(app.getHttpServer())
-        .post('/v1/webhooks/payment')
+        .post('/api/webhooks/payment')
         .send({ reference: 'MOCK-inconnu' });
       expect(unknown.status).toBe(200);
       expect(unknown.body).toEqual({ received: true });
       expect(
         (
           await request(app.getHttpServer())
-            .post('/v1/webhooks/payment')
+            .post('/api/webhooks/payment')
             .send({})
         ).status,
       ).toBe(400);
@@ -518,7 +518,7 @@ describe('Paiements simulés (e2e)', () => {
         data: { createdAt: new Date(Date.now() - 25 * 3600 * 1000) },
       });
       await payments.reconcile();
-      const p = (await client.get(`/v1/payments/${body.payment.id}`)).body
+      const p = (await client.get(`/api/payments/${body.payment.id}`)).body
         .payment;
       expect(p).toMatchObject({
         status: 'FAILED',
@@ -535,7 +535,7 @@ describe('Paiements simulés (e2e)', () => {
       });
       await payments.reconcile();
       expect(
-        (await client.get(`/v1/payments/${body.payment.id}`)).body.payment
+        (await client.get(`/api/payments/${body.payment.id}`)).body.payment
           .status,
       ).toBe('FAILED');
 
@@ -548,7 +548,7 @@ describe('Paiements simulés (e2e)', () => {
         payments.verify(body.payment.id),
       ]);
       expect(
-        (await client.get(`/v1/payments/${body.payment.id}`)).body.payment
+        (await client.get(`/api/payments/${body.payment.id}`)).body.payment
           .status,
       ).toBe('SUCCESS');
       expect(await creditsOf(client)).toBe(1500);
@@ -590,22 +590,22 @@ describe('Paiements simulés (e2e)', () => {
       await simulate(owner.client, body.payment.id, 'success');
       const id = body.payment.id as string;
 
-      expect((await intruder.client.get(`/v1/payments/${id}`)).status).toBe(
+      expect((await intruder.client.get(`/api/payments/${id}`)).status).toBe(
         404,
       );
       expect(
-        (await intruder.client.get(`/v1/payments/${id}/receipt`)).status,
+        (await intruder.client.get(`/api/payments/${id}/receipt`)).status,
       ).toBe(404);
       expect((await simulate(intruder.client, id, 'failed')).status).toBe(404);
       expect(
-        (await intruder.client.get('/v1/payments')).body.payments,
+        (await intruder.client.get('/api/payments')).body.payments,
       ).toHaveLength(0);
     });
 
     it('le reçu n’existe que pour un achat réussi', async () => {
       const { client } = await verifiedClient(app);
       const { body } = await buy(client);
-      const res = await client.get(`/v1/payments/${body.payment.id}/receipt`);
+      const res = await client.get(`/api/payments/${body.payment.id}/receipt`);
       expect(res.status).toBe(409);
       expect(res.body.code).toBe('RECEIPT_UNAVAILABLE');
     });
@@ -615,7 +615,8 @@ describe('Paiements simulés (e2e)', () => {
       await buy(client, 'Starter');
       await new Promise((r) => setTimeout(r, 20));
       await buy(client, 'Business');
-      const list = (await client.get('/v1/payments').expect(200)).body.payments;
+      const list = (await client.get('/api/payments').expect(200)).body
+        .payments;
       expect(list.map((p: { packName: string }) => p.packName)).toEqual([
         'Business',
         'Starter',
@@ -625,7 +626,7 @@ describe('Paiements simulés (e2e)', () => {
     it('les routes de paiement refusent une origine étrangère (CSRF)', async () => {
       const { client } = await verifiedClient(app);
       const res = await client.post(
-        '/v1/payments',
+        '/api/payments',
         { packId: await packId('Starter'), operator: 'MTN', phone: PHONE },
         'https://evil.example',
       );
@@ -635,7 +636,7 @@ describe('Paiements simulés (e2e)', () => {
 
     it('un identifiant de paiement mal formé est rejeté', async () => {
       const { client } = await verifiedClient(app);
-      expect((await client.get('/v1/payments/pas-un-uuid')).status).toBe(400);
+      expect((await client.get('/api/payments/pas-un-uuid')).status).toBe(400);
     });
   });
 
@@ -645,7 +646,7 @@ describe('Paiements simulés (e2e)', () => {
       const { body } = await buy(client, 'Starter');
       await simulate(client, body.payment.id, 'success');
 
-      const balance = (await client.get('/v1/credits/balance').expect(200))
+      const balance = (await client.get('/api/credits/balance').expect(200))
         .body;
       expect(balance).toEqual({
         credits: 1500,
@@ -653,7 +654,7 @@ describe('Paiements simulés (e2e)', () => {
         valueFcfa: 1500 * 4,
       });
 
-      const ledger = (await client.get('/v1/credits/ledger').expect(200)).body;
+      const ledger = (await client.get('/api/credits/ledger').expect(200)).body;
       expect(
         ledger.items
           .map((i: { type: string; amount: number }) => [i.type, i.amount])
@@ -670,21 +671,23 @@ describe('Paiements simulés (e2e)', () => {
       const { client } = await verifiedClient(app);
       const { body } = await buy(client, 'Starter');
       await simulate(client, body.payment.id, 'success'); // achat + bonus : deux mouvements
-      const page = (await client.get('/v1/credits/ledger?limit=1').expect(200))
+      const page = (await client.get('/api/credits/ledger?limit=1').expect(200))
         .body;
       expect(page.items).toHaveLength(1);
       expect(page.nextCursor).not.toBeNull();
-      expect((await client.get('/v1/credits/ledger?limit=0')).status).toBe(400);
+      expect((await client.get('/api/credits/ledger?limit=0')).status).toBe(
+        400,
+      );
       expect(
-        (await client.get('/v1/credits/ledger?cursor=nimporte')).status,
+        (await client.get('/api/credits/ledger?cursor=nimporte')).status,
       ).toBe(400);
     });
 
     it('exige d’être connecté', async () => {
-      expect((await new Client(app).get('/v1/credits/balance')).status).toBe(
+      expect((await new Client(app).get('/api/credits/balance')).status).toBe(
         401,
       );
-      expect((await new Client(app).get('/v1/credits/ledger')).status).toBe(
+      expect((await new Client(app).get('/api/credits/ledger')).status).toBe(
         401,
       );
     });

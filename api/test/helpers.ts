@@ -87,7 +87,7 @@ export class Client {
     overrides: Record<string, unknown> = {},
   ): Promise<{ res: request.Response; email: string }> {
     const body = signupBody(overrides);
-    const res = await this.post('/v1/auth/register', body);
+    const res = await this.post('/api/auth/register', body);
     return { res, email: body.email };
   }
 }
@@ -111,7 +111,7 @@ export const prismaOf = (app: INestApplication) => app.get(PrismaService);
 export async function rawSession(app: INestApplication) {
   const body = signupBody();
   const res = await request(app.getHttpServer())
-    .post('/v1/auth/register')
+    .post('/api/auth/register')
     .set('Origin', APP_ORIGIN)
     .set('X-Forwarded-For', freshIp())
     .send(body)

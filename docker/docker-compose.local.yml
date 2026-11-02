@@ -1,0 +1,113 @@
+# Environnement LOCAL — développement sur la machine. Ni Traefik ni dokploy-network.
+#
+# Depuis la RACINE du dépôt :
+#   Services d'appui seuls (PostgreSQL + Redis), applications lancées avec `pnpm dev:*` (workflow habituel) :
+#     docker compose --env-file .env.local -f docker/docker-compose.local.yml up -d
+#   Tout en conteneurs (code monté, rechargement automatique) :
+#     docker compose --env-file .env.local -f docker/docker-compose.local.yml --profile apps up -d --build
+#
+# Les chemins relatifs se résolvent depuis ce dossier (docker/). Tous les ports sont liés à 127.0.0.1.
+name: ${COMPOSE_PROJECT_NAME:-yamboka-local}
+
+x-dev-image: &dev-image
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+    target: dev
+  image: yamboka-local-dev:latest
+
+# Rechargement fiable sur un montage Windows/macOS, où les évènements de fichiers ne traversent pas le montage.
+x-polling: &polling
+  WATCHPACK_POLLING: "true"
+  CHOKIDAR_USEPOLLING: "true"
+  TSC_WATCHFILE: PriorityPollingInterval
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-yamboka}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yamboka_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-yamboka_dev}
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5433}:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:${REDIS_PORT:-6380}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  # ───── Profil « apps » : api, web et app en conteneurs, code source monté depuis l'hôte ─────
+  api:
+    <<: *dev-image
+    profiles: [apps]
+    working_dir: /repo
+    # Les secrets de développement (SMTP, SasPay, R2…) viennent de .env.local ; les adresses de PostgreSQL et de
+    # Redis, valables sur l'hôte (localhost), sont remplacées par celles du réseau Docker.
+    env_file: ../.env.local
+    environment:
+      <<: *polling
+      DATABASE_URL: postgresql://${POSTGRES_USER:-yamboka}:${POSTGRES_PASSWORD:-yamboka_dev_password}@postgres:5432/${POSTGRES_DB:-yamboka_dev}
+      REDIS_URL: redis://redis:6379
+    command: sh -c "pnpm --filter api exec prisma generate && pnpm --filter api exec prisma migrate deploy && pnpm --filter api start:dev"
+    ports: ["127.0.0.1:4000:4000"]
+    volumes:
+      - ..:/repo
+      - /repo/node_modules
+      - /repo/api/node_modules
+      - /repo/web/node_modules
+      - /repo/app/node_modules
+      - /repo/packages/shared/node_modules
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      retries: 12
+      start_period: 60s
+
+  web:
+    <<: *dev-image
+    profiles: [apps]
+    working_dir: /repo
+    # Pas d'env_file : le site public ne reçoit aucun secret de l'API.
+    environment:
+      <<: *polling
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3001}
+      NEXT_PUBLIC_WHATSAPP_NUMBER: ${NEXT_PUBLIC_WHATSAPP_NUMBER:-}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
+      API_INTERNAL_URL: http://api:4000
+    command: pnpm --filter web dev
+    ports: ["127.0.0.1:3000:3000"]
+    # Le .env.local de la racine est masqué : next.config.ts le lirait sinon et exposerait les secrets de l'API.
+    volumes: ["..:/repo", "/dev/null:/repo/.env.local:ro", "/repo/node_modules", "/repo/api/node_modules", "/repo/web/node_modules", "/repo/app/node_modules", "/repo/packages/shared/node_modules"]
+    depends_on:
+      api: { condition: service_healthy }
+
+  app:
+    <<: *dev-image
+    profiles: [apps]
+    working_dir: /repo
+    environment:
+      <<: *polling
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      API_INTERNAL_URL: http://api:4000
+    command: pnpm --filter app dev
+    ports: ["127.0.0.1:3001:3001"]
+    volumes: ["..:/repo", "/dev/null:/repo/.env.local:ro", "/repo/node_modules", "/repo/api/node_modules", "/repo/web/node_modules", "/repo/app/node_modules", "/repo/packages/shared/node_modules"]
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  pgdata:
+    # Volume historique du projet « yamboka-dev » : les données de développement existantes sont conservées.
+    name: ${LOCAL_PGDATA_VOLUME:-yamboka-dev_pgdata}

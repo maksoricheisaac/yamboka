@@ -189,7 +189,7 @@ export class CreationsService {
           thumbnailUrl: p.media.some(
             (m) => m.role === 'PRESET_THUMBNAIL' && !m.purgedAt,
           )
-            ? `/v1/creations/styles/${p.id}/thumbnail`
+            ? `/api/creations/styles/${p.id}/thumbnail`
             : null,
         };
       })
@@ -538,7 +538,7 @@ export class CreationsService {
     const input = g.media.find((m) => m.role === 'INPUT_IMAGE');
     const ready = g.status === 'COMPLETED' && !!output && !output.purgedAt;
     const failed = g.status === 'FAILED' || g.status === 'CANCELLED';
-    const base = `/v1/creations/${g.id}`;
+    const base = `/api/creations/${g.id}`;
     const posterOk = isVideo ? !!input && !input.purgedAt : ready;
     return {
       id: g.id,

@@ -14,7 +14,7 @@ describe('Catalogue et devis (e2e)', () => {
 
   describe('Packs et produits (publics)', () => {
     it('liste les 3 packs de lancement avec crédits et équivalents calculés côté serveur', async () => {
-      const res = await new Client(app).get('/v1/catalog/packs').expect(200);
+      const res = await new Client(app).get('/api/catalog/packs').expect(200);
       const packs = res.body.packs as {
         name: string;
         priceFcfa: number;
@@ -37,14 +37,18 @@ describe('Catalogue et devis (e2e)', () => {
     });
 
     it('ne liste que les produits actifs', async () => {
-      const res = await new Client(app).get('/v1/catalog/products').expect(200);
+      const res = await new Client(app)
+        .get('/api/catalog/products')
+        .expect(200);
       expect(
         res.body.products.map((p: { code: string }) => p.code).sort(),
       ).toEqual(['IMAGE_EDIT_GROK', 'IMAGE_SOUL2', 'VIDEO_LIGHT_480']);
     });
 
     it('n’expose aucun coût fournisseur', async () => {
-      const res = await new Client(app).get('/v1/catalog/products').expect(200);
+      const res = await new Client(app)
+        .get('/api/catalog/products')
+        .expect(200);
       const json = JSON.stringify(res.body);
       expect(json).not.toMatch(/providerCost|usd|providerModel/i);
     });
@@ -52,7 +56,7 @@ describe('Catalogue et devis (e2e)', () => {
 
   describe('Devis', () => {
     it('exige d’être connecté', async () => {
-      const res = await new Client(app).post('/v1/catalog/quote', {
+      const res = await new Client(app).post('/api/catalog/quote', {
         productCode: 'IMAGE_SOUL2',
       });
       expect(res.status).toBe(401);
@@ -61,7 +65,7 @@ describe('Catalogue et devis (e2e)', () => {
     it('vidéo de 10 s : 100 crédits', async () => {
       const { client } = await verifiedClient(app);
       const res = await client
-        .post('/v1/catalog/quote', {
+        .post('/api/catalog/quote', {
           productCode: 'VIDEO_LIGHT_480',
           durationSeconds: 10,
         })
@@ -78,7 +82,7 @@ describe('Catalogue et devis (e2e)', () => {
     it('arrondit à la seconde supérieure', async () => {
       const { client } = await verifiedClient(app);
       const res = await client
-        .post('/v1/catalog/quote', {
+        .post('/api/catalog/quote', {
           productCode: 'VIDEO_LIGHT_480',
           durationSeconds: 9.2,
         })
@@ -89,7 +93,7 @@ describe('Catalogue et devis (e2e)', () => {
     it('image : 2 crédits, sans durée', async () => {
       const { client } = await verifiedClient(app);
       const res = await client
-        .post('/v1/catalog/quote', { productCode: 'IMAGE_SOUL2' })
+        .post('/api/catalog/quote', { productCode: 'IMAGE_SOUL2' })
         .expect(200);
       expect(res.body).toMatchObject({
         credits: 2,
@@ -122,7 +126,7 @@ describe('Catalogue et devis (e2e)', () => {
       ],
     ])('refuse une vidéo %s', async (_label, body, code) => {
       const { client } = await verifiedClient(app);
-      const res = await client.post('/v1/catalog/quote', body);
+      const res = await client.post('/api/catalog/quote', body);
       expect(res.status).toBe(400);
       expect(res.body.code).toBe(code);
     });
@@ -130,7 +134,7 @@ describe('Catalogue et devis (e2e)', () => {
     it('ignore tout prix envoyé par le client', async () => {
       const { client } = await verifiedClient(app);
       const res = await client
-        .post('/v1/catalog/quote', {
+        .post('/api/catalog/quote', {
           productCode: 'VIDEO_LIGHT_480',
           durationSeconds: 10,
           credits: 1,
@@ -146,7 +150,7 @@ describe('Catalogue et devis (e2e)', () => {
       for (const durationSeconds of [-5, 0, 'dix']) {
         expect(
           (
-            await client.post('/v1/catalog/quote', {
+            await client.post('/api/catalog/quote', {
               productCode: 'VIDEO_LIGHT_480',
               durationSeconds,
             })

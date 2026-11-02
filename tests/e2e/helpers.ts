@@ -27,7 +27,7 @@ export async function tokenFor(request: APIRequestContext, email: string): Promi
   await expect
     .poll(
       async () => {
-        const res = await request.get(`${API_URL}/v1/dev/outbox`, { params: { to: email } });
+        const res = await request.get(`${API_URL}/api/dev/outbox`, { params: { to: email } });
         const { messages } = (await res.json()) as { messages: { text: string }[] };
         token = messages.at(-1)?.text.match(/token=([A-Za-z0-9_%-]+)/)?.[1];
         return token;
@@ -44,7 +44,7 @@ export async function codeFor(request: APIRequestContext, email: string): Promis
   await expect
     .poll(
       async () => {
-        const res = await request.get(`${API_URL}/v1/dev/outbox`, { params: { to: email } });
+        const res = await request.get(`${API_URL}/api/dev/outbox`, { params: { to: email } });
         const { messages } = (await res.json()) as { messages: { text: string }[] };
         code = messages.at(-1)?.text.match(/^(\d{6})$/m)?.[1];
         return code;

@@ -1,9 +1,9 @@
 import type { CreationFormat, CreationKind, CreationView } from "@yamboka/shared";
 import { Clapperboard, Image as ImageIcon, PartyPopper, type LucideIcon } from "lucide-react";
 
-/** Les URL de médias renvoyées par l'API commencent par /v1 ; le navigateur passe par le relais /api. */
+/** Les URL de médias renvoyées par l'API commencent déjà par /api, chemin relatif résolu sur l'hôte courant. */
 export function mediaUrl(url: string | null): string | null {
-  return url ? url.replace(/^\/v1\//, "/api/") : null;
+  return url;
 }
 
 export const KINDS: Record<CreationKind, { label: string; short: string; hint: string; icon: LucideIcon; photoLabel: string }> = {

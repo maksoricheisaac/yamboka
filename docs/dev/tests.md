@@ -23,7 +23,7 @@ Le mode de confirmation de connexion (`loginOtpMode`) est simulé par un espion 
 
 Les tests d'intégration recréent la base `yamboka_test` à chaque exécution (suppression, création, migrations, seed). Le registre de crédits est volontairement impossible à vider (trigger), d'où une base neuve plutôt qu'un nettoyage. **Garde-fou** : `resetDatabase` refuse toute base dont le nom ne finit pas par `_test` ou `_e2e`.
 
-PostgreSQL **et Redis** doivent tourner : `docker compose -f docker/docker-compose.dev.yml up -d`.
+PostgreSQL **et Redis** doivent tourner : `docker compose --env-file .env.local -f docker/docker-compose.local.yml up -d`.
 
 ## Tests de navigateur (Playwright)
 
@@ -46,7 +46,7 @@ La configuration limite Playwright à **4 workers** (2 en CI). Chaque worker pil
 ### Conventions des tests
 
 - Chaque page présente sa propre IP (`X-Forwarded-For`) : pour que les comptes de test restent isolés les uns des autres (usage historique : la règle RG-09, supprimée, limitait les comptes par IP).
-- Les codes et liens reçus par e-mail sont lus dans l'outbox de développement de l'API (`/v1/dev/outbox`) : `codeFor` (code à 6 chiffres) et `tokenFor` (lien de réinitialisation).
+- Les codes et liens reçus par e-mail sont lus dans l'outbox de développement de l'API (`/api/dev/outbox`) : `codeFor` (code à 6 chiffres) et `tokenFor` (lien de réinitialisation).
 - `signUpVerified` = inscription + saisie du code : arrive sur le tableau de bord d'un compte vérifié (solde nul : aucun crédit offert). `signUp` seul s'arrête sur `/verifier-email`. **Attendre l'URL avant de naviguer ailleurs**, sinon la requête d'inscription en cours est abandonnée.
 - Le délai de renvoi des codes est réduit à 3 s dans l'e2e (`EMAIL_OTP_RESEND_COOLDOWN_SECONDS`).
 - La déconnexion se fait par le menu du compte (`logOut`) ; l'administrateur se connecte avec `adminLogin`.

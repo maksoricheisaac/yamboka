@@ -46,7 +46,7 @@ Flux code d'autorisation avec **PKCE** et paramètre **`state`** (cookies `HttpO
 
 1. Google Cloud Console → créer un projet → écran de consentement OAuth → identifiants « ID client OAuth » de type *Application Web*.
 2. URI de redirection autorisée : `https://<domaine-de-app>/api/auth/google/callback` (en local : `http://localhost:3001/api/auth/google/callback`).
-3. Renseigner dans `api/.env` : `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` (la même URL que ci-dessus).
+3. Renseigner dans `.env.local` (racine) : `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` (la même URL que ci-dessus).
 
 Sans ces trois variables, le bouton Google n'est pas affiché (`GET /auth/providers`).
 
@@ -67,7 +67,7 @@ Sans ces trois variables, le bouton Google n'est pas affiché (`GET /auth/provid
 
 ## Outils de développement
 
-`GET /v1/dev/outbox?to=<email>` expose les e-mails du mode `console` (codes de vérification, liens de réinitialisation) **hors production uniquement** : le module n'est pas chargé quand `NODE_ENV=production`.
+`GET /api/dev/outbox?to=<email>` expose les e-mails du mode `console` (codes de vérification, liens de réinitialisation) **hors production uniquement** : le module n'est pas chargé quand `NODE_ENV=production`.
 
 ## Connexions keep-alive derrière un proxy (erreurs 500 aléatoires)
 

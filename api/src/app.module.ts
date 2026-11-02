@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
@@ -40,7 +41,13 @@ const emailTracker = (req: Record<string, any>): Promise<string> => {
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validate: validateEnv,
+      // Configuration centralisée à la racine du dépôt (développement hors Docker). Absent en conteneur :
+      // les variables y sont fournies par Docker Compose. Les variables déjà définies l'emportent sur le fichier.
+      envFilePath: join(__dirname, '..', '..', '.env.local'),
+    }),
     LoggerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) => ({

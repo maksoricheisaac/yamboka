@@ -47,20 +47,20 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
     const code = otpFromEmail(app, email);
     const wrong = code === '000000' ? '111111' : '000000';
 
-    const first = await client.post('/v1/auth/verify-email', { code: wrong });
+    const first = await client.post('/api/auth/verify-email', { code: wrong });
     expect(first.status).toBe(400);
     expect(first.body.code).toBe('OTP_INVALID');
     expect(first.body.details.attemptsLeft).toBe(4);
 
     for (let i = 0; i < 3; i++) {
-      await client.post('/v1/auth/verify-email', { code: wrong });
+      await client.post('/api/auth/verify-email', { code: wrong });
     }
-    const last = await client.post('/v1/auth/verify-email', { code: wrong });
+    const last = await client.post('/api/auth/verify-email', { code: wrong });
     expect(last.body.details.attemptsLeft).toBe(0);
 
-    const afterLock = await client.post('/v1/auth/verify-email', { code });
+    const afterLock = await client.post('/api/auth/verify-email', { code });
     expect(afterLock.status).toBe(400);
-    expect((await client.get('/v1/auth/me')).body.user.emailVerified).toBe(
+    expect((await client.get('/api/auth/me')).body.user.emailVerified).toBe(
       false,
     );
   });
@@ -71,7 +71,7 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
     const wrong = otpFromEmail(app, email) === '123456' ? '654321' : '123456';
     await Promise.all(
       Array.from({ length: 12 }, () =>
-        client.post('/v1/auth/verify-email', { code: wrong }),
+        client.post('/api/auth/verify-email', { code: wrong }),
       ),
     );
     const row = await prisma.emailOtp.findFirstOrThrow({ where: { email } });
@@ -82,7 +82,7 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
     const client = new Client(app);
     const { email } = await client.register();
 
-    const tooSoon = await client.post('/v1/auth/resend-verification');
+    const tooSoon = await client.post('/api/auth/resend-verification');
     expect(tooSoon.status).toBe(429);
     expect(tooSoon.body.code).toBe('OTP_COOLDOWN');
     expect(tooSoon.body.details.retryAfterSeconds).toBeGreaterThan(0);
@@ -99,7 +99,7 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
         expiresAt: new Date(Date.now() - 60_000),
       })),
     });
-    const capped = await client.post('/v1/auth/resend-verification');
+    const capped = await client.post('/api/auth/resend-verification');
     expect(capped.status).toBe(429);
     expect(capped.body.code).toBe('OTP_RATE_LIMIT');
   });
@@ -116,7 +116,7 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
     // Aucun code orphelin : une nouvelle demande n'est pas bloquée par un envoi qui n'a jamais eu lieu.
     expect(await prisma.emailOtp.count({ where: { email } })).toBe(0);
 
-    const resend = await client.post('/v1/auth/resend-verification');
+    const resend = await client.post('/api/auth/resend-verification');
     expect(resend.status).toBe(503);
     expect(resend.body.code).toBe('EMAIL_UNAVAILABLE');
     expect(JSON.stringify(resend.body)).not.toMatch(/smtp|connection|host/i);
@@ -126,7 +126,7 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
     const client = new Client(app);
     const { email } = await client.register();
     const code = otpFromEmail(app, email);
-    const res = await client.post('/v1/auth/login/verify', { email, code });
+    const res = await client.post('/api/auth/login/verify', { email, code });
     expect(res.status).toBe(400);
   });
 
@@ -137,21 +137,21 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
       const oldCode = otpFromEmail(app, wrong);
       const right = uniqueEmail('corrige');
 
-      const res = await client.post('/v1/auth/change-email', { email: right });
+      const res = await client.post('/api/auth/change-email', { email: right });
       expect(res.status).toBe(200);
       expect(res.body.user.email).toBe(right);
       expect(res.body.user.emailVerified).toBe(false);
 
       // Le code de l'ancienne adresse est inutilisable : il est lié à l'ancienne adresse.
-      const stale = await client.post('/v1/auth/verify-email', {
+      const stale = await client.post('/api/auth/verify-email', {
         code: oldCode,
       });
       expect(stale.status).toBe(400);
 
       await client
-        .post('/v1/auth/verify-email', { code: otpFromEmail(app, right) })
+        .post('/api/auth/verify-email', { code: otpFromEmail(app, right) })
         .expect(200);
-      expect((await client.get('/v1/auth/me')).body.user.emailVerified).toBe(
+      expect((await client.get('/api/auth/me')).body.user.emailVerified).toBe(
         true,
       );
     });
@@ -162,21 +162,21 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
       const client = new Client(app);
       await client.register();
 
-      const dup = await client.post('/v1/auth/change-email', {
+      const dup = await client.post('/api/auth/change-email', {
         email: takenEmail,
       });
       expect(dup.status).toBe(409);
       expect(dup.body.code).toBe('EMAIL_TAKEN');
-      const disposable = await client.post('/v1/auth/change-email', {
+      const disposable = await client.post('/api/auth/change-email', {
         email: 'jetable@mailinator.com',
       });
       expect(disposable.status).toBe(400);
 
       const { email } = await taken.register();
       await taken
-        .post('/v1/auth/verify-email', { code: otpFromEmail(app, email) })
+        .post('/api/auth/verify-email', { code: otpFromEmail(app, email) })
         .expect(200);
-      const verified = await taken.post('/v1/auth/change-email', {
+      const verified = await taken.post('/api/auth/change-email', {
         email: uniqueEmail('trop-tard'),
       });
       expect(verified.status).toBe(409);
@@ -199,7 +199,7 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
       const client = new Client(app);
       const { email } = await client.register();
       await client
-        .post('/v1/auth/verify-email', { code: otpFromEmail(app, email) })
+        .post('/api/auth/verify-email', { code: otpFromEmail(app, email) })
         .expect(200);
       return email;
     }
@@ -208,24 +208,24 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
       const email = await verifiedAccount();
       mode('all');
       const client = new Client(app);
-      const res = await client.post('/v1/auth/login', {
+      const res = await client.post('/api/auth/login', {
         email,
         password: PASSWORD,
       });
       expect(res.status).toBe(200);
       expect(res.body.otpRequired).toBe(true);
       expect(res.headers['set-cookie']).toBeUndefined();
-      expect((await client.get('/v1/auth/me')).status).toBe(401);
+      expect((await client.get('/api/auth/me')).status).toBe(401);
 
       const code = otpFromEmail(app, email);
       expect(lastEmailFor(app, email).subject).toContain('code de connexion');
-      const done = await client.post('/v1/auth/login/verify', { email, code });
+      const done = await client.post('/api/auth/login/verify', { email, code });
       expect(done.status).toBe(200);
       expect(done.body.user.email).toBe(email);
-      expect((await client.get('/v1/auth/me')).status).toBe(200);
+      expect((await client.get('/api/auth/me')).status).toBe(200);
 
       // Le code ne sert qu'une fois.
-      const replay = await new Client(app).post('/v1/auth/login/verify', {
+      const replay = await new Client(app).post('/api/auth/login/verify', {
         email,
         code,
       });
@@ -238,7 +238,7 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
       const before = await prisma.emailOtp.count({
         where: { email, purpose: 'LOGIN' },
       });
-      const res = await new Client(app).post('/v1/auth/login', {
+      const res = await new Client(app).post('/api/auth/login', {
         email,
         password: 'Mauvais-mot-de-passe-1!',
       });
@@ -251,7 +251,7 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
     it('mode « admin » : un client se connecte directement', async () => {
       const email = await verifiedAccount();
       mode('admin');
-      const res = await new Client(app).post('/v1/auth/login', {
+      const res = await new Client(app).post('/api/auth/login', {
         email,
         password: PASSWORD,
       });
@@ -261,7 +261,7 @@ describe('Codes à usage unique par e-mail (e2e)', () => {
 
     it('un compte inconnu ne reçoit rien et ne révèle rien', async () => {
       mode('all');
-      const res = await new Client(app).post('/v1/auth/login', {
+      const res = await new Client(app).post('/api/auth/login', {
         email: uniqueEmail('inconnu'),
         password: PASSWORD,
       });

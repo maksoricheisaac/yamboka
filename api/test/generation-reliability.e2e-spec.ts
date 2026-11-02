@@ -157,7 +157,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
 
   const send = (client: Client, fields: Record<string, string>) => {
     const req = client.agent
-      .post('/v1/creations')
+      .post('/api/creations')
       .set('Origin', APP_ORIGIN)
       .set('X-Forwarded-For', client.ip);
     for (const [k, v] of Object.entries(fields)) req.field(k, v);
@@ -171,7 +171,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
     ...extra,
   });
   const balance = async (c: Client) =>
-    (await c.get('/v1/auth/me')).body.user.credits as number;
+    (await c.get('/api/auth/me')).body.user.credits as number;
   const ledgerTypes = async (id: string) =>
     (await prisma.creditLedger.findMany({ where: { generationId: id } }))
       .map((l) => l.type)
@@ -226,7 +226,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       });
       // Le fichier stocké est celui du fournisseur, aux bonnes proportions.
       const file = await client
-        .get(`/v1/creations/${creation.id}/file`)
+        .get(`/api/creations/${creation.id}/file`)
         .expect(200);
       expect(imageSize(file.body as Buffer)).toEqual({
         width: 576,
@@ -248,7 +248,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
         expect(creation.status).toBe('COMPLETED');
         expect(provider.submitted[0].input.aspect_ratio).toBe(format);
         const size = imageSize(
-          (await client.get(`/v1/creations/${creation.id}/file`).expect(200))
+          (await client.get(`/api/creations/${creation.id}/file`).expect(200))
             .body as Buffer,
         )!;
         const [w, h] = format.split(':').map(Number);
@@ -370,7 +370,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       });
       await creations.advance(creation.id);
       await creations.advance(creation.id);
-      const after = (await client.get(`/v1/creations/${creation.id}`)).body
+      const after = (await client.get(`/api/creations/${creation.id}`)).body
         .creation;
       expect(after).toMatchObject({ status: 'FAILED', refunded: true });
       expect(after.errorMessage).toContain('trop de temps');
@@ -397,7 +397,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       });
       completeWith(mockImagePng('3:4'), 'image/png');
       await creations.advance(creation.id);
-      const after = (await client.get(`/v1/creations/${creation.id}`)).body
+      const after = (await client.get(`/api/creations/${creation.id}`)).body
         .creation;
       expect(after.status).toBe('COMPLETED');
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
@@ -457,7 +457,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       });
       expect(provider.uploads).toBe(2); // photo + vidéo de référence
       const file = await client
-        .get(`/v1/creations/${creation.id}/file`)
+        .get(`/api/creations/${creation.id}/file`)
         .expect(200);
       expect(file.headers['content-type']).toContain('video/mp4');
       expect((file.body as Buffer).subarray(4, 8).toString('ascii')).toBe(
@@ -550,7 +550,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       await creations.advance(creation.id);
       await creations.advance(creation.id);
       expect(
-        (await client.get(`/v1/creations/${creation.id}`)).body.creation,
+        (await client.get(`/api/creations/${creation.id}`)).body.creation,
       ).toMatchObject({ status: 'FAILED', refunded: true });
       expect(await ledgerTypes(creation.id)).toEqual(['RELEASE', 'RESERVE']);
       expect(await balance(client)).toBe(60);
@@ -575,7 +575,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
         expect(res.body.code).toBe('STYLE_UNAVAILABLE');
         expect(await balance(client)).toBe(60);
         const listed = (
-          await client.get('/v1/creations/styles').expect(200)
+          await client.get('/api/creations/styles').expect(200)
         ).body.styles.map((s: { id: string }) => s.id);
         expect(listed).not.toContain(bare.id);
         expect(listed).toContain(motionStyle);

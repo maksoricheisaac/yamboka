@@ -4,7 +4,7 @@
 
 | `EMAIL_PROVIDER` | Comportement |
 |---|---|
-| `console` (défaut) | **Aucun e-mail réel.** Les messages restent en mémoire (100 derniers) ; le journal n'affiche que le sujet, jamais le corps ni les codes. Lecture en développement : `GET /v1/dev/outbox?to=<email>` (absent en production). |
+| `console` (défaut) | **Aucun e-mail réel.** Les messages restent en mémoire (100 derniers) ; le journal n'affiche que le sujet, jamais le corps ni les codes. Lecture en développement : `GET /api/dev/outbox?to=<email>` (absent en production). |
 | `smtp` | Envoi réel via nodemailer. `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` obligatoires (validé au démarrage). |
 
 Variables (toutes lues côté serveur, jamais exposées au navigateur) :

@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env';
 import { ConfigService } from '@nestjs/config';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname } from 'node:path';
@@ -31,25 +31,36 @@ async function main() {
     process.exit(2);
   }
   const env = validateEnv(process.env);
-  const provider = createGenerationProvider(
-    new ConfigService<Env, true>(env as unknown as Record<string, unknown>),
-  );
-  if (provider.name !== 'higgsfield') throw new Error('GENERATION_PROVIDER=higgsfield requis.');
+  const provider = createGenerationProvider(new ConfigService<Env, true>(env));
+  if (provider.name !== 'higgsfield')
+    throw new Error('GENERATION_PROVIDER=higgsfield requis.');
   const model = arg('model')!;
   let json = arg('input')!;
   const up = async (path?: string) => {
     if (!path) return '';
-    return provider.uploadInput(await readFile(path), MIME[extname(path).toLowerCase()] ?? 'application/octet-stream');
+    return provider.uploadInput(
+      await readFile(path),
+      MIME[extname(path).toLowerCase()] ?? 'application/octet-stream',
+    );
   };
-  json = json.replace('@IMAGE@', await up(arg('image'))).replace('@VIDEO@', await up(arg('video')));
+  json = json
+    .replace('@IMAGE@', await up(arg('image')))
+    .replace('@VIDEO@', await up(arg('video')));
   const input = JSON.parse(json) as Record<string, unknown>;
   console.log('modèle :', model);
-  console.log('paramètres envoyés :', JSON.stringify(input).replace(/https:\/\/[^"]+/g, '<url>'));
+  console.log(
+    'paramètres envoyés :',
+    JSON.stringify(input).replace(/https:\/\/[^"]+/g, '<url>'),
+  );
 
   const t0 = Date.now();
   let sub;
   try {
-    sub = await provider.submit({ model, input, idempotencyKey: crypto.randomUUID() });
+    sub = await provider.submit({
+      model,
+      input,
+      idempotencyKey: crypto.randomUUID(),
+    });
   } catch (e) {
     console.log('✘ SOUMISSION REFUSÉE :', (e as Error).message);
     return;
@@ -65,15 +76,30 @@ async function main() {
       continue;
     }
     if (st.status === 'queued' || st.status === 'processing') continue;
-    console.log(`fin après ${Math.round((Date.now() - t0) / 1000)} s : ${st.status}`, st.error ?? '');
+    console.log(
+      `fin après ${Math.round((Date.now() - t0) / 1000)} s : ${st.status}`,
+      st.error ?? '',
+    );
     if (st.status !== 'completed' || !st.outputUrl) return;
     const res = await fetch(st.outputUrl);
     const buf = Buffer.from(await res.arrayBuffer());
     const mime = res.headers.get('content-type');
-    console.log('résultat :', mime, buf.length, 'octets', JSON.stringify(imageSize(buf)));
+    console.log(
+      'résultat :',
+      mime,
+      buf.length,
+      'octets',
+      JSON.stringify(imageSize(buf)),
+    );
     const out = arg('out');
     if (out) {
-      const ext = (mime ?? '').includes('mp4') ? 'mp4' : (mime ?? '').includes('png') ? 'png' : (mime ?? '').includes('webp') ? 'webp' : 'jpg';
+      const ext = (mime ?? '').includes('mp4')
+        ? 'mp4'
+        : (mime ?? '').includes('png')
+          ? 'png'
+          : (mime ?? '').includes('webp')
+            ? 'webp'
+            : 'jpg';
       await writeFile(`${out}.${ext}`, buf);
       console.log('enregistré :', `${out}.${ext}`);
     }

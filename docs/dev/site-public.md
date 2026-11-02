@@ -14,7 +14,7 @@ Hero → Exemples (catégories filtrables) → Comment ça marche → Cas d'util
 
 ## Offres : trois maximum
 
-`web/content/offer.ts` lit `GET /v1/catalog/packs/public` (packs actifs **et** publiés dans l'administration, trois au maximum, une seule recommandée) avec un cache d'une minute. Si l'API est injoignable, retombée sur les valeurs du business plan (Starter 5 000, Pro 10 000 recommandé, Business 25 000 FCFA). Le rendu est côté serveur : les prix sont dans le HTML, sans JavaScript. Chaque offre : intitulé de rôle (*Pour essayer / Recommandé / Pour créer régulièrement*), prix en FCFA, crédits, exemple concret calculé, un bouton. Pas de tableau comparatif.
+`web/content/offer.ts` lit `GET /api/catalog/packs/public` (packs actifs **et** publiés dans l'administration, trois au maximum, une seule recommandée) avec un cache d'une minute. Si l'API est injoignable, retombée sur les valeurs du business plan (Starter 5 000, Pro 10 000 recommandé, Business 25 000 FCFA). Le rendu est côté serveur : les prix sont dans le HTML, sans JavaScript. Chaque offre : intitulé de rôle (*Pour essayer / Recommandé / Pour créer régulièrement*), prix en FCFA, crédits, exemple concret calculé, un bouton. Pas de tableau comparatif.
 
 ## Animations (Motion, successeur de Framer Motion)
 

@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -30,9 +30,7 @@ function arg(name: string): string | undefined {
  */
 async function main() {
   const env = validateEnv(process.env);
-  const config = new ConfigService<Env, true>(
-    env as unknown as Record<string, unknown>,
-  );
+  const config = new ConfigService<Env, true>(env);
   const provider = createGenerationProvider(config);
   console.log(`Fournisseur de génération : ${provider.name}`);
 

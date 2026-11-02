@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env';
 import { ConfigService } from '@nestjs/config';
 import { validateEnv, type Env } from '../src/config/env';
 import { SmtpEmailProvider } from '../src/email/smtp-email.provider';
@@ -18,9 +18,7 @@ async function main() {
     );
     process.exit(2);
   }
-  const provider = new SmtpEmailProvider(
-    new ConfigService<Env, true>(env as unknown as Record<string, unknown>),
-  );
+  const provider = new SmtpEmailProvider(new ConfigService<Env, true>(env));
 
   const diag = await provider.diagnose();
   console.log(`${diag.ok ? '✔' : '✘'} ${diag.detail}`);

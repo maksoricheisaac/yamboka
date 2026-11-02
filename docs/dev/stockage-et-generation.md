@@ -49,11 +49,11 @@ Contraintes du modèle `genjutsu/motion-transfer` : vidéo MP4 de 4 s minimum (t
 
 | Route | Rôle |
 |---|---|
-| `GET /v1/creations/styles` | styles visibles (presets) avec coût en crédits calculé côté serveur |
-| `POST /v1/creations` | multipart : `photo` + `styleId`, `format`, `text`, `price`, `phone`, `consent`. Réserve les crédits, stocke la photo, envoie au fournisseur |
-| `GET /v1/creations`, `GET /v1/creations/:id` | liste paginée (filtre `status`) et détail ; consulter une création en cours la fait avancer |
-| `GET /v1/creations/:id/file` | résultat ou aperçu, propriétaire seulement, lecture par morceaux (Range) |
-| `DELETE /v1/creations/:id`, `POST /v1/creations/:id/report` | suppression (refusée si en cours ou signalée), signalement (gèle la conservation) |
+| `GET /api/creations/styles` | styles visibles (presets) avec coût en crédits calculé côté serveur |
+| `POST /api/creations` | multipart : `photo` + `styleId`, `format`, `text`, `price`, `phone`, `consent`. Réserve les crédits, stocke la photo, envoie au fournisseur |
+| `GET /api/creations`, `GET /api/creations/:id` | liste paginée (filtre `status`) et détail ; consulter une création en cours la fait avancer |
+| `GET /api/creations/:id/file` | résultat ou aperçu, propriétaire seulement, lecture par morceaux (Range) |
+| `DELETE /api/creations/:id`, `POST /api/creations/:id/report` | suppression (refusée si en cours ou signalée), signalement (gèle la conservation) |
 
 Types de création déduits du catalogue : `fun` = preset `MOTION` ; `affiche` = produit facturé à l'image ; `pub` = autre preset vidéo.
 Suivi : tâche BullMQ `advance-generations` toutes les 10 s (sans Redis : à chaque consultation). Succès → capture des crédits ;

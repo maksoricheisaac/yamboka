@@ -33,7 +33,7 @@
 ### Offre : trois offres publiques, flexibilité conservée
 
 - Tous les packs restent en base (prix, crédits, bonus, activation, ordre) et **restent achetables dans l'espace client**.
-- Le champ `CreditPack.publicVisible` choisit ceux des **pages publiques** : `GET /v1/catalog/packs/public` ne renvoie que les packs **actifs ET publiés**, **trois au maximum**. L'API refuse une quatrième publication (`422 TOO_MANY_PUBLIC`) ; une seule recommandation (en recommander une autre retire la précédente) ; désactiver un pack le retire du public.
+- Le champ `CreditPack.publicVisible` choisit ceux des **pages publiques** : `GET /api/catalog/packs/public` ne renvoie que les packs **actifs ET publiés**, **trois au maximum**. L'API refuse une quatrième publication (`422 TOO_MANY_PUBLIC`) ; une seule recommandation (en recommander une autre retire la précédente) ; désactiver un pack le retire du public.
 - Migration : Découverte, Créateur et Pro sont publiés (entrée / recommandé / régulier). **Aucun tarif, crédit ou coût fournisseur n'est modifié.**
 - **Rentabilité avant publication** : un pack actif doit respecter la marge minimale (`minMarginPercent`, 15 %) sur chaque produit actif (formule de `catalog/pricing.ts`). Toute modification qui la violerait est refusée (`422 MARGIN_TOO_LOW`) avec la marge calculée. Même règle quand on active un produit ou change son prix en crédits. Un nouveau pack naît inactif et non public.
 
@@ -44,13 +44,13 @@
 ### Limites connues
 
 - **Génération et stockage ne sont pas encore développés** : listes de générations, signalements et estimation du solde fournisseur affichent des états vides explicites. Masquer une création ne supprime pas de fichier (pas de stockage).
-- Le mode maintenance **s'annonce** (`GET /v1/catalog/status`) mais ne bloque rien encore : le blocage des nouvelles créations s'appliquera à l'ouverture de la génération.
+- Le mode maintenance **s'annonce** (`GET /api/catalog/status`) mais ne bloque rien encore : le blocage des nouvelles créations s'appliquera à l'ouverture de la génération.
 - Les rapports d'abus côté client (« signaler un problème ») ne sont pas encore proposés : seul le traitement côté administration existe.
 - L'estimation du solde Higgsfield n'est **pas** le solde réel du compte : recharges saisies moins coût des générations non échouées.
 
 ## Setup Wizard (premier administrateur)
 
-Page publique `/installation` de l'application ; API `GET /v1/setup/status`, `POST /v1/setup/check`, `POST /v1/setup/complete`.
+Page publique `/installation` de l'application ; API `GET /api/setup/status`, `POST /api/setup/check`, `POST /api/setup/complete`.
 
 ### Parcours
 

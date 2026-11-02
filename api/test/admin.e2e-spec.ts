@@ -14,7 +14,7 @@ describe('Administration (e2e)', () => {
     const client = new Client(app);
     const { email } = await client.register();
     await client
-      .post('/v1/auth/verify-email', { code: otpFromEmail(app, email) })
+      .post('/api/auth/verify-email', { code: otpFromEmail(app, email) })
       .expect(200);
     const user = await prisma.user.findUniqueOrThrow({ where: { email } });
     return { client, email, id: user.id };
@@ -26,7 +26,7 @@ describe('Administration (e2e)', () => {
     prisma = prismaOf(app);
     admin = new Client(app);
     await admin
-      .post('/v1/auth/login', {
+      .post('/api/auth/login', {
         email: TEST_ENV.ADMIN_EMAIL,
         password: TEST_ENV.ADMIN_PASSWORD,
       })
@@ -38,21 +38,21 @@ describe('Administration (e2e)', () => {
 
   describe('Contrôle d’accès côté serveur', () => {
     const GETS = [
-      '/v1/admin/ping',
-      '/v1/admin/stats',
-      '/v1/admin/users',
-      '/v1/admin/packs',
-      '/v1/admin/products',
-      '/v1/admin/presets',
-      '/v1/admin/payments',
-      '/v1/admin/generations',
-      '/v1/admin/reports',
-      '/v1/admin/finance/summary',
-      '/v1/admin/finance/export.csv',
-      '/v1/admin/settings',
-      '/v1/admin/legal',
-      '/v1/admin/admins',
-      '/v1/admin/audit',
+      '/api/admin/ping',
+      '/api/admin/stats',
+      '/api/admin/users',
+      '/api/admin/packs',
+      '/api/admin/products',
+      '/api/admin/presets',
+      '/api/admin/payments',
+      '/api/admin/generations',
+      '/api/admin/reports',
+      '/api/admin/finance/summary',
+      '/api/admin/finance/export.csv',
+      '/api/admin/settings',
+      '/api/admin/legal',
+      '/api/admin/admins',
+      '/api/admin/audit',
     ];
 
     it('un visiteur non connecté reçoit 401 sur toutes les routes', async () => {
@@ -66,24 +66,24 @@ describe('Administration (e2e)', () => {
       for (const url of GETS)
         expect([url, (await client.get(url)).status]).toEqual([url, 403]);
       const writes = [
-        client.post(`/v1/admin/users/${id}/credits`, {
+        client.post(`/api/admin/users/${id}/credits`, {
           amount: 100,
           reason: 'je me sers',
         }),
-        client.post(`/v1/admin/users/${id}/status`, {
+        client.post(`/api/admin/users/${id}/status`, {
           action: 'BAN',
           reason: 'test sans droit',
         }),
-        client.post('/v1/admin/admins', {
+        client.post('/api/admin/admins', {
           email: 'x@example.com',
           reason: 'je me nomme admin',
         }),
-        client.patch('/v1/admin/settings', {
+        client.patch('/api/admin/settings', {
           values: { maintenanceMode: true },
           reason: 'sans droit',
         }),
         client.patch(
-          '/v1/admin/presets/00000000-0000-4000-8000-000000000000/featured',
+          '/api/admin/presets/00000000-0000-4000-8000-000000000000/featured',
           { featured: true, reason: 'sans droit' },
         ),
       ];
@@ -102,8 +102,8 @@ describe('Administration (e2e)', () => {
   describe('Tableau de bord', () => {
     it('renvoie des indicateurs réels, ou des zéros explicites', async () => {
       const { client } = await customer();
-      await client.get('/v1/auth/me').expect(200);
-      const { body } = await admin.get('/v1/admin/stats').expect(200);
+      await client.get('/api/auth/me').expect(200);
+      const { body } = await admin.get('/api/admin/stats').expect(200);
       expect(body.users.total).toBeGreaterThanOrEqual(2);
       expect(body.users.newInPeriod).toBeGreaterThanOrEqual(1);
       expect(body.generations).toEqual({
@@ -122,11 +122,11 @@ describe('Administration (e2e)', () => {
     it('recherche et filtres', async () => {
       const { email } = await customer();
       const found = await admin
-        .get(`/v1/admin/users?q=${encodeURIComponent(email)}`)
+        .get(`/api/admin/users?q=${encodeURIComponent(email)}`)
         .expect(200);
       expect(found.body.total).toBe(1);
       expect(found.body.items[0].email).toBe(email);
-      const admins = await admin.get('/v1/admin/users?role=ADMIN').expect(200);
+      const admins = await admin.get('/api/admin/users?role=ADMIN').expect(200);
       expect(
         admins.body.items.every((u: { role: string }) => u.role === 'ADMIN'),
       ).toBe(true);
@@ -134,39 +134,41 @@ describe('Administration (e2e)', () => {
 
     it('fiche détaillée : solde, historiques', async () => {
       const { id } = await customer();
-      const { body } = await admin.get(`/v1/admin/users/${id}`).expect(200);
+      const { body } = await admin.get(`/api/admin/users/${id}`).expect(200);
       expect(body.credits).toBe(0); // aucun crédit offert à l'inscription
       expect(body.ledger).toEqual([]);
       expect(
         (
           await admin.get(
-            '/v1/admin/users/00000000-0000-4000-8000-000000000000',
+            '/api/admin/users/00000000-0000-4000-8000-000000000000',
           )
         ).status,
       ).toBe(404);
-      expect((await admin.get('/v1/admin/users/pas-un-uuid')).status).toBe(400);
+      expect((await admin.get('/api/admin/users/pas-un-uuid')).status).toBe(
+        400,
+      );
     });
 
     it('suspension : motif obligatoire, sessions coupées, trace d’audit et de modération', async () => {
       const { client, id } = await customer();
-      const noReason = await admin.post(`/v1/admin/users/${id}/status`, {
+      const noReason = await admin.post(`/api/admin/users/${id}/status`, {
         action: 'SUSPEND',
       });
       expect(noReason.status).toBe(400);
-      const short = await admin.post(`/v1/admin/users/${id}/status`, {
+      const short = await admin.post(`/api/admin/users/${id}/status`, {
         action: 'SUSPEND',
         reason: 'ok',
       });
       expect(short.status).toBe(400);
 
       await admin
-        .post(`/v1/admin/users/${id}/status`, {
+        .post(`/api/admin/users/${id}/status`, {
           action: 'SUSPEND',
           reason: 'Signalement répété de contenu abusif',
         })
         .expect(200);
       // Sessions révoquées côté serveur : la session n'est plus reconnue.
-      expect((await client.get('/v1/auth/me')).status).toBe(401);
+      expect((await client.get('/api/auth/me')).status).toBe(401);
 
       const log = await prisma.auditLog.findFirstOrThrow({
         where: { action: 'user.suspend', entityId: id },
@@ -182,19 +184,19 @@ describe('Administration (e2e)', () => {
       ).toBe(1);
 
       // Même état redemandé : refusé. Réactivation : possible, et le client se reconnecte.
-      const again = await admin.post(`/v1/admin/users/${id}/status`, {
+      const again = await admin.post(`/api/admin/users/${id}/status`, {
         action: 'SUSPEND',
         reason: 'Encore une fois',
       });
       expect(again.status).toBe(409);
       await admin
-        .post(`/v1/admin/users/${id}/status`, {
+        .post(`/api/admin/users/${id}/status`, {
           action: 'REACTIVATE',
           reason: 'Erreur de modération corrigée',
         })
         .expect(200);
       const user = await prisma.user.findUniqueOrThrow({ where: { id } });
-      const relog = await new Client(app).post('/v1/auth/login', {
+      const relog = await new Client(app).post('/api/auth/login', {
         email: user.email,
         password: PASSWORD,
       });
@@ -205,7 +207,7 @@ describe('Administration (e2e)', () => {
       const me = await prisma.user.findUniqueOrThrow({
         where: { email: TEST_ENV.ADMIN_EMAIL },
       });
-      const self = await admin.post(`/v1/admin/users/${me.id}/status`, {
+      const self = await admin.post(`/api/admin/users/${me.id}/status`, {
         action: 'BAN',
         reason: 'Test auto-bannissement',
       });
@@ -214,12 +216,12 @@ describe('Administration (e2e)', () => {
 
       const { id, email } = await customer();
       await admin
-        .post('/v1/admin/admins', {
+        .post('/api/admin/admins', {
           email,
           reason: 'Nouveau responsable support',
         })
         .expect(200);
-      const other = await admin.post(`/v1/admin/users/${id}/status`, {
+      const other = await admin.post(`/api/admin/users/${id}/status`, {
         action: 'BAN',
         reason: 'Test protection admin',
       });
@@ -230,12 +232,12 @@ describe('Administration (e2e)', () => {
     it('ajustement de crédits : motif obligatoire, jamais de solde négatif, audit atomique', async () => {
       const { client, id } = await customer();
       expect(
-        (await admin.post(`/v1/admin/users/${id}/credits`, { amount: 10 }))
+        (await admin.post(`/api/admin/users/${id}/credits`, { amount: 10 }))
           .status,
       ).toBe(400);
       expect(
         (
-          await admin.post(`/v1/admin/users/${id}/credits`, {
+          await admin.post(`/api/admin/users/${id}/credits`, {
             amount: 0,
             reason: 'montant nul',
           })
@@ -243,15 +245,15 @@ describe('Administration (e2e)', () => {
       ).toBe(400);
 
       const up = await admin
-        .post(`/v1/admin/users/${id}/credits`, {
+        .post(`/api/admin/users/${id}/credits`, {
           amount: 20,
           reason: 'Geste commercial après incident',
         })
         .expect(200);
       expect(up.body.balance).toBe(20);
-      expect((await client.get('/v1/auth/me')).body.user.credits).toBe(20);
+      expect((await client.get('/api/auth/me')).body.user.credits).toBe(20);
 
-      const tooMuch = await admin.post(`/v1/admin/users/${id}/credits`, {
+      const tooMuch = await admin.post(`/api/admin/users/${id}/credits`, {
         amount: -100,
         reason: 'Correction excessive',
       });
@@ -276,12 +278,16 @@ describe('Administration (e2e)', () => {
       });
       const { client } = await customer();
       const stylesOf = async () =>
-        (await client.get('/v1/creations/styles').expect(200)).body
-          .styles as { id: string; featured: boolean }[];
-      const url = `/v1/admin/presets/${preset.id}/featured`;
+        (await client.get('/api/creations/styles').expect(200)).body.styles as {
+          id: string;
+          featured: boolean;
+        }[];
+      const url = `/api/admin/presets/${preset.id}/featured`;
 
       // Un client ne peut pas le faire, et le serveur refuse de mettre à la une un preset non publié.
-      await client.patch(url, { featured: true, reason: 'sans droit' }).expect(403);
+      await client
+        .patch(url, { featured: true, reason: 'sans droit' })
+        .expect(403);
       const refused = await admin
         .patch(url, { featured: true, reason: 'Essai non publié' })
         .expect(400);
@@ -290,45 +296,63 @@ describe('Administration (e2e)', () => {
 
       // Publié mais pas à la une : visible dans le catalogue, sans mise en avant.
       await admin
-        .patch(`/v1/admin/presets/${preset.id}`, { visible: true, reason: 'Publication de test' })
+        .patch(`/api/admin/presets/${preset.id}`, {
+          visible: true,
+          reason: 'Publication de test',
+        })
         .expect(200);
-      expect((await stylesOf()).find((s) => s.id === preset.id)?.featured).toBe(false);
+      expect((await stylesOf()).find((s) => s.id === preset.id)?.featured).toBe(
+        false,
+      );
 
-      await admin.patch(url, { featured: true, reason: 'Mise en avant de test' }).expect(200);
-      expect((await stylesOf()).find((s) => s.id === preset.id)?.featured).toBe(true);
-      const listed = (await admin.get('/v1/admin/presets').expect(200)).body as {
+      await admin
+        .patch(url, { featured: true, reason: 'Mise en avant de test' })
+        .expect(200);
+      expect((await stylesOf()).find((s) => s.id === preset.id)?.featured).toBe(
+        true,
+      );
+      const listed = (await admin.get('/api/admin/presets').expect(200))
+        .body as {
         id: string;
         featured: boolean;
       }[];
       expect(listed.find((p) => p.id === preset.id)?.featured).toBe(true);
 
       // Retirée de la une : toujours publiée.
-      await admin.patch(url, { featured: false, reason: 'Retrait de test' }).expect(200);
+      await admin
+        .patch(url, { featured: false, reason: 'Retrait de test' })
+        .expect(200);
       const after = (await stylesOf()).find((s) => s.id === preset.id);
       expect(after).toMatchObject({ featured: false });
       const audit = await prisma.auditLog.findMany({
-        where: { entityId: preset.id, action: { in: ['preset.feature', 'preset.unfeature'] } },
+        where: {
+          entityId: preset.id,
+          action: { in: ['preset.feature', 'preset.unfeature'] },
+        },
       });
-      expect(audit.map((a) => a.action).sort()).toEqual(['preset.feature', 'preset.unfeature']);
+      expect(audit.map((a) => a.action).sort()).toEqual([
+        'preset.feature',
+        'preset.unfeature',
+      ]);
     });
   });
 
   describe('Offre : packs et publication', () => {
     const publicNames = async () =>
       (
-        (await new Client(app).get('/v1/catalog/packs/public').expect(200)).body
-          .packs as { name: string }[]
+        (await new Client(app).get('/api/catalog/packs/public').expect(200))
+          .body.packs as { name: string }[]
       ).map((p) => p.name);
 
     it('le catalogue public contient trois offres maximum, dont une seule recommandée', async () => {
       const { body } = await new Client(app)
-        .get('/v1/catalog/packs/public')
+        .get('/api/catalog/packs/public')
         .expect(200);
       expect(body.packs).toHaveLength(3);
       expect(
         body.packs.filter((p: { featured: boolean }) => p.featured),
       ).toHaveLength(1);
-      const all = await new Client(app).get('/v1/catalog/packs').expect(200);
+      const all = await new Client(app).get('/api/catalog/packs').expect(200);
       expect(all.body.packs.map((p: { name: string }) => p.name)).toEqual([
         'Starter',
         'Pro',
@@ -339,7 +363,7 @@ describe('Administration (e2e)', () => {
     it('refuse une quatrième offre publique', async () => {
       // Les trois packs de lancement sont déjà publics : un quatrième pack (créé inactif) ne peut pas l'être aussi.
       const created = await admin
-        .post('/v1/admin/packs', {
+        .post('/api/admin/packs', {
           name: 'Quatrième',
           price: 7000,
           credits: 1700,
@@ -347,7 +371,7 @@ describe('Administration (e2e)', () => {
           reason: 'Pack de test',
         })
         .expect(201);
-      const res = await admin.patch(`/v1/admin/packs/${created.body.id}`, {
+      const res = await admin.patch(`/api/admin/packs/${created.body.id}`, {
         active: true,
         publicVisible: true,
         reason: 'Essai de quatrième offre',
@@ -358,19 +382,19 @@ describe('Administration (e2e)', () => {
     });
 
     it('refuse une modification qui rend un pack non rentable, et ne change rien', async () => {
-      const packs = (await admin.get('/v1/admin/packs').expect(200)).body as {
+      const packs = (await admin.get('/api/admin/packs').expect(200)).body as {
         id: string;
         name: string;
         priceFcfa: number;
       }[];
       const pro = packs.find((p) => p.name === 'Pro')!;
-      const res = await admin.patch(`/v1/admin/packs/${pro.id}`, {
+      const res = await admin.patch(`/api/admin/packs/${pro.id}`, {
         price: 3000,
         reason: 'Promotion trop agressive',
       });
       expect(res.status).toBe(422);
       expect(res.body.code).toBe('MARGIN_TOO_LOW');
-      const after = (await admin.get('/v1/admin/packs').expect(200)).body as {
+      const after = (await admin.get('/api/admin/packs').expect(200)).body as {
         name: string;
         priceFcfa: number;
       }[];
@@ -380,7 +404,7 @@ describe('Administration (e2e)', () => {
     });
 
     it('désactiver un pack le retire du catalogue public ; recommander en remplace une autre', async () => {
-      const packs = (await admin.get('/v1/admin/packs').expect(200)).body as {
+      const packs = (await admin.get('/api/admin/packs').expect(200)).body as {
         id: string;
         name: string;
       }[];
@@ -389,7 +413,7 @@ describe('Administration (e2e)', () => {
       const business = packs.find((p) => p.name === 'Business')!;
 
       await admin
-        .patch(`/v1/admin/packs/${starter.id}`, {
+        .patch(`/api/admin/packs/${starter.id}`, {
           active: false,
           reason: 'Pause de l’offre d’entrée',
         })
@@ -399,7 +423,7 @@ describe('Administration (e2e)', () => {
 
       // Un pack inactif ne peut pas être republié sans être réactivé.
       await admin
-        .patch(`/v1/admin/packs/${starter.id}`, {
+        .patch(`/api/admin/packs/${starter.id}`, {
           active: true,
           publicVisible: true,
           reason: 'Retour de l’offre d’entrée',
@@ -410,13 +434,13 @@ describe('Administration (e2e)', () => {
       );
 
       await admin
-        .patch(`/v1/admin/packs/${business.id}`, {
+        .patch(`/api/admin/packs/${business.id}`, {
           featured: true,
           reason: 'Business devient la recommandation',
         })
         .expect(200);
       const { body } = await new Client(app)
-        .get('/v1/catalog/packs/public')
+        .get('/api/catalog/packs/public')
         .expect(200);
       expect(
         body.packs
@@ -426,7 +450,7 @@ describe('Administration (e2e)', () => {
 
       // Retour à la recommandation de lancement.
       await admin
-        .patch(`/v1/admin/packs/${pro.id}`, {
+        .patch(`/api/admin/packs/${pro.id}`, {
           featured: true,
           reason: 'Pro redevient la recommandation',
         })
@@ -440,19 +464,19 @@ describe('Administration (e2e)', () => {
     });
 
     it('la modification exige un motif ; un champ inconnu est refusé', async () => {
-      const packs = (await admin.get('/v1/admin/packs').expect(200)).body as {
+      const packs = (await admin.get('/api/admin/packs').expect(200)).body as {
         id: string;
       }[];
       expect(
         (
-          await admin.patch(`/v1/admin/packs/${packs[0].id}`, {
+          await admin.patch(`/api/admin/packs/${packs[0].id}`, {
             bonusPercent: 1,
           })
         ).status,
       ).toBe(400);
       expect(
         (
-          await admin.patch(`/v1/admin/packs/${packs[0].id}`, {
+          await admin.patch(`/api/admin/packs/${packs[0].id}`, {
             id: 'x',
             reason: 'champ interdit',
           })
@@ -462,7 +486,7 @@ describe('Administration (e2e)', () => {
 
     it('un nouveau pack naît inactif et non public', async () => {
       const created = await admin
-        .post('/v1/admin/packs', {
+        .post('/api/admin/packs', {
           name: 'Test',
           price: 2000,
           credits: 80,
@@ -479,36 +503,36 @@ describe('Administration (e2e)', () => {
   describe('Finances', () => {
     it('recharge Higgsfield : le solde estimé devient calculable', async () => {
       await admin
-        .post('/v1/admin/finance/topups', {
+        .post('/api/admin/finance/topups', {
           amountUsd: 100,
           amountXaf: 60000,
           note: 'Première recharge',
         })
         .expect(201);
-      const { body } = await admin.get('/v1/admin/stats').expect(200);
+      const { body } = await admin.get('/api/admin/stats').expect(200);
       expect(body.providerBalance.known).toBe(true);
       expect(body.providerBalance.estimatedBalanceUsd).toBe(100);
-      expect((await admin.get('/v1/admin/finance/topups')).body[0].fxRate).toBe(
-        600,
-      );
+      expect(
+        (await admin.get('/api/admin/finance/topups')).body[0].fxRate,
+      ).toBe(600);
     });
 
     it('retrait OpenPay et synthèse', async () => {
       await admin
-        .post('/v1/admin/finance/payouts', {
+        .post('/api/admin/finance/payouts', {
           amountXaf: 50000,
           commissionXaf: 2500,
           date: '2026-10-01',
         })
         .expect(201);
       const { body } = await admin
-        .get('/v1/admin/finance/summary?from=2026-10-01&to=2026-10-31')
+        .get('/api/admin/finance/summary?from=2026-10-01&to=2026-10-31')
         .expect(200);
       expect(body.payoutsXaf).toBe(50000);
       expect(body.payoutCommissionXaf).toBe(2500);
       expect(
         (
-          await admin.post('/v1/admin/finance/payouts', {
+          await admin.post('/api/admin/finance/payouts', {
             amountXaf: -1,
             commissionXaf: 0,
             date: '2026-10-01',
@@ -518,7 +542,7 @@ describe('Administration (e2e)', () => {
     });
 
     it('export CSV : en-têtes, et neutralisation des formules de tableur', async () => {
-      const csv = await admin.get('/v1/admin/finance/export.csv').expect(200);
+      const csv = await admin.get('/api/admin/finance/export.csv').expect(200);
       expect(csv.headers['content-type']).toContain('text/csv');
       expect(csv.headers['content-disposition']).toContain('attachment');
       expect(csv.text).toContain('montant_fcfa');
@@ -533,14 +557,14 @@ describe('Administration (e2e)', () => {
   describe('Configuration', () => {
     it('modifie des paramètres validés, avec motif et audit avant/après', async () => {
       const res = await admin
-        .patch('/v1/admin/settings', {
+        .patch('/api/admin/settings', {
           values: { maintenanceMode: true, minMarginPercent: 18 },
           reason: 'Maintenance planifiée',
         })
         .expect(200);
       expect(res.body.values.maintenanceMode).toBe(true);
       const status = await new Client(app)
-        .get('/v1/catalog/status')
+        .get('/api/catalog/status')
         .expect(200);
       expect(status.body.maintenance.enabled).toBe(true);
 
@@ -558,7 +582,7 @@ describe('Administration (e2e)', () => {
       });
 
       await admin
-        .patch('/v1/admin/settings', {
+        .patch('/api/admin/settings', {
           values: { maintenanceMode: false, minMarginPercent: 15 },
           reason: 'Fin de maintenance',
         })
@@ -573,7 +597,7 @@ describe('Administration (e2e)', () => {
         { loginOtpMode: 'toujours' },
         { welcomeCredits: 4 }, // réglage supprimé : plus de crédits de bienvenue
       ]) {
-        const res = await admin.patch('/v1/admin/settings', {
+        const res = await admin.patch('/api/admin/settings', {
           values,
           reason: 'Test de validation',
         });
@@ -585,7 +609,7 @@ describe('Administration (e2e)', () => {
     });
 
     it('test e-mail : mode console signalé honnêtement, jamais « envoyé »', async () => {
-      const res = await admin.post('/v1/admin/email/test').expect(200);
+      const res = await admin.post('/api/admin/email/test').expect(200);
       expect(res.body.ok).toBe(false);
       expect(res.body.provider).toBe('console');
     });
@@ -595,7 +619,7 @@ describe('Administration (e2e)', () => {
         where: { type: 'CGU' },
       });
       await admin
-        .post('/v1/admin/legal', {
+        .post('/api/admin/legal', {
           type: 'CGU',
           content: 'Nouvelles conditions générales : '.padEnd(80, 'x'),
           major: false,
@@ -610,7 +634,7 @@ describe('Administration (e2e)', () => {
 
   describe('Comptes administrateurs', () => {
     it('promotion : seulement un compte existant et vérifié ; rétrogradation sans dernier admin', async () => {
-      const unknown = await admin.post('/v1/admin/admins', {
+      const unknown = await admin.post('/api/admin/admins', {
         email: 'inconnu@example.com',
         reason: 'Nouveau responsable',
       });
@@ -618,19 +642,19 @@ describe('Administration (e2e)', () => {
 
       const fresh = new Client(app);
       const { email } = await fresh.register();
-      const unverified = await admin.post('/v1/admin/admins', {
+      const unverified = await admin.post('/api/admin/admins', {
         email,
         reason: 'Compte non vérifié',
       });
       expect(unverified.status).toBe(400);
       expect(unverified.body.code).toBe('NOT_ELIGIBLE');
 
-      const list = (await admin.get('/v1/admin/admins').expect(200)).body as {
+      const list = (await admin.get('/api/admin/admins').expect(200)).body as {
         id: string;
         email: string;
       }[];
       const me = list.find((a) => a.email === TEST_ENV.ADMIN_EMAIL)!;
-      const self = await admin.post(`/v1/admin/admins/${me.id}/demote`, {
+      const self = await admin.post(`/api/admin/admins/${me.id}/demote`, {
         reason: 'Test retrait de soi',
       });
       expect(self.status).toBe(400);
@@ -638,7 +662,7 @@ describe('Administration (e2e)', () => {
       const other = list.find((a) => a.email !== TEST_ENV.ADMIN_EMAIL);
       if (other)
         await admin
-          .post(`/v1/admin/admins/${other.id}/demote`, {
+          .post(`/api/admin/admins/${other.id}/demote`, {
             reason: 'Fin de mission',
           })
           .expect(200);
@@ -650,23 +674,23 @@ describe('Administration (e2e)', () => {
     it('le dernier administrateur ne peut pas être rétrogradé', async () => {
       const { client, email, id } = await customer();
       await admin
-        .post('/v1/admin/admins', { email, reason: 'Second administrateur' })
+        .post('/api/admin/admins', { email, reason: 'Second administrateur' })
         .expect(200);
       // Le second administrateur tente de retirer le premier : possible tant qu'il en reste un autre (lui).
       // Mais personne ne peut retirer le dernier : on vérifie via l'état de la base après rétrogradation croisée.
       const first = await prisma.user.findUniqueOrThrow({
         where: { email: TEST_ENV.ADMIN_EMAIL },
       });
-      await client.post('/v1/auth/login', { email, password: PASSWORD });
+      await client.post('/api/auth/login', { email, password: PASSWORD });
       await client
-        .post(`/v1/admin/admins/${first.id}/demote`, {
+        .post(`/api/admin/admins/${first.id}/demote`, {
           reason: 'Passation de pouvoir',
         })
         .expect(200);
       expect(
         await prisma.user.count({ where: { role: 'ADMIN' } }),
       ).toBeGreaterThanOrEqual(1);
-      const last = await client.post(`/v1/admin/admins/${id}/demote`, {
+      const last = await client.post(`/api/admin/admins/${id}/demote`, {
         reason: 'Retrait de soi',
       });
       expect(last.status).toBe(400);
@@ -681,7 +705,7 @@ describe('Administration (e2e)', () => {
   describe('Journal d’audit', () => {
     it('liste les actions avec acteur, entité, avant/après et motif', async () => {
       const { body } = await admin
-        .get('/v1/admin/audit?pageSize=5')
+        .get('/api/admin/audit?pageSize=5')
         .expect(200);
       expect(body.total).toBeGreaterThan(5);
       const row = body.items[0];
@@ -693,7 +717,7 @@ describe('Administration (e2e)', () => {
         }),
       );
       const filtered = await admin
-        .get('/v1/admin/audit?q=pack.update')
+        .get('/api/admin/audit?q=pack.update')
         .expect(200);
       expect(
         filtered.body.items.every((r: { action: string }) =>

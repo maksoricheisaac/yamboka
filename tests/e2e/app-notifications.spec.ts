@@ -41,7 +41,7 @@ async function waitFinished(page: Page, id: string, status: 'COMPLETED' | 'FAILE
 }
 
 async function outboxSubjects(request: APIRequestContext, email: string): Promise<string[]> {
-  const res = await request.get(`${API_URL}/v1/dev/outbox`, { params: { to: email } });
+  const res = await request.get(`${API_URL}/api/dev/outbox`, { params: { to: email } });
   return ((await res.json()) as { messages: { subject: string }[] }).messages.map((m) => m.subject);
 }
 

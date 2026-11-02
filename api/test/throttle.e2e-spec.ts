@@ -18,13 +18,13 @@ describe('Limitation de débit (e2e)', () => {
     const client = new Client(app);
     const email = uniqueEmail('force-brute');
     for (let i = 0; i < 5; i++) {
-      const res = await client.post('/v1/auth/login', {
+      const res = await client.post('/api/auth/login', {
         email,
         password: 'mauvais',
       });
       expect(res.status).toBe(401);
     }
-    const blocked = await client.post('/v1/auth/login', {
+    const blocked = await client.post('/api/auth/login', {
       email,
       password: PASSWORD,
     });
@@ -38,7 +38,7 @@ describe('Limitation de débit (e2e)', () => {
     const client = new Client(app);
     const statuses: number[] = [];
     for (let i = 0; i < 31; i++) {
-      const res = await client.post('/v1/auth/login', {
+      const res = await client.post('/api/auth/login', {
         email: uniqueEmail('balayage'),
         password: 'mauvais',
       });
@@ -49,7 +49,7 @@ describe('Limitation de débit (e2e)', () => {
   });
 
   it('une autre IP n’est pas affectée', async () => {
-    const res = await new Client(app).post('/v1/auth/login', {
+    const res = await new Client(app).post('/api/auth/login', {
       email: uniqueEmail('autre-ip'),
       password: 'mauvais',
     });

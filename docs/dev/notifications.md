@@ -24,13 +24,13 @@ de l'utilisateur ET de la vérification de son adresse ; il est envoyé **après
 
 ## API
 
-`GET /v1/notifications?limit&cursor`, `POST /v1/notifications/:id/read`, `POST /v1/notifications/read` (toutes),
-`GET|PATCH /v1/preferences` (`{ emailPrefs: { generationReady?, … } }`, renvoie les valeurs enregistrées).
+`GET /api/notifications?limit&cursor`, `POST /api/notifications/:id/read`, `POST /api/notifications/read` (toutes),
+`GET|PATCH /api/preferences` (`{ emailPrefs: { generationReady?, … } }`, renvoie les valeurs enregistrées).
 Tout est borné à l'utilisateur connecté. Préférences par défaut d'un nouveau compte : tout activé (`User.emailPrefs` null).
 
 ## Tendances à la une
 
-`Preset.featured` est distinct de `Preset.visible` (publication). `PATCH /v1/admin/presets/:id/featured`
+`Preset.featured` est distinct de `Preset.visible` (publication). `PATCH /api/admin/presets/:id/featured`
 (`{ featured, reason }`, administrateur seulement, audité `preset.feature` / `preset.unfeature`) ; la mise à la une
 d'un preset non publié est refusée (`PRESET_NOT_PUBLISHED`). La page Tendances affiche « À la une » uniquement s'il existe
 des presets mis en avant ; le catalogue général reste filtrable.

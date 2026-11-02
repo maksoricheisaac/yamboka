@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env';
 import { ConfigService } from '@nestjs/config';
 import { validateEnv, type Env } from '../src/config/env';
 import { createStorageDriver } from '../src/storage/storage.module';
@@ -10,9 +10,7 @@ import { createStorageDriver } from '../src/storage/storage.module';
  */
 async function main() {
   const env = validateEnv(process.env);
-  const storage = createStorageDriver(
-    new ConfigService<Env, true>(env as unknown as Record<string, unknown>),
-  );
+  const storage = createStorageDriver(new ConfigService<Env, true>(env));
   console.log(`Pilote de stockage : ${storage.name}`);
 
   const diag = await storage.diagnose();

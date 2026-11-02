@@ -5,8 +5,8 @@ via `postinstall` ou `pnpm --filter api db:generate`).
 
 ## Développement local
 
-`docker/docker-compose.dev.yml` démarre PostgreSQL (port **5433**, pour ne pas entrer en conflit avec une installation
-locale sur 5432) et Redis (port 6380). Les données vivent dans le volume Docker `yamboka-dev_pgdata`.
+`docker/docker-compose.local.yml` (`--env-file .env.local`) démarre PostgreSQL (port **5433**, pour ne pas entrer en conflit avec une installation
+locale sur 5432) et Redis (port 6380). Les données vivent dans le volume Docker `yamboka-dev_pgdata` (nom conservé de l’ancienne configuration pour ne perdre aucune donnée ; surchargeable par `LOCAL_PGDATA_VOLUME`).
 
 ## Migrations
 

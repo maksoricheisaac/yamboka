@@ -18,7 +18,7 @@ export class PublicSiteService {
     if (!secret) return;
     try {
       const res = await fetch(
-        `${this.config.get('WEB_URL', { infer: true })}/api/revalidate`,
+        `${this.config.get('WEB_INTERNAL_URL', { infer: true }) ?? this.config.get('WEB_URL', { infer: true })}/internal/revalidate`,
         {
           method: 'POST',
           headers: { 'x-revalidate-secret': secret },
@@ -26,10 +26,14 @@ export class PublicSiteService {
         },
       );
       if (!res.ok) {
-        this.logger.warn(`Rafraîchissement du site public refusé (${res.status}).`);
+        this.logger.warn(
+          `Rafraîchissement du site public refusé (${res.status}).`,
+        );
       }
     } catch {
-      this.logger.warn('Site public injoignable : offres rafraîchies à l’expiration du cache.');
+      this.logger.warn(
+        'Site public injoignable : offres rafraîchies à l’expiration du cache.',
+      );
     }
   }
 }

@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '../scripts/load-env';
 import { hash } from '@node-rs/argon2';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
@@ -28,7 +28,11 @@ async function main() {
         passwordHash: await hash(password),
       },
     });
-    await prisma.installState.upsert({ where: { id: 1 }, update: {}, create: { id: 1, adminUserId: admin.id } });
+    await prisma.installState.upsert({
+      where: { id: 1 },
+      update: {},
+      create: { id: 1, adminUserId: admin.id },
+    });
   }
   console.log('Seed terminé.');
 }

@@ -44,10 +44,10 @@ Toute opération qui lit le solde puis écrit (`reserve`, `capture`, `release`, 
 ## Paiement d'un pack
 
 ```
-POST /v1/payments {packId, operator, phone}
+POST /api/payments {packId, operator, phone}
   → Payment INITIATED → provider.initiate → PENDING (référence fournisseur)
 Le client confirme sur son téléphone
-  → callback  POST /v1/webhooks/payment {reference}   (réponse 200 immédiate, toujours la même)
+  → callback  POST /api/webhooks/payment {reference}   (réponse 200 immédiate, toujours la même)
   → tâche verify-payment → provider.getStatus(reference)
   → SUCCESS uniquement si le fournisseur dit « succès » ET que montant et devise correspondent
   → dans une transaction (verrou utilisateur d'abord) : Payment SUCCESS + lot PURCHASE, et lot FIRST_PURCHASE_BONUS s'il s'agit du premier achat réussi

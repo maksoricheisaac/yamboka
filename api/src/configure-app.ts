@@ -1,6 +1,7 @@
 import {
   INestApplication,
   ValidationPipe,
+  VERSION_NEUTRAL,
   VersioningType,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -26,7 +27,13 @@ export function configureApp(app: INestApplication): void {
   app.use(helmet());
   app.use(cookieParser());
   app.enableCors({ origin: origins, credentials: true });
-  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+  // Traefik route `/api/` vers l'API sans réécrire le chemin : le préfixe est donc porté par l'API elle-même.
+  // Le versionnement reste actif (VERSION_NEUTRAL = aucun segment /v1) pour pouvoir introduire une v2 plus tard.
+  app.setGlobalPrefix('api');
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: VERSION_NEUTRAL,
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -46,5 +53,5 @@ export function setupSwagger(app: INestApplication): void {
     .setVersion('1')
     .addCookieAuth('yamboka_session')
     .build();
-  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, doc));
+  SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, doc));
 }

@@ -57,7 +57,7 @@ export default defineConfig({
     {
       // Compile l'API, recrée la base jetable (migrations + seed), puis démarre.
       command: 'pnpm --filter api e2e:serve',
-      url: `${API_URL}/health`,
+      url: `${API_URL}/api/health`,
       reuseExistingServer: false,
       timeout: 180_000,
       env: {

@@ -246,7 +246,7 @@ test.describe('Setup Wizard', () => {
     await expect(page.getByRole('link', { name: 'Aller à la connexion' })).toBeVisible();
 
     // Même avec le bon secret, l'API refuse de créer un administrateur.
-    const res = await request.post(`${process.env.E2E_API_URL ?? 'http://localhost:4101'}/v1/setup/complete`, {
+    const res = await request.post(`${process.env.E2E_API_URL ?? 'http://localhost:4101'}/api/setup/complete`, {
       headers: { 'x-setup-secret': 'peu-importe-le-secret-est-ignore-une-fois-installe' },
       data: { firstName: 'Intrus', lastName: 'Intrus', email: uniqueEmail('intrus'), password: 'Intrus-Mot-De-Passe-2026!', confirmPassword: 'Intrus-Mot-De-Passe-2026!', acceptLegal: true },
     });

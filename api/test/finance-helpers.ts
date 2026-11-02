@@ -96,7 +96,7 @@ export async function verifiedClient(app: INestApplication) {
   const client = new Client(app);
   const { email } = await client.register();
   await client
-    .post('/v1/auth/verify-email', { code: otpFromEmail(app, email) })
+    .post('/api/auth/verify-email', { code: otpFromEmail(app, email) })
     .expect(200);
   const user = await prismaOf(app).user.findUniqueOrThrow({ where: { email } });
   return { client, email, userId: user.id };
