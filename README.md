@@ -1,6 +1,6 @@
 # Yamboka
 
-Plateforme de création d'images et de vidéos par IA, payée en mobile money. Monorepo pnpm :
+Plateforme de création de vidéos pro par IA, payée en mobile money. Monorepo pnpm :
 
 | Dossier | Rôle | Port local |
 |---|---|---|

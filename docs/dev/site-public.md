@@ -31,6 +31,6 @@ La dépendance `motion` était déjà installée : réutilisée (`motion/react`,
 - `lib/seo.tsx` : `pageMetadata()` (titre, description, canonique, Open Graph, Twitter/X) appliqué à toutes les pages ; `JsonLd` (le `<` est neutralisé).
 - Données structurées : `Organization` + `WebSite` + `FAQPage` (accueil), `FAQPage` (FAQ), `BreadcrumbList` (pages secondaires), `Product` + `Offer` sur Tarifs (prix et crédits **visibles sur la page**, devise XAF ; **ni note, ni avis**).
 - `sitemap.xml` (12 pages publiques), `robots.txt` (avec la ligne `Sitemap:`), image de partage 1200×630 générée (`opengraph-image`, `twitter-image`), icône SVG. L'application privée est `noindex` (métadonnées) et son `robots.txt` interdit tout.
-- Expressions visées, intégrées naturellement dans titres et textes : *vidéo IA*, *image IA*, *paiement mobile money*, *MTN Mobile Money / Airtel Money*, *Congo / Brazzaville*, *sans carte bancaire*. Pas de bourrage.
+- Expressions visées, intégrées naturellement dans titres et textes : *vidéo IA*, *vidéo pub*, *paiement mobile money*, *MTN Mobile Money / Airtel Money*, *Congo / Brazzaville*, *sans carte bancaire*. Pas de bourrage.
 - Prévoir des guides : ajouter un dossier `web/app/(site)/guides/[slug]/` et les routes dans `sitemap.ts`.
 - **Aucun score SEO ou de performance n'est annoncé** : aucune mesure Lighthouse/PageSpeed n'a été faite (à réaliser sur l'URL de production).

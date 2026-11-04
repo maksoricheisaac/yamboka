@@ -61,8 +61,8 @@ Suivi : tâche BullMQ `advance-generations` toutes les 10 s (sans Redis : à cha
 
 - Mock : `MOCK_GENERATION_SECONDS` règle la durée ; un texte contenant `__echec__` fait échouer la création simulée.
 - Styles de démonstration (développement seulement) : `pnpm --filter api seed:demo-presets`.
-- Styles de démonstration : ils pointent vers le produit `IMAGE_EDIT_GROK` (voir ci-dessous).
-- Pas encore faits : « Affiche à partir d'une description », « Animer cette affiche », purge automatique des fichiers expirés.
+- Pas encore faite : la purge automatique des fichiers expirés.
+- **Yamboka ne produit plus d'images** (4 nov. 2026). Les produits d'image (`IMAGE_SOUL2`, `IMAGE_EDIT_GROK`, `POSTER_IDEOGRAM`) sont désactivés par la migration `20261104100000_deprecate_image_generation` (réversible : `down.sql`), leurs styles masqués et les créations d'images déjà faites masquées (`hidden`). Rien n'est supprimé : les valeurs d'enum `BillingUnit.IMAGE` et `MediaRole.OUTPUT_IMAGE` restent. La photo envoyée par l'utilisateur (`INPUT_IMAGE`) n'est que le point de départ d'une vidéo.
 
 ## Modèles, paramètres et formats (vérifiés le 1er novembre 2026)
 
@@ -72,22 +72,20 @@ Soul v2 a accepté `image_urls` puis ignoré la photo. Une requête « acceptée
 
 | Produit | Modèle | Photo | Paramètres envoyés | Coût fournisseur |
 |---|---|---|---|---|
-| `IMAGE_EDIT_GROK` (affiches) | `xai/grok-imagine-image-2.0` | utilisée | `prompt`, `image_urls`, `aspect_ratio` | 0,07 $ / image (estimation officielle) → 17 crédits |
-| `IMAGE_SOUL2` | `higgsfield-ai/soul/v2/standard` | **ignorée** (texte → image) | `prompt`, `aspect_ratio` | 0,004 $ / image — non utilisable pour une affiche à partir d'une photo |
-| `VIDEO_LIGHT_480` (tendances) | `higgsfield/genjutsu-light/motion-transfer/v1.0` | utilisée | `video_url`, `image_urls`, `resolution` | 0,05 $ par seconde **facturée** = sortie + vidéos de référence |
+| `VIDEO_LIGHT_480` (tendances) | `higgsfield/genjutsu-light/motion-transfer/v1.0` | utilisée | `video_url`, `image_urls`, `resolution` | 0,05 $ par seconde **facturée** = sortie + vidéo de référence (une vidéo de 4 s = 8 s facturées = 0,40 $ en 480p) |
 
-Pourquoi Grok pour les affiches : essais réels avec la même photo et le même texte. Soul ignore la photo ; Qwen Image 3 Edit et
-Marketing Studio l'utilisent mais **inventent du texte non demandé** (« Collection Wax », « Affirmez votre style »…) ; Grok n'écrit que
-le texte demandé. Qualité et résolution : valeurs par défaut du fournisseur.
+Vérifié par essais réels le 4 nov. 2026 (Light, 480p) : Light Object Swap (`higgsfield/genjutsu-light/object-swap/v1.0`) et Motion Transfer
+acceptent `video_url`, `image_urls` (1 à 8), `resolution` et un `prompt` facultatif **sans effet visible**. Aucun masque : l'objet à remplacer
+est détecté seul. Durée et format de sortie suivent la vidéo de référence (Light : 4 à 15 s) ; génération en 2 à 3 minutes.
+`POST /estimate/{modèle}` renvoie seulement le tarif et **ne valide pas les paramètres** (il accepte même un champ inconnu).
 
-**Formats proposés** : `1:1`, `4:3`, `3:2`, `3:4`, `2:3`, `16:9`, `9:16` — tous acceptés nativement par Grok et Soul (vérifié par
-l'estimation gratuite `POST /estimate/{modèle}`, qui valide aussi les paramètres). `4:5` et `21:9` sont refusés par ces modèles et ne sont
-pas proposés. Le format est demandé au modèle, jamais obtenu en recadrant. Chaque résultat est contrôlé : des proportions qui s'écartent de
-plus de 3 % du format demandé font échouer la création (crédits restitués). Écart constaté : Marketing Studio rend 880 × 1168 pour du 3:4.
+**Formats proposés** : `9:16` (statut WhatsApp, TikTok, Reels), `1:1` (post) et `16:9` (écran). Le format découle de la vidéo de
+référence du modèle : il n'est jamais obtenu en recadrant, et n'est pas contrôlé sur le résultat (un résultat 3:4 pour une référence 4:5 a été
+observé).
 
-**Contrôle des résultats** (`api/src/creations/output-check.ts`) : le type est lu dans les octets, pas dans l'en-tête HTTP ; une image doit
-avoir des dimensions lisibles et le bon format ; une vidéo doit être un vrai MP4 (`ftyp` + `moov`). Sinon : échec, crédits restitués, message
-explicite (`MODERATION`, `TIMEOUT`, `NO_RESULT`, `BAD_RESULT`, `FORMAT`, `UNSUPPORTED`, `PROVIDER`, `CANCELED`). Le détail technique du
+**Contrôle des résultats** (`api/src/creations/output-check.ts`) : le type est lu dans les octets, pas dans l'en-tête HTTP ; une vidéo doit
+être un vrai MP4 (`ftyp` + `moov`). Sinon : échec, crédits restitués, message
+explicite (`MODERATION`, `TIMEOUT`, `NO_RESULT`, `BAD_RESULT`, `FORMAT` (anciennes créations), `UNSUPPORTED`, `PROVIDER`, `CANCELED`). Le détail technique du
 fournisseur n'est jamais montré à l'utilisateur.
 
 **Sans style choisi**, aucun style n'est attaché (avant : le premier style publié du type, dont le nom devenait le titre et le texte par défaut

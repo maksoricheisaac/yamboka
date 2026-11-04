@@ -1,6 +1,5 @@
 import { ArrowRight, Bell, Coins, Download, FolderOpen, Mail, Receipt, RotateCcw, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { Reveal, Stagger, StaggerItem, TapScale } from "@/components/motion/motion";
 import { CtaBand, PageHero, Section } from "@/components/site/blocks";
@@ -14,7 +13,7 @@ import { pageMetadata } from "@/lib/seo";
 export const metadata: Metadata = pageMetadata({
   title: "Fonctionnalités",
   description:
-    "Transformer une vidéo par IA, créer des images, suivre ses crédits et ses achats : ce que Yamboka permet aujourd’hui et ce qui arrive au lancement.",
+    "Créer des vidéos pro par IA à partir d’une photo, suivre ses crédits et ses achats : ce que Yamboka permet aujourd’hui et ce qui arrive au lancement.",
   path: "/fonctionnalites",
 });
 
@@ -57,7 +56,6 @@ const NOW = [
 
 export default function FeaturesPage() {
   const media = getMedia();
-  const portrait = media.gallery.find((g) => g.id === "portrait")?.image;
   return (
     <>
       <PageHero
@@ -86,34 +84,15 @@ export default function FeaturesPage() {
           }
         >
           <Status />
-          <h2 id="video-title" className="text-3xl font-bold sm:text-4xl">Transformez une vidéo</h2>
+          <h2 id="video-title" className="text-3xl font-bold sm:text-4xl">Créez une vidéo à partir d’une photo</h2>
           <p className="text-lg text-muted-foreground">
-            Choisissez une tendance, ajoutez votre selfie : Yamboka crée la vidéo. Pas besoin d’envoyer une vidéo de votre côté. Le prix s’affiche avant de confirmer.
+            Choisissez un modèle, ajoutez la photo de votre produit ou votre selfie : Yamboka crée la vidéo. Pas besoin de filmer. Le prix s’affiche avant de confirmer.
           </p>
           <TapScale>
             <Button asChild size="lg" className="rounded-full px-7">
               <a href={signupUrl}>{CTA_LABEL} <ArrowRight aria-hidden /></a>
             </Button>
           </TapScale>
-        </Feature>
-      </Section>
-
-      {/* Image : capacité complémentaire, plus discrète */}
-      <Section tone="muted" labelledBy="image-title">
-        <Feature
-          reverse
-          visual={
-            <div className="mx-auto w-40 rotate-2 rounded-2xl border bg-card p-1.5 shadow-soft" aria-hidden>
-              <Still image={portrait} fallback={<StudioScene mode="photo" tone="terracotta" label="" />} />
-            </div>
-          }
-        >
-          <Status />
-          <h2 id="image-title" className="text-2xl font-bold sm:text-3xl">Des images aussi</h2>
-          <p className="text-muted-foreground">Portraits et visuels de mode à partir d’un modèle ou d’une description. Un prix fixe par image, affiché avant confirmation.</p>
-          <Link href="/galerie" className="inline-flex items-center gap-1 font-medium text-primary underline-offset-4 hover:underline">
-            Voir des exemples <ArrowRight className="size-4" aria-hidden />
-          </Link>
         </Feature>
       </Section>
 

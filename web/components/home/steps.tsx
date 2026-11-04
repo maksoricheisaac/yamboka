@@ -5,7 +5,7 @@ import { Still } from "@/components/studio/still";
 import { getMedia } from "@/lib/media";
 
 const STEPS: { mode: FigureMode; title: string; text: string }[] = [
-  { mode: "video", title: "Choisissez un style", text: "Affiche, vidéo pub ou tendance : un style prêt à l’emploi." },
+  { mode: "video", title: "Choisissez un modèle", text: "Vidéo pub ou tendance : un modèle prêt à l’emploi." },
   { mode: "photo", title: "Ajoutez votre photo", text: "Votre produit ou votre selfie, depuis le téléphone." },
   { mode: "result", title: "Générez et partagez", text: "Le prix s’affiche avant de confirmer." },
 ];

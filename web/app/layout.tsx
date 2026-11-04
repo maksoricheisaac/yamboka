@@ -25,7 +25,7 @@ const mono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE.url),
   title: {
-    default: `${SITE.name} — Vidéos et images par IA, payées en mobile money`,
+    default: `${SITE.name} — Vidéos pro par IA, payées en mobile money`,
     template: `%s | ${SITE.name}`,
   },
   description: SITE.description,
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     type: "website",
     locale: "fr_FR",
     siteName: SITE.name,
-    title: `${SITE.name} — Vidéos et images par IA`,
+    title: `${SITE.name} — Vidéos pro par IA`,
     description: SITE.description,
   },
   twitter: { card: "summary_large_image" },

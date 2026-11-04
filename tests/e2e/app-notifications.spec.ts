@@ -22,11 +22,11 @@ async function account(page: Page, request: APIRequestContext, credits = true) {
   return email;
 }
 
-/** Lance une affiche par l'API (la mécanique de l'écran est testée ailleurs) ; renvoie la création. */
-async function createAffiche(page: Page, prompt: string) {
+/** Lance une vidéo pub par l'API (la mécanique de l'écran est testée ailleurs) ; renvoie la création. */
+async function createPub(page: Page, prompt: string) {
   const res = await page.request.post('/api/creations', {
     headers: origin,
-    multipart: { kind: 'affiche', format: '1:1', consent: 'true', prompt, photo: { name: 'p.png', mimeType: 'image/png', buffer: PNG } },
+    multipart: { kind: 'pub', format: '1:1', consent: 'true', prompt, photo: { name: 'p.png', mimeType: 'image/png', buffer: PNG } },
   });
   expect(res.status()).toBe(201);
   return (await res.json()).creation as { id: string; status: string };
@@ -80,7 +80,7 @@ test.describe('Notifications', () => {
 
   test('une création échouée crée deux notifications (échec et remboursement), à marquer comme lues', async ({ page, request }) => {
     await account(page, request);
-    const failed = await createAffiche(page, '__echec__');
+    const failed = await createPub(page, '__echec__');
     await waitFinished(page, failed.id, 'FAILED');
     await page.goto('/app/notifications');
     await expect(page.getByText('Création échouée')).toBeVisible();
@@ -119,13 +119,13 @@ test.describe('Paramètres et e-mails', () => {
     await expect(page.getByRole('switch', { name: 'E-mail : Création échouée' })).toBeChecked();
 
     // Préférence désactivée : la création se termine, la notification interne existe, aucun e-mail « prête ».
-    const first = await createAffiche(page, 'Affiche sans e-mail');
+    const first = await createPub(page, 'Pub sans e-mail');
     await expect(async () => {
       const res = await page.request.get(`/api/creations/${first.id}`);
       expect((await res.json()).creation.status).toBe('COMPLETED');
     }).toPass({ timeout: 40_000 });
     await page.goto('/app/notifications');
-    await expect(page.getByText('Votre création est prête')).toBeVisible();
+    await expect(page.getByText('Votre création est prête', { exact: true })).toBeVisible();
     expect((await outboxSubjects(request, email)).filter((s) => /prête/.test(s))).toHaveLength(0);
 
     // Réactivée : l'e-mail part, avec le lien direct vers la création.
@@ -134,7 +134,7 @@ test.describe('Paramètres et e-mails', () => {
       await page.getByRole('switch', { name: 'E-mail : Création terminée' }).click();
       await expect(page.getByText('Préférence enregistrée.')).toBeVisible({ timeout: 3000 });
     }).toPass({ timeout: 15_000 });
-    const second = await createAffiche(page, 'Affiche avec e-mail');
+    const second = await createPub(page, 'Pub avec e-mail');
     await expect(async () => {
       expect((await page.request.get(`/api/creations/${second.id}`).then((r) => r.json())).creation.status).toBe('COMPLETED');
     }).toPass({ timeout: 40_000 });
@@ -164,14 +164,14 @@ test.describe('Historique des crédits', () => {
     const created = await page.request.post('/api/payments', { data: { packId: packs[0].id, operator: 'MTN', phone: '+242061234567' }, headers: origin });
     const { payment } = await created.json();
     await page.request.post(`/api/payments/${payment.id}/simulate`, { data: { outcome: 'success', callbacks: 1 }, headers: origin });
-    const failed = await createAffiche(page, '__echec__');
+    const failed = await createPub(page, '__echec__');
     await waitFinished(page, failed.id, 'FAILED');
 
     await page.reload();
     const ledger = page.getByRole('table', { name: 'Historique des mouvements de crédits' });
     await expect(ledger.getByRole('row', { name: /Achat de crédits.*\+1\s?250/ })).toBeVisible();
-    await expect(ledger.getByRole('row', { name: /Réservé pour une création.*−2/ })).toBeVisible();
-    await expect(ledger.getByRole('row', { name: /Crédits restitués.*\+2/ })).toBeVisible();
+    await expect(ledger.getByRole('row', { name: /Réservé pour une création.*−50/ })).toBeVisible();
+    await expect(ledger.getByRole('row', { name: /Crédits restitués.*\+50/ })).toBeVisible();
     // Aucun faux solde : le solde de l'en-tête correspond à la somme des mouvements (1 250 + 250 de bonus).
     await expect(page.getByText(/Solde actuel : 1\s?500 crédits/)).toBeVisible();
   });

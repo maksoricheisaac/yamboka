@@ -7,7 +7,7 @@ export interface FaqItem {
 export const FAQ: FaqItem[] = [
   {
     q: 'Comment fonctionne Yamboka ?',
-    a: 'Vous créez un compte, vous achetez des crédits, puis vous choisissez un style (affiche, vidéo pub ou tendance) et vous ajoutez votre photo. Le prix s’affiche avant que vous confirmiez. La création se fait en arrière-plan : vous pouvez quitter la page, vous la retrouverez dans « Mes créations ».',
+    a: 'Vous créez un compte, vous achetez des crédits, puis vous choisissez un modèle de vidéo (pub ou tendance) et vous ajoutez votre photo. Le prix s’affiche avant que vous confirmiez. La création se fait en arrière-plan : vous pouvez quitter la page, vous la retrouverez dans « Mes créations ».',
   },
   {
     q: 'Comment payer sans carte bancaire ?',
@@ -15,7 +15,7 @@ export const FAQ: FaqItem[] = [
   },
   {
     q: 'Combien coûte une génération ?',
-    a: 'Les packs sont à prix tout compris (frais Mobile Money inclus) : Starter 5 000 FCFA pour 1 250 crédits, Pro 10 000 FCFA pour 2 600 crédits, Business 25 000 FCFA pour 6 800 crédits. Une vidéo de 10 secondes consomme 100 crédits (50 pour 5 secondes, durée arrondie à la seconde supérieure). Une image coûte 2 crédits. Le coût exact est toujours affiché avant de confirmer.',
+    a: 'Les packs sont à prix tout compris (frais Mobile Money inclus) : Starter 5 000 FCFA pour 1 250 crédits, Pro 10 000 FCFA pour 2 600 crédits, Business 25 000 FCFA pour 6 800 crédits. Une vidéo de 10 secondes consomme 100 crédits (50 pour 5 secondes, durée arrondie à la seconde supérieure). Le coût exact est toujours affiché avant de confirmer.',
   },
   {
     q: 'Combien de temps prend une création ?',
@@ -23,7 +23,7 @@ export const FAQ: FaqItem[] = [
   },
   {
     q: 'Peut-on utiliser ses propres photos ?',
-    a: 'Oui, c’est le principe : la photo de votre produit ou votre selfie. Les tendances et les styles sont fournis par Yamboka. À chaque création, vous confirmez avoir le droit d’utiliser votre photo et l’accord des personnes qui y figurent. L’usurpation d’identité et les contenus trompeurs sont interdits.',
+    a: 'Oui, c’est le principe : la photo de votre produit ou votre selfie. Les modèles et les tendances sont fournis par Yamboka. À chaque création, vous confirmez avoir le droit d’utiliser votre photo et l’accord des personnes qui y figurent. L’usurpation d’identité et les contenus trompeurs sont interdits.',
   },
   {
     q: 'Comment récupérer une création ?',
@@ -31,7 +31,7 @@ export const FAQ: FaqItem[] = [
   },
   {
     q: 'Combien de temps les fichiers sont-ils conservés ?',
-    a: 'Les vidéos et photos que vous envoyez sont supprimées 7 jours après la génération. Les créations sont conservées 90 jours, avec un rappel 7 jours avant leur suppression pour les télécharger.',
+    a: 'Les photos que vous envoyez sont supprimées 7 jours après la génération. Les créations sont conservées 90 jours, avec un rappel 7 jours avant leur suppression pour les télécharger.',
   },
   {
     q: 'Que se passe-t-il si une génération échoue ?',

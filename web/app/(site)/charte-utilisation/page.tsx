@@ -24,7 +24,7 @@ export default function CharterPage() {
 
         <h2>Consentement</h2>
         <p>
-          À chaque création, vous confirmez avoir le droit d’utiliser les images et vidéos envoyées, et que les
+          À chaque création, vous confirmez avoir le droit d’utiliser les photos envoyées, et que les
           personnes qui y figurent ont donné leur accord. Ce consentement est horodaté et conservé.
         </p>
 

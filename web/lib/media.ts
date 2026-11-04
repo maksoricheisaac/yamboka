@@ -9,7 +9,7 @@ import { GALLERY, type GalleryEntry } from '@/content/gallery';
  * Les noms de fichiers attendus sont listés dans `docs/dev/videos-site-public.md`.
  *
  * - Vidéos et affiches : `public/demos/<nom>.mp4` + `<nom>.webp` (les deux sont nécessaires).
- * - Images : `public/images/<nom>.webp`.
+ * - Photos fixes (usages, étapes, à propos) : `public/images/<nom>.webp`.
  */
 const PUBLIC_DIR = path.join(process.cwd(), 'public');
 const present = (url: string) => existsSync(path.join(PUBLIC_DIR, url));
@@ -99,11 +99,8 @@ function compute(): SiteMedia {
   const danse = byId.get('danse');
 
   const gallery: GalleryEntry[] = GALLERY.map((item) => {
-    if (item.video) {
-      const demo = item.demoId ? byId.get(item.demoId) : undefined;
-      return { ...item, before: demo?.before, after: demo?.after };
-    }
-    return { ...item, image: item.imageFile ? still(`/images/${item.imageFile}.webp`, item.label) : undefined };
+    const demo = item.demoId ? byId.get(item.demoId) : undefined;
+    return { ...item, before: demo?.before, after: demo?.after };
   });
 
   const usage = Object.fromEntries(USAGE.map(([key, alt]) => [key, still(`/images/usage-${key}.webp`, alt)])) as SiteMedia['usage'];
@@ -114,12 +111,12 @@ function compute(): SiteMedia {
   const logo = present('/images/logo.svg') ? '/images/logo.svg' : undefined;
   const partage = present('/images/partage.jpg') ? '/images/partage.jpg' : undefined;
 
-  const galleryComplete = gallery.every((g) => (g.video ? g.before && g.after : g.image));
+  const galleryComplete = gallery.every((g) => g.before && g.after);
   const anyReal =
     !!hero ||
     demos.some((d) => d.after) ||
     !!personnage ||
-    gallery.some((g) => g.after || g.image) ||
+    gallery.some((g) => g.after) ||
     Object.values(usage).some(Boolean) ||
     comment.some(Boolean) ||
     !!aPropos;

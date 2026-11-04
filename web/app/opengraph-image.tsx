@@ -3,7 +3,7 @@ import path from "node:path";
 import { ImageResponse } from "next/og";
 import { getMedia } from "@/lib/media";
 
-export const alt = "Yamboka — Vidéos et images par IA, payées en mobile money";
+export const alt = "Yamboka — Vidéos pro par IA, payées en mobile money";
 export const size = { width: 1200, height: 630 };
 // Si `public/images/partage.jpg` existe (visuel 1200 × 630 avec une vraie création), il est servi tel quel ;
 // sinon l’image est générée ci-dessous. Le type annoncé suit le choix.
@@ -34,7 +34,7 @@ export default function OpengraphImage() {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div style={{ fontSize: 76, fontWeight: 800, lineHeight: 1.05, maxWidth: 980 }}>
-            Vos vidéos et images par IA, payées en mobile money.
+            Vos vidéos pro par IA, payées en mobile money.
           </div>
           <div style={{ fontSize: 34, color: "#f2b632" }}>À partir de 5 000 FCFA · Né à Brazzaville</div>
         </div>

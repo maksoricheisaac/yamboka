@@ -1,6 +1,6 @@
 # Yamboka
 
-Plateforme de génération de vidéos et d'images par IA, payable en mobile money (Congo-Brazzaville, extension africaine prévue).
+Plateforme de génération de vidéos par IA, payable en mobile money (Congo-Brazzaville, extension africaine prévue).
 Spécifications de référence : [docs/](docs/).
 
 | Dossier | Rôle | Port |

@@ -18,7 +18,7 @@ export function pageMetadata({ title, description, path }: { title: string; desc
       title: `${title} | ${SITE.name}`,
       description,
       url: path,
-      images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: `${SITE.name} — vidéos et images par IA, payées en mobile money` }],
+      images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: `${SITE.name} — vidéos pro par IA, payées en mobile money` }],
     },
     twitter: { card: "summary_large_image", title: `${title} | ${SITE.name}`, description, images: ["/twitter-image"] },
   };

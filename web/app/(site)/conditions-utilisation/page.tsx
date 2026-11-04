@@ -14,7 +14,7 @@ export default function TermsPage() {
         <LegalDraftNotice />
         <h2>Le service</h2>
         <p>
-          Yamboka est une plateforme de génération de vidéos et d’images par intelligence artificielle, payable avec
+          Yamboka est une plateforme de génération de vidéos par intelligence artificielle, payable avec
           des crédits prépayés.
         </p>
 

@@ -52,15 +52,6 @@ Légende : le site est **déjà branché** pour tous ces emplacements. La colonn
 
 Pour la galerie, la vignette est en 16:10 : elle utilisera l'affiche 4:5 recadrée par CSS (`object-cover`), donc aucun fichier supplémentaire.
 
-### B. Images à générer
-
-| # | Emplacement | Fichier | Utilisé dans |
-|---|---|---|---|
-| 9 | Personnage de la danse | `danse-personnage.webp` | Hero (carte « Votre photo »), accueil étape 2, fonctionnalités |
-| 10 | Galerie : portrait stylisé | `galerie-portrait.webp` | Galerie (vignette + détail), fonctionnalités « Des images aussi » |
-| 11 | Galerie : mode et vitrine | `galerie-mode.webp` | Galerie (vignette + détail) |
-| 12 | Galerie : invitation d'événement | `galerie-invitation.webp` | Galerie (vignette + détail) |
-
 ### C. Emplacements qui réutilisent des fichiers existants (détectés automatiquement)
 
 | Emplacement | Page | Réutilise |
@@ -74,7 +65,6 @@ Pour la galerie, la vignette est en 16:10 : elle utilisera l'affiche 4:5 recadr�
 | Carte flottante du bandeau final | Accueil | `danse-apres.webp` |
 | Bandeau final (`CtaBand`) | Galerie, FAQ, tarifs, fonctionnalités, cas d'usage, comment ça marche, à propos | `danse-apres.webp` |
 | « Transformez une vidéo » : 3 cartes (vidéo + photo → résultat) | Fonctionnalités | `danse-avant.webp`, `danse-personnage.webp`, `danse-apres.webp` |
-| « Des images aussi » | Fonctionnalités | `galerie-portrait.webp` |
 
 ### D. Identité et partage
 
@@ -201,20 +191,8 @@ Même image pour la carte « Votre photo », l'étape 2 et le départ du hero. L
 Full body portrait of a stylized Central African dancer, same standing pose and position as the reference video's first frame, vibrant wax-print outfit in deep green and terracotta, glowing warm light, painterly semi-realistic style, sunlit courtyard background, vertical 4:5, sharp face, no text.
 ```
 
-### N° 10 : Galerie, portrait stylisé (`galerie-portrait.webp`)
-```
-Stylized portrait of a young Central African woman, head and shoulders, colorful illustrated look with warm teal and amber tones, soft glow, elegant braids with gold accessories, painterly semi-realistic style, plain warm background, vertical 4:5, no text, no logo.
-```
 
-### N° 11 : Galerie, mode et vitrine (`galerie-mode.webp`)
-```
-Fashion visual for a boutique: a Central African model wearing a modern wax-print outfit, standing in a bright shop window, clean editorial look, warm light, green and terracotta accents, vertical 4:5, sharp details of the fabric, no text, no logo.
-```
 
-### N° 12 : Galerie, invitation d'événement (`galerie-invitation.webp`)
-```
-Festive event invitation background, no text: warm evening lights, decorated hall with colorful fabrics and string lights, a joyful Central African couple or group in the foreground seen from behind, sky blue and warm yellow palette, vertical 4:5, empty space at the top for text added later, no text, no logo.
-```
 
 ### N° 16 : Image de partage (`opengraph-image.jpg`, 1200 × 630)
 ```
@@ -281,11 +259,11 @@ Contrôlez les poids avec `ls -l`.
 | Type | Dossier |
 |---|---|
 | Vidéos, affiches, `danse-personnage` | `web/public/demos/` (le dossier existe déjà) |
-| Images de la galerie, cas d'usage, captures, photo « À propos » | `web/public/images/` (**pas** `demos/` : les `galerie-*.webp` rangées dans `demos/` ne sont pas détectées) |
+| Cas d'usage, captures, photo « À propos » | `web/public/images/` (**pas** `demos/` : les images rangées dans `demos/` ne sont pas détectées) |
 | Logo, image de partage | `web/public/images/` (`logo.svg`, `partage.jpg`) |
 | Icône iOS, icônes du navigateur | `web/app/` (convention Next.js : `apple-icon.png`, `icon.svg`, `favicon.ico`) |
 
-Les URL publiques seront de la forme `/demos/danse-apres.mp4` et `/images/galerie-mode.webp`. Le service `web` (Dokploy) les sert directement : rien à configurer, aucun compte supplémentaire, aucun coût. Le total attendu est d'environ 12 Mo.
+Les URL publiques seront de la forme `/demos/danse-apres.mp4` et `/images/usage-createur.webp`. Le service `web` (Dokploy) les sert directement : rien à configurer, aucun compte supplémentaire, aucun coût. Le total attendu est d'environ 12 Mo.
 
 Une fois les fichiers déposés aux bons noms, il n'y a **rien à renseigner dans le code** : `web/lib/media.ts` les détecte à la construction. Les textes alternatifs (lecteurs d'écran) sont déjà écrits dans ce fichier ; modifiez-les là si besoin.
 

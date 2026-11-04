@@ -1,14 +1,11 @@
 import { Play } from "lucide-react";
 
-export type DemoKind = "danse" | "boutique" | "anniversaire" | "portrait" | "evenement" | "mode";
+export type DemoKind = "danse" | "boutique" | "anniversaire";
 
 const PALETTES: Record<DemoKind, { bg: string; sun: string; body: string; trail: string }> = {
   danse: { bg: "from-primary to-chart-4", sun: "fill-accent", body: "fill-background", trail: "stroke-accent" },
   boutique: { bg: "from-accent to-terracotta", sun: "fill-background", body: "fill-primary", trail: "stroke-primary" },
   anniversaire: { bg: "from-terracotta to-accent", sun: "fill-background", body: "fill-primary", trail: "stroke-background" },
-  portrait: { bg: "from-chart-5 to-primary", sun: "fill-accent", body: "fill-background", trail: "stroke-background" },
-  evenement: { bg: "from-chart-4 to-primary", sun: "fill-terracotta", body: "fill-accent", trail: "stroke-background" },
-  mode: { bg: "from-secondary to-accent", sun: "fill-terracotta", body: "fill-primary", trail: "stroke-primary" },
 };
 
 /**
