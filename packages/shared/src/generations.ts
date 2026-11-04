@@ -2,21 +2,16 @@ import { z } from 'zod';
 
 /**
  * Contrats du parcours de création : styles (presets) proposés, demande de création, création suivie.
- * Les trois « types de création » de l'interface se déduisent du catalogue :
- *  - fun   : preset de type MOTION (tendance dont la vidéo de référence est fournie par Yamboka) ;
- *  - affiche : preset dont le produit est facturé à l'image ;
- *  - pub   : tout autre preset vidéo (LOOK, OBJECT_SWAP).
+ * Yamboka ne produit que des vidéos. Les deux « types de création » de l'interface se déduisent du catalogue :
+ *  - fun : preset de type MOTION (tendance dont la vidéo de référence est fournie par Yamboka) ;
+ *  - pub : tout autre preset (LOOK, OBJECT_SWAP).
  */
 
-export const CREATION_KINDS = ['affiche', 'pub', 'fun'] as const;
+export const CREATION_KINDS = ['pub', 'fun'] as const;
 export type CreationKind = (typeof CREATION_KINDS)[number];
 
-/**
- * Formats d'image proposés. Tous sont acceptés nativement par les modèles utilisés (vérifié auprès de l'API
- * Higgsfield) : le format est demandé au modèle, jamais obtenu en recadrant après coup. Le 4:5 et le 21:9 sont
- * refusés par ces modèles : ils ne sont pas proposés.
- */
-export const CREATION_FORMATS = ['1:1', '4:3', '3:2', '3:4', '2:3', '16:9', '9:16'] as const;
+/** Formats de vidéo proposés : usages statut WhatsApp / TikTok (9:16), post (1:1) et écran (16:9). */
+export const CREATION_FORMATS = ['9:16', '1:1', '16:9'] as const;
 export type CreationFormat = (typeof CREATION_FORMATS)[number];
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -32,7 +27,7 @@ export interface StyleView {
   featured: boolean;
   /** Coût exact en crédits, calculé côté serveur. */
   credits: number;
-  /** Seconde(s) de vidéo facturée(s), null pour une image. */
+  /** Seconde(s) de vidéo facturée(s). */
   seconds: number | null;
   /** Vignette (URL de l'API) ou null si le preset n'en a pas encore. */
   thumbnailUrl: string | null;
@@ -69,8 +64,6 @@ export interface CreationView {
   completedAt: string | null;
   /** Date après laquelle le résultat n'est plus conservé. */
   expiresAt: string | null;
-  /** Le résultat est une vidéo (sinon une image). */
-  isVideo: boolean;
   /** Vrai quand la création vient du fournisseur SIMULÉ : aucune IA n'a été utilisée. */
   simulated: boolean;
   /** URLs de l'API (privées : exigent la session du propriétaire). */
@@ -89,7 +82,7 @@ export const MAX_PROMPT_LENGTH = 600;
 /**
  * Demande de création (la photo part dans la même requête multipart). Une seule description libre : texte à afficher,
  * prix, coordonnées, ambiance… y sont écrits tels quels. `styleId` est obligatoire pour une tendance (fun) ; pour une
- * affiche ou une pub, le serveur choisit le style par défaut s'il est absent.
+ * pub, le serveur choisit le style par défaut s'il est absent.
  */
 export const createCreationSchema = z.object({
   kind: z.enum(CREATION_KINDS, { error: 'Choisissez un type de création.' }),

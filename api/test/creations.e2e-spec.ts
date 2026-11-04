@@ -1,7 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { MOCK_FAIL_MARKER } from '../src/generation/mock-generation.provider';
 import { CreationsService } from '../src/creations/creations.service';
-import { imageSize } from '../src/creations/image-sniff';
 import { APP_ORIGIN, Client, createApp, prismaOf } from './helpers';
 import { addLot, lotsMatchLedger, verifiedClient } from './finance-helpers';
 
@@ -15,15 +14,12 @@ describe('Créations (e2e)', () => {
   let app: INestApplication;
   let prisma: ReturnType<typeof prismaOf>;
   let creations: CreationsService;
-  let styles: { affiche: string; pub: string; fun: string };
+  let styles: { pub: string; fun: string };
 
   beforeAll(async () => {
     app = await createApp();
     prisma = prismaOf(app);
     creations = app.get(CreationsService);
-    const image = await prisma.generationProduct.findUniqueOrThrow({
-      where: { code: 'IMAGE_EDIT_GROK' },
-    });
     const video = await prisma.generationProduct.findUniqueOrThrow({
       where: { code: 'VIDEO_LIGHT_480' },
     });
@@ -38,7 +34,6 @@ describe('Créations (e2e)', () => {
         },
       });
     styles = {
-      affiche: (await mk('Affiche test', 'LOOK', image.id)).id,
       pub: (await mk('Pub test', 'LOOK', video.id)).id,
       fun: (await mk('Fun test', 'MOTION', video.id)).id,
     };
@@ -60,19 +55,14 @@ describe('Créations (e2e)', () => {
     if (photo) req.attach('photo', photo, 'photo.png');
     return req;
   };
-  const body = (
-    kind: 'affiche' | 'pub' | 'fun',
-    extra: Record<string, string> = {},
-  ) => ({
+  const body = (kind: 'pub' | 'fun', extra: Record<string, string> = {}) => ({
     kind,
     format: '9:16',
     consent: 'true',
-    ...(kind !== 'fun'
-      ? { prompt: 'Affiche élégante, texte PROMO -20 %' }
-      : {}),
+    ...(kind !== 'fun' ? { prompt: 'Pub élégante, texte PROMO -20 %' } : {}),
     ...extra,
   });
-  /** Une tendance (fun) se choisit par son style ; affiche et pub n'en ont pas besoin. */
+  /** Une tendance (fun) se choisit par son style ; une pub n'en a pas besoin. */
   const funBody = (extra: Record<string, string> = {}) =>
     body('fun', { styleId: styles.fun, ...extra });
   const balance = async (client: Client) =>
@@ -82,10 +72,6 @@ describe('Créations (e2e)', () => {
     const { client } = await verifiedClient(app);
     const res = await client.get('/api/creations/styles').expect(200);
     const byId = new Map(res.body.styles.map((s: any) => [s.id, s]));
-    expect(byId.get(styles.affiche)).toMatchObject({
-      kind: 'affiche',
-      credits: 17,
-    });
     expect(byId.get(styles.pub)).toMatchObject({
       kind: 'pub',
       credits: 50,
@@ -100,56 +86,51 @@ describe('Créations (e2e)', () => {
     await new Client(app).get('/api/creations').expect(401);
     const anon = new Client(app);
     await anon.register();
-    await send(anon, body('affiche')).expect(403);
+    await send(anon, body('pub')).expect(403);
   });
 
   describe('Succès', () => {
     it('réserve puis consomme les crédits, et le résultat est téléchargeable', async () => {
       const { client, userId } = await verifiedClient(app);
-      await addLot(app, userId, 40);
+      await addLot(app, userId, 60);
       const res = await send(
         client,
-        body('affiche', {
-          prompt: 'Affiche pour 15 000 FCFA, tél. +242 06 000 00 00',
+        body('pub', {
+          prompt: 'Pub pour 15 000 FCFA, tél. +242 06 000 00 00',
         }),
       ).expect(201);
       const id = res.body.creation.id;
       expect(res.body.creation).toMatchObject({
-        kind: 'affiche',
-        credits: 17,
+        kind: 'pub',
+        credits: 50,
         status: 'COMPLETED',
-        isVideo: false,
         // Aucun titre inventé, et le fournisseur simulé le dit clairement.
         styleName: null,
         styleId: null,
         simulated: true,
         options: {
-          prompt: 'Affiche pour 15 000 FCFA, tél. +242 06 000 00 00',
+          prompt: 'Pub pour 15 000 FCFA, tél. +242 06 000 00 00',
           format: '9:16',
         },
-        prompt: 'Affiche pour 15 000 FCFA, tél. +242 06 000 00 00',
+        prompt: 'Pub pour 15 000 FCFA, tél. +242 06 000 00 00',
       });
-      expect(await balance(client)).toBe(23);
+      expect(await balance(client)).toBe(10);
 
       const ledger = await prisma.creditLedger.findMany({
         where: { generationId: id },
       });
       expect(ledger.map((l) => l.type).sort()).toEqual(['CAPTURE', 'RESERVE']);
       expect(await lotsMatchLedger(app, userId)).toEqual({
-        ledger: 23,
-        lots: 23,
+        ledger: 10,
+        lots: 10,
       });
 
       const file = await client
         .get(`/api/creations/${id}/file?download=1`)
         .expect(200);
-      expect(file.headers['content-type']).toContain('image/png');
-      // Le « résultat » simulé n'est JAMAIS la photo envoyée : c'est une image de substitution aux proportions demandées.
+      expect(file.headers['content-type']).toContain('video/mp4');
+      // Le « résultat » simulé n'est JAMAIS la photo envoyée : c'est une vidéo de substitution.
       expect(Buffer.compare(file.body as Buffer, PNG)).not.toBe(0);
-      expect(imageSize(file.body as Buffer)).toEqual({
-        width: 432,
-        height: 768,
-      });
       expect(file.headers['content-disposition']).toContain('attachment');
       const list = await client.get('/api/creations').expect(200);
       expect(list.body.items.map((i: any) => i.id)).toContain(id);
@@ -164,7 +145,6 @@ describe('Créations (e2e)', () => {
       await addLot(app, userId, 60);
       const res = await send(client, funBody()).expect(201);
       expect(res.body.creation).toMatchObject({
-        isVideo: true,
         credits: 50,
         status: 'COMPLETED',
       });
@@ -181,7 +161,7 @@ describe('Créations (e2e)', () => {
     it('refuse sans crédits suffisants (402) et ne crée rien', async () => {
       const { client, userId } = await verifiedClient(app);
       await addLot(app, userId, 1);
-      const res = await send(client, body('affiche')).expect(402);
+      const res = await send(client, body('pub')).expect(402);
       expect(res.body.code).toBe('INSUFFICIENT_CREDITS');
       expect(await prisma.generation.count({ where: { userId } })).toBe(0);
       expect(await balance(client)).toBe(1);
@@ -190,50 +170,47 @@ describe('Créations (e2e)', () => {
     it('exige le consentement, un style valide et une vraie photo', async () => {
       const { client, userId } = await verifiedClient(app);
       await addLot(app, userId, 40);
-      await send(client, body('affiche', { consent: 'false' })).expect(400);
+      await send(client, body('pub', { consent: 'false' })).expect(400);
       await send(
         client,
         body('fun', { styleId: '00000000-0000-4000-8000-000000000000' }),
       ).expect(400);
-      await send(client, body('affiche'), null).expect(400);
+      await send(client, body('pub'), null).expect(400);
       const fake = await send(
         client,
-        body('affiche'),
+        body('pub'),
         Buffer.from('pas une image'),
       ).expect(400);
       expect(fake.body.code).toBe('PHOTO_INVALID');
-      await send(client, body('affiche', { prompt: 'x'.repeat(601) })).expect(
-        400,
-      );
+      await send(client, body('pub', { prompt: 'x'.repeat(601) })).expect(400);
       expect(await balance(client)).toBe(40);
     });
 
-    it('un prompt unique : obligatoire pour affiche et pub, facultatif pour une tendance', async () => {
+    it('un prompt unique : obligatoire pour une pub, facultatif pour une tendance', async () => {
       const { client, userId } = await verifiedClient(app);
       await addLot(app, userId, 200);
       const none = await send(client, {
-        kind: 'affiche',
+        kind: 'pub',
         consent: 'true',
       }).expect(400);
       expect(none.body.details[0].field).toBe('prompt');
-      await send(client, { kind: 'pub', consent: 'true' }).expect(400);
       // Tendance sans prompt : acceptée ; sans style : refusée ; style d'un autre type : refusé.
       await send(client, funBody()).expect(201);
       await send(client, { kind: 'fun', consent: 'true' }).expect(400);
-      await send(client, body('pub', { styleId: styles.affiche })).expect(400);
+      await send(client, body('pub', { styleId: styles.fun })).expect(400);
     });
 
     it('sans style choisi, aucun style n’est inventé : ni titre, ni texte ajouté à la description', async () => {
       // Un style publié « piège » existe : avant, il était attaché d'office (nom en titre, texte par défaut ajouté).
-      const image = await prisma.generationProduct.findUniqueOrThrow({
-        where: { code: 'IMAGE_EDIT_GROK' },
+      const video = await prisma.generationProduct.findUniqueOrThrow({
+        where: { code: 'VIDEO_LIGHT_480' },
       });
       const trap = await prisma.preset.create({
         data: {
           name: 'Boutique en vitrine',
           category: 'test',
           type: 'LOOK',
-          productId: image.id,
+          productId: video.id,
           visible: true,
           sortOrder: -100,
           defaultPrompt: 'TEXTE PARASITE',
@@ -241,13 +218,13 @@ describe('Créations (e2e)', () => {
       });
       try {
         const { client, userId } = await verifiedClient(app);
-        await addLot(app, userId, 40);
+        await addLot(app, userId, 60);
         const res = await send(
           client,
-          body('affiche', { prompt: 'Ma description exacte' }),
+          body('pub', { prompt: 'Ma description exacte' }),
         ).expect(201);
         expect(res.body.creation).toMatchObject({
-          kind: 'affiche',
+          kind: 'pub',
           styleId: null,
           styleName: null,
           prompt: 'Ma description exacte',
@@ -262,33 +239,33 @@ describe('Créations (e2e)', () => {
       }
     });
 
-    it('refuse, avant tout débit, un format que le modèle n’accepte pas ou un style sans modèle exploitable', async () => {
+    it('refuse, avant tout débit, un format hors catalogue ou un style rattaché à un produit d’image abandonné', async () => {
       const { client, userId } = await verifiedClient(app);
       await addLot(app, userId, 40);
-      // 4:5 et 21:9 sont refusés par les modèles : ils ne font pas partie des formats proposés.
-      await send(client, body('affiche', { format: '4:5' })).expect(400);
-      await send(client, body('affiche', { format: '21:9' })).expect(400);
-      // Un style rattaché à Soul (texte → image, qui ignorerait la photo) est refusé au lieu de livrer autre chose.
-      const soul = await prisma.generationProduct.findUniqueOrThrow({
-        where: { code: 'IMAGE_SOUL2' },
+      // Seuls 9:16, 1:1 et 16:9 sont proposés.
+      await send(client, body('pub', { format: '4:5' })).expect(400);
+      await send(client, body('pub', { format: '3:4' })).expect(400);
+      // Un style resté rattaché à un produit d'image (abandonné, désactivé par la migration) n'est ni proposé ni accepté.
+      const legacy = await prisma.generationProduct.findUniqueOrThrow({
+        where: { code: 'IMAGE_EDIT_GROK' },
       });
+      expect(legacy.active).toBe(false);
       const preset = await prisma.preset.create({
         data: {
-          name: `Soul ${Date.now()}`,
+          name: `Ancienne image ${Date.now()}`,
           category: 'test',
           type: 'LOOK',
-          productId: soul.id,
+          productId: legacy.id,
           visible: true,
         },
       });
       try {
         const res = await send(
           client,
-          body('affiche', { styleId: preset.id }),
+          body('pub', { styleId: preset.id }),
         ).expect(400);
         expect(res.body.code).toBe('STYLE_UNAVAILABLE');
         const listed = await client.get('/api/creations/styles').expect(200);
-        // Le simulé reste indulgent sur les vidéos de référence, mais jamais sur une photo ignorée.
         expect(listed.body.styles.map((s: any) => s.id)).not.toContain(
           preset.id,
         );
@@ -301,7 +278,7 @@ describe('Créations (e2e)', () => {
 
     it('limite le nombre de créations simultanées', async () => {
       const { client, userId } = await verifiedClient(app);
-      await addLot(app, userId, 40);
+      await addLot(app, userId, 60);
       await prisma.setting.upsert({
         where: { key: 'maxConcurrentGenerationsPerUser' },
         update: { value: 1 },
@@ -312,9 +289,9 @@ describe('Créations (e2e)', () => {
         const spy = jest
           .spyOn(provider, 'getStatus')
           .mockResolvedValue({ status: 'processing' });
-        const first = await send(client, body('affiche')).expect(201);
+        const first = await send(client, body('pub')).expect(201);
         expect(first.body.creation.status).toBe('PROCESSING');
-        const second = await send(client, body('affiche')).expect(429);
+        const second = await send(client, body('pub')).expect(429);
         expect(second.body.code).toBe('TOO_MANY_RUNNING');
         spy.mockRestore();
         await creations.advanceAll();
@@ -364,12 +341,12 @@ describe('Créations (e2e)', () => {
 
     it('annule et rembourse une création sans réponse après le délai', async () => {
       const { client, userId } = await verifiedClient(app);
-      await addLot(app, userId, 40);
+      await addLot(app, userId, 60);
       const provider = (creations as any).provider;
       const spy = jest
         .spyOn(provider, 'getStatus')
         .mockResolvedValue({ status: 'processing' });
-      const res = await send(client, body('affiche')).expect(201);
+      const res = await send(client, body('pub')).expect(201);
       spy.mockRestore();
       await prisma.generation.update({
         where: { id: res.body.creation.id },
@@ -380,7 +357,7 @@ describe('Créations (e2e)', () => {
         .body.creation;
       expect(after.status).toBe('FAILED');
       expect(after.errorMessage).toContain('trop de temps');
-      expect(await balance(client)).toBe(40);
+      expect(await balance(client)).toBe(60);
     });
   });
 
@@ -388,8 +365,8 @@ describe('Créations (e2e)', () => {
     it('une création n’est visible que de son propriétaire', async () => {
       const a = await verifiedClient(app);
       const b = await verifiedClient(app);
-      await addLot(app, a.userId, 40);
-      const { id } = (await send(a.client, body('affiche')).expect(201)).body
+      await addLot(app, a.userId, 60);
+      const { id } = (await send(a.client, body('pub')).expect(201)).body
         .creation;
       await b.client.get(`/api/creations/${id}`).expect(404);
       await b.client.get(`/api/creations/${id}/file`).expect(404);
@@ -402,8 +379,8 @@ describe('Créations (e2e)', () => {
 
     it('supprime les fichiers mais garde la trace', async () => {
       const { client, userId } = await verifiedClient(app);
-      await addLot(app, userId, 40);
-      const { id } = (await send(client, body('affiche')).expect(201)).body
+      await addLot(app, userId, 60);
+      const { id } = (await send(client, body('pub')).expect(201)).body
         .creation;
       await client.agent
         .delete(`/api/creations/${id}`)
@@ -420,8 +397,8 @@ describe('Créations (e2e)', () => {
 
     it('un signalement gèle la conservation et empêche la suppression', async () => {
       const { client, userId } = await verifiedClient(app);
-      await addLot(app, userId, 40);
-      const { id } = (await send(client, body('affiche')).expect(201)).body
+      await addLot(app, userId, 60);
+      const { id } = (await send(client, body('pub')).expect(201)).body
         .creation;
       await client
         .post(`/api/creations/${id}/report`, { reason: 'Contenu inapproprié' })

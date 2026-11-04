@@ -86,8 +86,8 @@ export function CreationDetail({ initial }: { initial: CreationView }) {
           <Alert role="status" className="mb-4 border-amber-400 bg-amber-50 text-amber-950">
             <TriangleAlert className="size-4" aria-hidden />
             <AlertDescription>
-              <strong>Création simulée.</strong> Le mode simulation est actif : aucune intelligence artificielle n’a été utilisée et l’image ci-dessous n’est
-              qu’une image de substitution.
+              <strong>Création simulée.</strong> Le mode simulation est actif : aucune intelligence artificielle n’a été utilisée et la vidéo ci-dessous n’est
+              qu’une vidéo de substitution.
             </AlertDescription>
           </Alert>
         )}

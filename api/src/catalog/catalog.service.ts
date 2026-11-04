@@ -1,6 +1,6 @@
-import { modelSpecOf } from '../generation/models';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { PackView, ProductView, QuoteView } from '@yamboka/shared';
+import { VIDEO_SECONDS } from '@yamboka/shared';
 import { CreditsService } from '../credits/credits.service';
 import { creditsPerSecond } from '../billing/credits';
 import type { GenerationProduct } from '../generated/prisma/client';
@@ -50,14 +50,6 @@ export class CatalogService {
       }),
       this.prisma.generationProduct.findMany({ where: { active: true } }),
     ]);
-    // Équivalent « images » : le produit qui fabrique réellement une affiche à partir d'une photo (pas un modèle texte → image
-    // qui ignorerait la photo), le plus ancien en cas d'égalité : le résultat ne dépend pas de l'ordre de lecture en base.
-    const image = products
-      .filter(
-        (p) =>
-          p.billingUnit === 'IMAGE' && modelSpecOf(p.providerModel)?.usesPhoto,
-      )
-      .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())[0];
     const perSecond = await this.referenceCreditsPerSecond(products);
 
     return packs.map((p) => {
@@ -76,15 +68,16 @@ export class CatalogService {
         totalCredits: total,
         featured: p.featured,
         equivalent: {
-          videoSeconds: perSecond ? Math.floor(total / perSecond) : 0,
-          images: image ? Math.floor(total / image.creditsPerUnit) : 0,
+          videos: perSecond
+            ? Math.floor(total / (perSecond * VIDEO_SECONDS))
+            : 0,
         },
       };
     });
   }
 
   /**
-   * Crédits par seconde du modèle par défaut (base des « ≈ 12 vidéos de 10 s »), calculés depuis son prix en $/s.
+   * Crédits par seconde du modèle par défaut (base des « ≈ N vidéos »), calculés depuis son prix en $/s.
    * Sans modèle par défaut, repli sur le produit vidéo actif.
    */
   private async referenceCreditsPerSecond(
@@ -123,13 +116,13 @@ export class CatalogService {
 
   async listProducts(): Promise<ProductView[]> {
     const products = await this.prisma.generationProduct.findMany({
-      where: { active: true },
+      where: { active: true, billingUnit: 'SECOND' },
       orderBy: { createdAt: 'asc' },
     });
     return products.map((p) => ({
       code: p.code,
       name: p.name,
-      billingUnit: p.billingUnit,
+      billingUnit: 'SECOND' as const,
       creditsPerUnit: p.creditsPerUnit,
       minSeconds: p.minSeconds,
       maxSeconds: p.maxSeconds,
@@ -201,8 +194,8 @@ export class CatalogService {
     ]);
     const rows: { product: string; pack: string; margin: Margin }[] = [];
     for (const product of products) {
-      // Référence : une vidéo de 10 s, ou une image.
-      const units = product.billingUnit === 'SECOND' ? 10 : 1;
+      // Référence : une vidéo de 10 s.
+      const units = 10;
       for (const pack of packs) {
         rows.push({
           product: product.code,

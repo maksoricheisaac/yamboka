@@ -26,7 +26,7 @@ interface StudioProps {
   balance: number;
   emailVerified: boolean;
   initialKind: CreationKind;
-  /** Style demandé depuis « Tendances » : la tendance (fun) ou le modèle d'une affiche / pub. */
+  /** Style demandé depuis « Tendances » : la tendance (fun) ou le modèle d'une pub. */
   initialStyleId: string | null;
   initialPrompt: string;
 }
@@ -47,7 +47,7 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
   const queryClient = useQueryClient();
 
   const [kind, setKind] = useState<CreationKind>(initialKind);
-  // Tendance choisie (fun), et modèle facultatif d'une affiche / pub (venu de « Tendances »).
+  // Tendance choisie (fun), et modèle facultatif d'une pub (venu de « Tendances »).
   const initialStyle = styles.find((s) => s.id === initialStyleId);
   const [trendId, setTrendId] = useState<string | null>(initialStyle?.kind === "fun" ? initialStyle.id : (styles.find((s) => s.kind === "fun")?.id ?? null));
   const [modelId, setModelId] = useState<string | null>(initialStyle && initialStyle.kind !== "fun" ? initialStyle.id : null);
@@ -158,7 +158,7 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
     <div className="grid gap-6 lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:items-start lg:gap-10">
       {/* ───────── Formulaire ───────── */}
       <div className="min-w-0 space-y-6">
-        <div role="tablist" aria-label="Type de création" className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1">
+        <div role="tablist" aria-label="Type de création" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
           {KIND_ORDER.map((k) => {
             const Icon = KINDS[k].icon;
             const active = kind === k;
@@ -240,7 +240,7 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
         {!fun && (
           <section className="space-y-2.5" aria-labelledby="format-title">
             <h2 id="format-title" className="font-heading text-base font-bold">Format</h2>
-            <div role="radiogroup" aria-labelledby="format-title" className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            <div role="radiogroup" aria-labelledby="format-title" className="grid grid-cols-3 gap-2">
               {FORMATS.map((f) => (
                 <label key={f.value} className="cursor-pointer">
                   <input type="radio" name="format" value={f.value} checked={format === f.value} onChange={() => setFormat(f.value)} disabled={tracking} className="peer sr-only" />

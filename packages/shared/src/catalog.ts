@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 /** Contrats du catalogue : packs de crédits, produits de génération, devis. */
 
+/** Durée d'une vidéo Yamboka, en secondes : celle des vidéos de référence (Genjutsu Light, durée fixe). */
+export const VIDEO_SECONDS = 4;
+
 export interface PackView {
   id: string;
   name: string;
@@ -11,14 +14,14 @@ export interface PackView {
   bonusPercent: number;
   totalCredits: number;
   featured: boolean;
-  /** Ce que permet le pack, calculé côté serveur à partir des produits actifs (secondes de vidéo OU images). */
-  equivalent: { videoSeconds: number; images: number };
+  /** Ce que permet le pack, calculé côté serveur à partir du produit vidéo actif (nombre de vidéos). */
+  equivalent: { videos: number };
 }
 
 export interface ProductView {
   code: string;
   name: string;
-  billingUnit: 'SECOND' | 'IMAGE';
+  billingUnit: 'SECOND';
   creditsPerUnit: number;
   minSeconds: number | null;
   maxSeconds: number | null;

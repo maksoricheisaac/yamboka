@@ -29,7 +29,7 @@ const columns = col.columns([
     id: "billing",
     header: ({ column }) => <SortableHeader column={column} title="Facturation" />,
     sortFn: "text",
-    cell: ({ row }) => (row.original.billingUnit === "SECOND" ? "À la seconde" : "À l’image"),
+    cell: ({ row }) => (row.original.billingUnit === "SECOND" ? "À la seconde" : "À l’image (abandonné)"),
   }),
   col.accessor("creditsPerUnit", {
     id: "price",
@@ -121,7 +121,7 @@ export function ProductsTable({ products }: { products: AdminProduct[] }) {
           get: (p) => p.billingUnit,
           options: [
             { value: "SECOND", label: "À la seconde" },
-            { value: "IMAGE", label: "À l’image" },
+            { value: "IMAGE", label: "À l’image (abandonné)" },
           ],
         },
       ]}

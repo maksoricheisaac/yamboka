@@ -32,6 +32,18 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  // Yamboka ne produit plus d'images : les anciens liens « Créer une affiche » mènent au studio vidéo. Next émet un
+  // 308 (permanent, même méthode) là où l'on parle de 301 : pour une navigation GET, les moteurs les traitent pareil.
+  async redirects() {
+    return [
+      {
+        source: "/app/creer",
+        has: [{ type: "query" as const, key: "type", value: "affiche" }],
+        destination: "/app/creer?type=pub",
+        permanent: true,
+      },
+    ];
+  },
   // Le navigateur parle uniquement à cette origine : /api/* est relayé vers l'API.
   // Le cookie de session reste ainsi « même origine » (pas de CORS, CSRF simplifié).
   async rewrites() {

@@ -1,7 +1,7 @@
 "use client";
 
 import type { CreationView } from "@yamboka/shared";
-import { Download, Loader2, Pencil, RefreshCw, Share2, Wand2 } from "lucide-react";
+import { Download, Loader2, Pencil, RefreshCw, Share2 } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -9,8 +9,7 @@ import { toast } from "@/components/ui/toaster";
 import { mediaUrl, shareOnWhatsApp } from "@/lib/creations";
 
 /**
- * Actions sur un résultat prêt. WhatsApp est l'action principale (c'est là que les créations sont diffusées) ;
- * « Animer cette affiche » est annoncée « Bientôt » : elle n'est pas encore prise en charge par l'application.
+ * Actions sur un résultat prêt. WhatsApp est l'action principale (c'est là que les créations sont diffusées).
  */
 export function ResultActions({ creation, onEdit, extra }: { creation: CreationView; onEdit?: () => void; extra?: ReactNode }) {
   const [sharing, setSharing] = useState(false);
@@ -58,12 +57,6 @@ export function ResultActions({ creation, onEdit, extra }: { creation: CreationV
           </Button>
         )}
       </div>
-      {creation.kind === "affiche" && (
-        <Button type="button" variant="ghost" size="lg" className="h-11 w-full" disabled aria-label="Animer cette affiche — bientôt disponible">
-          <Wand2 aria-hidden /> Animer cette affiche
-          <span className="rounded-full bg-accent/40 px-2 py-0.5 text-[0.65rem] font-semibold text-accent-foreground">Bientôt</span>
-        </Button>
-      )}
       {extra}
     </div>
   );

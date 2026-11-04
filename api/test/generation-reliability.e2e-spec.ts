@@ -6,7 +6,6 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
 import { CreditsService } from '../src/credits/credits.service';
 import { CreationsService } from '../src/creations/creations.service';
-import { imageSize } from '../src/creations/image-sniff';
 import {
   GenerationProvider,
   GenerationRejectedError,
@@ -15,7 +14,6 @@ import {
   SubmitGenerationRequest,
   SubmitGenerationResult,
 } from '../src/generation/generation-provider';
-import { mockImagePng } from '../src/generation/mock-image';
 import { StorageDriver } from '../src/storage/storage-driver';
 import { APP_ORIGIN, Client, prismaOf } from './helpers';
 import { addLot, lotsMatchLedger, verifiedClient } from './finance-helpers';
@@ -25,7 +23,6 @@ const PHOTO = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
   'base64',
 );
-const FORMATS = ['1:1', '4:3', '3:2', '3:4', '2:3', '16:9', '9:16'] as const;
 
 /**
  * Faux fournisseur RÉEL dans son comportement (son nom n'est pas « mock » : aucune indulgence du simulé). Il enregistre
@@ -163,13 +160,6 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
     for (const [k, v] of Object.entries(fields)) req.field(k, v);
     return req.attach('photo', PHOTO, 'photo.png');
   };
-  const affiche = (extra: Record<string, string> = {}) => ({
-    kind: 'affiche',
-    format: '3:4',
-    consent: 'true',
-    prompt: 'Affiche pour ma robe, texte PROMO -20 %',
-    ...extra,
-  });
   const balance = async (c: Client) =>
     (await c.get('/api/auth/me')).body.user.credits as number;
   const ledgerTypes = async (id: string) =>
@@ -180,7 +170,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
     prisma.mediaFile.count({
       where: {
         generationId: id,
-        role: { in: ['OUTPUT_IMAGE', 'OUTPUT_VIDEO'] },
+        role: 'OUTPUT_VIDEO',
       },
     });
 
@@ -193,7 +183,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
     provider.files.set(url, { body, type });
     provider.status = () => ({ status: 'completed', outputUrl: url });
   };
-  async function create(fields: Record<string, string>, lot = 40) {
+  async function create(fields: Record<string, string>, lot = 60) {
     const { client, userId } = await verifiedClient(app);
     await addLot(app, userId, lot);
     const res = await send(client, fields);
@@ -205,231 +195,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
     };
   }
 
-  describe('Images', () => {
-    it('envoie la photo au modèle qui l’utilise, avec le format demandé, et livre une vraie image', async () => {
-      completeWith(mockImagePng('3:4'), 'image/png');
-      const { client, userId, res, creation } = await create(affiche());
-      expect(res.status).toBe(201);
-      expect(creation).toMatchObject({
-        status: 'COMPLETED',
-        simulated: false,
-        styleName: null,
-        credits: 17,
-      });
-      // Paramètres EXACTS du modèle : photo + description + format, rien d'autre (aucun titre ni style ajouté).
-      expect(provider.submitted).toHaveLength(1);
-      expect(provider.submitted[0].model).toBe('xai/grok-imagine-image-2.0');
-      expect(provider.submitted[0].input).toEqual({
-        prompt: 'Affiche pour ma robe, texte PROMO -20 %',
-        image_urls: ['https://files.higgsfield.test/in-1'],
-        aspect_ratio: '3:4',
-      });
-      // Le fichier stocké est celui du fournisseur, aux bonnes proportions.
-      const file = await client
-        .get(`/api/creations/${creation.id}/file`)
-        .expect(200);
-      expect(imageSize(file.body as Buffer)).toEqual({
-        width: 576,
-        height: 768,
-      });
-      expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await balance(client)).toBe(23);
-      expect(await lotsMatchLedger(app, userId)).toEqual({
-        ledger: 23,
-        lots: 23,
-      });
-    });
-
-    it.each(FORMATS)(
-      'format %s : transmis tel quel au fournisseur et respecté dans le résultat',
-      async (format) => {
-        completeWith(mockImagePng(format), 'image/png');
-        const { client, creation } = await create(affiche({ format }));
-        expect(creation.status).toBe('COMPLETED');
-        expect(provider.submitted[0].input.aspect_ratio).toBe(format);
-        const size = imageSize(
-          (await client.get(`/api/creations/${creation.id}/file`).expect(200))
-            .body as Buffer,
-        )!;
-        const [w, h] = format.split(':').map(Number);
-        expect(Math.abs(size.width / size.height / (w / h) - 1)).toBeLessThan(
-          0.03,
-        );
-      },
-    );
-
-    it('un résultat aux mauvaises proportions n’est jamais livré : échec, crédits restitués une fois', async () => {
-      completeWith(mockImagePng('1:1'), 'image/png'); // carré alors que 3:4 est demandé
-      const { client, creation } = await create(affiche());
-      expect(creation).toMatchObject({ status: 'FAILED', refunded: true });
-      expect(creation.errorMessage).toContain('format demandé');
-      expect(creation.errorMessage).toContain('crédits ont été restitués');
-      expect(await outputs(creation.id)).toBe(0);
-      expect(await ledgerTypes(creation.id)).toEqual(['RELEASE', 'RESERVE']);
-      expect(await balance(client)).toBe(40);
-    });
-
-    it.each([
-      [
-        'réponse « terminé » sans fichier',
-        () => {
-          provider.status = () => ({ status: 'completed' });
-        },
-        'pas fourni de résultat',
-      ],
-      [
-        'fichier vide',
-        () => completeWith(Buffer.alloc(0), 'image/png'),
-        'pas exploitable',
-      ],
-      [
-        'page d’erreur à la place de l’image',
-        () =>
-          completeWith(
-            Buffer.from('<html>Erreur 500</html>'.repeat(80)),
-            'image/png',
-          ),
-        'pas exploitable',
-      ],
-      [
-        'faux type annoncé (vidéo servie pour une image)',
-        () => completeWith(mp4, 'image/png'),
-        'pas exploitable',
-      ],
-    ])(
-      '%s : jamais « réussi », message clair, crédits restitués',
-      async (_label, script, message) => {
-        script();
-        const { client, creation } = await create(affiche());
-        expect(creation).toMatchObject({ status: 'FAILED', refunded: true });
-        expect(creation.errorMessage).toContain(message);
-        expect(creation.fileUrl).toBeNull();
-        expect(await outputs(creation.id)).toBe(0);
-        expect(await ledgerTypes(creation.id)).toEqual(['RELEASE', 'RESERVE']);
-        expect(await balance(client)).toBe(40);
-      },
-    );
-
-    it('échec du fournisseur, refus de modération et annulation : messages distincts, une seule restitution', async () => {
-      const cases: [GenerationStatusResult, string][] = [
-        [{ status: 'failed', error: 'boom interne' }, 'n’a pas pu terminer'],
-        [{ status: 'rejected', error: 'nsfw' }, 'contrôle de contenu'],
-        [{ status: 'canceled' }, 'annulée'],
-      ];
-      for (const [result, expected] of cases) {
-        provider.reset();
-        provider.status = () => result;
-        const { client, creation } = await create(affiche());
-        expect(creation.status).toBe('FAILED');
-        expect(creation.errorMessage).toContain(expected);
-        // Le texte technique du fournisseur n'est jamais montré à l'utilisateur.
-        expect(JSON.stringify(creation)).not.toContain('boom interne');
-        await creations.advance(creation.id);
-        await creations.advance(creation.id);
-        expect(await ledgerTypes(creation.id)).toEqual(['RELEASE', 'RESERVE']);
-        expect(await balance(client)).toBe(40);
-      }
-    });
-
-    it('demande refusée à l’envoi par le fournisseur : échec immédiat et remboursé', async () => {
-      provider.submitError = new GenerationRejectedError(
-        'HTTP 422 : paramètres invalides',
-      );
-      const { client, creation } = await create(affiche());
-      expect(creation).toMatchObject({ status: 'FAILED', refunded: true });
-      expect(await balance(client)).toBe(40);
-    });
-
-    it('fournisseur injoignable à l’envoi : la création attend (rien n’est perdu), puis aboutit sans double débit', async () => {
-      provider.submitError = new GenerationUnavailableError('panne');
-      const { client, userId, creation } = await create(affiche());
-      expect(creation.status).toBe('PENDING');
-      expect(await balance(client)).toBe(23); // réservé, pas encore consommé
-      provider.submitError = null;
-      completeWith(mockImagePng('3:4'), 'image/png');
-      await creations.advance(creation.id);
-      await creations.advance(creation.id);
-      const done = await prisma.generation.findUniqueOrThrow({
-        where: { id: creation.id },
-      });
-      expect(done.status).toBe('COMPLETED');
-      expect(provider.submitted).toHaveLength(1);
-      expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await lotsMatchLedger(app, userId)).toEqual({
-        ledger: 23,
-        lots: 23,
-      });
-    });
-
-    it('délai dépassé : annulée et remboursée, une seule fois, même si le suivi est rejoué', async () => {
-      const { client, creation } = await create(affiche());
-      expect(creation.status).toBe('PROCESSING');
-      await prisma.generation.update({
-        where: { id: creation.id },
-        data: { createdAt: new Date(Date.now() - 61 * 60_000) },
-      });
-      await creations.advance(creation.id);
-      await creations.advance(creation.id);
-      const after = (await client.get(`/api/creations/${creation.id}`)).body
-        .creation;
-      expect(after).toMatchObject({ status: 'FAILED', refunded: true });
-      expect(after.errorMessage).toContain('trop de temps');
-      expect(await ledgerTypes(creation.id)).toEqual(['RELEASE', 'RESERVE']);
-      expect(await balance(client)).toBe(40);
-    });
-
-    it('un suivi rejoué après la fin ne débite ni ne rembourse une deuxième fois', async () => {
-      completeWith(mockImagePng('3:4'), 'image/png');
-      const { client, creation } = await create(affiche());
-      await creations.advance(creation.id);
-      await creations.advance(creation.id);
-      expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await balance(client)).toBe(23);
-    });
-
-    it('délai dépassé alors que les crédits sont déjà consommés : jamais remboursée à tort, la création se termine', async () => {
-      const { client, creation } = await create(affiche());
-      expect(creation.status).toBe('PROCESSING');
-      await credits.capture(creation.id); // le succès a été encaissé juste avant l'arrêt du serveur
-      await prisma.generation.update({
-        where: { id: creation.id },
-        data: { createdAt: new Date(Date.now() - 61 * 60_000) },
-      });
-      completeWith(mockImagePng('3:4'), 'image/png');
-      await creations.advance(creation.id);
-      const after = (await client.get(`/api/creations/${creation.id}`)).body
-        .creation;
-      expect(after.status).toBe('COMPLETED');
-      expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await balance(client)).toBe(23);
-    });
-
-    it('un style rattaché à un modèle qui ignorerait la photo est refusé avant tout débit', async () => {
-      const soul = await prisma.generationProduct.findUniqueOrThrow({
-        where: { code: 'IMAGE_SOUL2' },
-      });
-      const preset = await prisma.preset.create({
-        data: {
-          name: `Soul ${Date.now()}`,
-          category: 'test',
-          type: 'LOOK',
-          productId: soul.id,
-          visible: true,
-        },
-      });
-      try {
-        const { client, res } = await create(affiche({ styleId: preset.id }));
-        expect(res.status).toBe(400);
-        expect(res.body.code).toBe('STYLE_UNAVAILABLE');
-        expect(provider.submitted).toHaveLength(0);
-        expect(await balance(client)).toBe(40);
-      } finally {
-        await prisma.preset.delete({ where: { id: preset.id } });
-      }
-    });
-  });
-
-  describe('Vidéos (transfert de mouvement)', () => {
+  describe('Vidéos', () => {
     const fun = (extra: Record<string, string> = {}) => ({
       kind: 'fun',
       styleId: motionStyle,
@@ -443,7 +209,6 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       const { client, userId, creation } = await create(fun(), 60);
       expect(creation).toMatchObject({
         status: 'COMPLETED',
-        isVideo: true,
         credits: 50,
         simulated: false,
       });
@@ -508,7 +273,15 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       ['fichier vide', () => completeWith(Buffer.alloc(0), 'video/mp4')],
       [
         'image servie à la place de la vidéo',
-        () => completeWith(mockImagePng('9:16'), 'video/mp4'),
+        () => completeWith(PHOTO, 'video/mp4'),
+      ],
+      [
+        'page d’erreur à la place de la vidéo',
+        () =>
+          completeWith(
+            Buffer.from('<html>Erreur 500</html>'.repeat(800)),
+            'video/mp4',
+          ),
       ],
       [
         'vidéo tronquée (pas de MP4 valide)',
@@ -554,6 +327,83 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       ).toMatchObject({ status: 'FAILED', refunded: true });
       expect(await ledgerTypes(creation.id)).toEqual(['RELEASE', 'RESERVE']);
       expect(await balance(client)).toBe(60);
+    });
+
+    it('échec du fournisseur, refus de modération et annulation : messages distincts, une seule restitution', async () => {
+      const cases: [GenerationStatusResult, string][] = [
+        [{ status: 'failed', error: 'boom interne' }, 'n’a pas pu terminer'],
+        [{ status: 'rejected', error: 'nsfw' }, 'contrôle de contenu'],
+        [{ status: 'canceled' }, 'annulée'],
+      ];
+      for (const [result, expected] of cases) {
+        provider.reset();
+        provider.status = () => result;
+        const { client, creation } = await create(fun(), 60);
+        expect(creation.status).toBe('FAILED');
+        expect(creation.errorMessage).toContain(expected);
+        // Le texte technique du fournisseur n'est jamais montré à l'utilisateur.
+        expect(JSON.stringify(creation)).not.toContain('boom interne');
+        await creations.advance(creation.id);
+        await creations.advance(creation.id);
+        expect(await ledgerTypes(creation.id)).toEqual(['RELEASE', 'RESERVE']);
+        expect(await balance(client)).toBe(60);
+      }
+    });
+
+    it('demande refusée à l’envoi par le fournisseur : échec immédiat et remboursé', async () => {
+      provider.submitError = new GenerationRejectedError(
+        'HTTP 422 : paramètres invalides',
+      );
+      const { client, creation } = await create(fun(), 60);
+      expect(creation).toMatchObject({ status: 'FAILED', refunded: true });
+      expect(await balance(client)).toBe(60);
+    });
+
+    it('fournisseur injoignable à l’envoi : la création attend (rien n’est perdu), puis aboutit sans double débit', async () => {
+      provider.submitError = new GenerationUnavailableError('panne');
+      const { client, userId, creation } = await create(fun(), 60);
+      expect(creation.status).toBe('PENDING');
+      expect(await balance(client)).toBe(10); // réservé, pas encore consommé
+      provider.submitError = null;
+      completeWith(mp4, 'video/mp4');
+      await creations.advance(creation.id);
+      await creations.advance(creation.id);
+      const done = await prisma.generation.findUniqueOrThrow({
+        where: { id: creation.id },
+      });
+      expect(done.status).toBe('COMPLETED');
+      expect(provider.submitted).toHaveLength(1);
+      expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
+      expect(await lotsMatchLedger(app, userId)).toEqual({
+        ledger: 10,
+        lots: 10,
+      });
+    });
+
+    it('un suivi rejoué après la fin ne débite ni ne rembourse une deuxième fois', async () => {
+      completeWith(mp4, 'video/mp4');
+      const { client, creation } = await create(fun(), 60);
+      await creations.advance(creation.id);
+      await creations.advance(creation.id);
+      expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
+      expect(await balance(client)).toBe(10);
+    });
+
+    it('délai dépassé alors que les crédits sont déjà consommés : jamais remboursée à tort, la création se termine', async () => {
+      const { client, creation } = await create(fun(), 60);
+      expect(creation.status).toBe('PROCESSING');
+      await credits.capture(creation.id); // le succès a été encaissé juste avant l'arrêt du serveur
+      await prisma.generation.update({
+        where: { id: creation.id },
+        data: { createdAt: new Date(Date.now() - 61 * 60_000) },
+      });
+      completeWith(mp4, 'video/mp4');
+      await creations.advance(creation.id);
+      const after = (await client.get(`/api/creations/${creation.id}`)).body
+        .creation;
+      expect(after.status).toBe('COMPLETED');
+      expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
+      expect(await balance(client)).toBe(10);
     });
 
     it('un style vidéo sans vidéo de référence n’est ni proposé ni accepté (jamais débité pour rien)', async () => {

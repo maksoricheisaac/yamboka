@@ -29,7 +29,6 @@ interface HiggsfieldBody {
   error?: unknown;
   detail?: unknown;
   video?: { url?: string };
-  images?: { url?: string }[];
 }
 
 const TIMEOUT_MS = 30_000;
@@ -156,7 +155,7 @@ export class HiggsfieldGenerationProvider extends GenerationProvider {
             : undefined,
       };
     }
-    const outputUrl = body.video?.url ?? body.images?.[0]?.url;
+    const outputUrl = body.video?.url;
     if (!outputUrl) {
       // Terminé sans fichier : on ne conclut rien, le rattrapage réessaiera.
       throw new GenerationUnavailableError(

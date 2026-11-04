@@ -29,7 +29,6 @@ import {
   GenerationRejectedError,
   GenerationUnavailableError,
 } from '../generation/generation-provider';
-import { mockImagePng } from '../generation/mock-image';
 import { modelSpecOf } from '../generation/models';
 import type {
   GenerationProduct,
@@ -98,12 +97,8 @@ const INCLUDE = {
 
 const RUNNING = ['PENDING', 'SUBMITTED', 'PROCESSING'] as const;
 
-export function kindOf(
-  preset: Pick<Preset, 'type'>,
-  product: Pick<GenerationProduct, 'billingUnit'>,
-): CreationKind {
-  if (preset.type === 'MOTION') return 'fun';
-  return product.billingUnit === 'IMAGE' ? 'affiche' : 'pub';
+export function kindOf(preset: Pick<Preset, 'type'>): CreationKind {
+  return preset.type === 'MOTION' ? 'fun' : 'pub';
 }
 
 function pricingOf(p: GenerationProduct): ProductPricing {
@@ -128,10 +123,7 @@ function videoSeconds(p: GenerationProduct): number {
 }
 
 function quoteOf(p: GenerationProduct) {
-  return quoteCredits(
-    pricingOf(p),
-    p.billingUnit === 'SECOND' ? videoSeconds(p) : undefined,
-  );
+  return quoteCredits(pricingOf(p), videoSeconds(p));
 }
 
 function statusOf(s: string): CreationStatus {
@@ -183,7 +175,7 @@ export class CreationsService {
           description: p.description,
           category: p.category,
           featured: p.featured,
-          kind: kindOf(p, p.product),
+          kind: kindOf(p),
           credits: quote.credits,
           seconds: quote.billableSeconds,
           thumbnailUrl: p.media.some(
@@ -328,7 +320,7 @@ export class CreationsService {
   /**
    * Style et produit utilisés. Un style n'est attaché que s'il a été CHOISI : l'inventer (le premier style publié)
    * ajoutait son nom comme titre et son texte par défaut à la description, sans que l'utilisateur l'ait demandé.
-   * Sans style, le produit est choisi d'après ce que son modèle sait faire (affiche : un modèle qui utilise la photo).
+   * Sans style (pub seulement), le produit vidéo actif est utilisé.
    */
   private async resolveTarget(input: CreateCreationInput): Promise<{
     preset: Awaited<ReturnType<CreationsService['loadStyle']>> | null;
@@ -338,7 +330,7 @@ export class CreationsService {
       new BadRequestException({ code: 'STYLE_UNAVAILABLE', message });
     if (input.styleId) {
       const preset = await this.loadStyle(input.styleId);
-      if (!preset || kindOf(preset, preset.product) !== input.kind) {
+      if (!preset || kindOf(preset) !== input.kind) {
         throw bad('Ce style n’est pas disponible.');
       }
       return { preset, product: preset.product };
@@ -347,17 +339,12 @@ export class CreationsService {
     const products = await this.prisma.generationProduct.findMany({
       where: {
         active: true,
-        billingUnit: input.kind === 'affiche' ? 'IMAGE' : 'SECOND',
+        billingUnit: 'SECOND',
       },
       orderBy: [{ createdAt: 'asc' }],
     });
-    const product = products.find((p) => {
-      const spec = modelSpecOf(p.providerModel);
-      // Une vidéo « pub » sans style n'a pas de vidéo de référence : seul le simulé peut la fabriquer.
-      return input.kind === 'affiche'
-        ? !!spec?.usesPhoto
-        : this.provider.name === 'mock';
-    });
+    // Une vidéo « pub » sans style n'a pas de vidéo de référence : seul le simulé peut la fabriquer.
+    const product = this.provider.name === 'mock' ? products[0] : undefined;
     if (!product) {
       throw bad('Ce type de création n’est pas disponible pour le moment.');
     }
@@ -526,20 +513,13 @@ export class CreationsService {
     const options = (g.options as unknown as CreationOptions | null) ?? {
       format: '9:16',
     };
-    const isVideo = g.product.billingUnit === 'SECOND';
-    const kind: CreationKind = g.preset
-      ? kindOf(g.preset, g.product)
-      : isVideo
-        ? 'pub'
-        : 'affiche';
-    const output = g.media.find(
-      (m) => m.role === 'OUTPUT_VIDEO' || m.role === 'OUTPUT_IMAGE',
-    );
+    const kind: CreationKind = g.preset ? kindOf(g.preset) : 'pub';
+    const output = g.media.find((m) => m.role === 'OUTPUT_VIDEO');
     const input = g.media.find((m) => m.role === 'INPUT_IMAGE');
     const ready = g.status === 'COMPLETED' && !!output && !output.purgedAt;
     const failed = g.status === 'FAILED' || g.status === 'CANCELLED';
     const base = `/api/creations/${g.id}`;
-    const posterOk = isVideo ? !!input && !input.purgedAt : ready;
+    const posterOk = !!input && !input.purgedAt;
     return {
       id: g.id,
       kind,
@@ -556,7 +536,6 @@ export class CreationsService {
       createdAt: g.createdAt.toISOString(),
       completedAt: g.completedAt?.toISOString() ?? null,
       expiresAt: g.outputExpiresAt?.toISOString() ?? null,
-      isVideo,
       simulated: (g.providerRequestId ?? '').startsWith('MOCK-'),
       thumbnailUrl: posterOk ? `${base}/file?variant=thumb` : null,
       fileUrl: ready ? `${base}/file` : null,
@@ -570,13 +549,10 @@ export class CreationsService {
     variant: 'output' | 'thumb',
   ): Promise<{ body: Buffer; mime: string; filename: string }> {
     const g = await this.owned(userId, id);
-    const isVideo = g.product.billingUnit === 'SECOND';
     const wanted: MediaFile | undefined =
-      variant === 'thumb' && isVideo
+      variant === 'thumb'
         ? g.media.find((m) => m.role === 'INPUT_IMAGE')
-        : g.media.find(
-            (m) => m.role === 'OUTPUT_VIDEO' || m.role === 'OUTPUT_IMAGE',
-          );
+        : g.media.find((m) => m.role === 'OUTPUT_VIDEO');
     const notReady = variant === 'output' && g.status !== 'COMPLETED';
     if (!wanted || wanted.purgedAt || notReady) {
       throw new NotFoundException({
@@ -842,17 +818,10 @@ export class CreationsService {
       await this.fail(g, 'Terminé sans fichier.', 'NO_RESULT');
       return;
     }
-    const isVideo = g.product.billingUnit === 'SECOND';
-    const options = (g.options as unknown as CreationOptions | null) ?? {
-      format: '9:16',
-    };
-    const body = await this.fetchOutput(g, outputUrl, isVideo, options.format);
+    const body = await this.fetchOutput(outputUrl);
     // Le fichier est contrôlé AVANT toute capture de crédits : un résultat vide, illisible ou au mauvais format
     // lève OutputRejectedError, ce qui fait échouer la création et restitue les crédits.
-    const { mime, ext } = checkOutput(body, {
-      isVideo,
-      format: isVideo ? undefined : options.format,
-    });
+    const { mime, ext } = checkOutput(body);
     const key = `outputs/${g.userId}/${g.id}.${ext}`;
     await this.storage.put(key, body, mime);
 
@@ -878,7 +847,7 @@ export class CreationsService {
         where: { bucket_key: { bucket: 'OUTPUTS', key } },
         update: {},
         create: {
-          role: isVideo ? 'OUTPUT_VIDEO' : 'OUTPUT_IMAGE',
+          role: 'OUTPUT_VIDEO',
           bucket: 'OUTPUTS',
           key,
           mimeType: mime,
@@ -906,17 +875,10 @@ export class CreationsService {
     else await this.notifications.dispatchEmail(readyNoteId);
   }
 
-  /** Télécharge le résultat. Le simulé fabrique une image de substitution : jamais la photo de l'utilisateur. */
-  private async fetchOutput(
-    g: GenerationRow,
-    url: string,
-    isVideo: boolean,
-    format: string,
-  ): Promise<Buffer> {
+  /** Télécharge le résultat. Le simulé fournit une vidéo de substitution : jamais la photo de l'utilisateur. */
+  private async fetchOutput(url: string): Promise<Buffer> {
     if (url.startsWith('mock://')) {
-      return isVideo
-        ? await readFile(join(process.cwd(), 'assets', 'mock-output.mp4'))
-        : mockImagePng(format);
+      return await readFile(join(process.cwd(), 'assets', 'mock-output.mp4'));
     }
     if (!url.startsWith('https://')) {
       throw new OutputRejectedError(

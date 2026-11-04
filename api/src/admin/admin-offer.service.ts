@@ -307,6 +307,13 @@ export class AdminOfferService {
       active: input.active ?? current.active,
       creditsPerUnit: input.creditsPerUnit ?? current.creditsPerUnit,
     };
+    if (next.active && current.billingUnit !== 'SECOND') {
+      throw new BadRequestException({
+        code: 'PRODUCT_RETIRED',
+        message:
+          'La génération d’images est abandonnée : ce produit ne peut pas être réactivé.',
+      });
+    }
 
     if (next.active) {
       const [others, packs, s] = await Promise.all([

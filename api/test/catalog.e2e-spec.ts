@@ -19,21 +19,20 @@ describe('Catalogue et devis (e2e)', () => {
         name: string;
         priceFcfa: number;
         totalCredits: number;
-        equivalent: { videoSeconds: number; images: number };
+        equivalent: { videos: number };
       }[];
       expect(packs.map((p) => [p.name, p.priceFcfa, p.totalCredits])).toEqual([
         ['Starter', 5000, 1250],
         ['Pro', 10000, 2600],
         ['Business', 25000, 6800],
       ]);
-      // Équivalences : modèle par défaut à 10 crédits/s (1 vidéo de 10 s = 100 crédits) et image à 2 crédits.
+      // Équivalences : modèle par défaut à 10 crédits/s, vidéo de 4 s = 40 crédits.
       const byName = Object.fromEntries(
         packs.map((p) => [p.name, p.equivalent]),
       );
-      expect(byName.Starter).toEqual({ videoSeconds: 125, images: 73 });
-      expect(Math.floor(byName.Starter.videoSeconds / 10)).toBe(12);
-      expect(Math.floor(byName.Pro.videoSeconds / 10)).toBe(26);
-      expect(Math.floor(byName.Business.videoSeconds / 10)).toBe(68);
+      expect(byName.Starter).toEqual({ videos: 31 });
+      expect(byName.Pro.videos).toBe(65);
+      expect(byName.Business.videos).toBe(170);
     });
 
     it('ne liste que les produits actifs', async () => {
@@ -42,7 +41,7 @@ describe('Catalogue et devis (e2e)', () => {
         .expect(200);
       expect(
         res.body.products.map((p: { code: string }) => p.code).sort(),
-      ).toEqual(['IMAGE_EDIT_GROK', 'IMAGE_SOUL2', 'VIDEO_LIGHT_480']);
+      ).toEqual(['VIDEO_LIGHT_480']);
     });
 
     it('n’expose aucun coût fournisseur', async () => {
@@ -57,7 +56,8 @@ describe('Catalogue et devis (e2e)', () => {
   describe('Devis', () => {
     it('exige d’être connecté', async () => {
       const res = await new Client(app).post('/api/catalog/quote', {
-        productCode: 'IMAGE_SOUL2',
+        productCode: 'VIDEO_LIGHT_480',
+        durationSeconds: 10,
       });
       expect(res.status).toBe(401);
     });
@@ -90,16 +90,12 @@ describe('Catalogue et devis (e2e)', () => {
       expect(res.body).toMatchObject({ billableSeconds: 10, credits: 100 });
     });
 
-    it('image : 2 crédits, sans durée', async () => {
+    it('produit d’image abandonné : refusé, même s’il existe encore en base', async () => {
       const { client } = await verifiedClient(app);
       const res = await client
-        .post('/api/catalog/quote', { productCode: 'IMAGE_SOUL2' })
-        .expect(200);
-      expect(res.body).toMatchObject({
-        credits: 2,
-        valueFcfa: 8,
-        billableSeconds: null,
-      });
+        .post('/api/catalog/quote', { productCode: 'IMAGE_EDIT_GROK' })
+        .expect(400);
+      expect(res.body.code).toBe('PRODUCT_UNAVAILABLE');
     });
 
     it.each([

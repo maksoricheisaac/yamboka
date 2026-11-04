@@ -14,11 +14,10 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: "all", label: "Tout" },
   { value: "fun", label: "Vidéos fun" },
   { value: "pub", label: "Vidéos pub" },
-  { value: "affiche", label: "Affiches" },
 ];
 
 /** Les tendances (vidéos fun) d'abord : c'est ce que l'on vient chercher ici. */
-const ORDER: Record<CreationKind, number> = { fun: 0, pub: 1, affiche: 2 };
+const ORDER: Record<CreationKind, number> = { fun: 0, pub: 1 };
 
 function TrendCard({ style: s, className }: { style: StyleView; className?: string }) {
   const Icon = KINDS[s.kind].icon;
