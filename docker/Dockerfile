@@ -47,6 +47,8 @@ WORKDIR /srv
 COPY --from=api-build --chown=node:node /out/node_modules ./node_modules
 COPY --from=api-build --chown=node:node /out/package.json /out/prisma.config.ts ./
 COPY --from=api-build --chown=node:node /out/prisma ./prisma
+# prisma.config.ts importe ./scripts/load-env (chargement du .env.local en développement) : sans lui, `migrate deploy` échoue.
+COPY --from=api-build --chown=node:node /repo/api/scripts/load-env.ts ./scripts/load-env.ts
 COPY --from=api-build --chown=node:node /repo/api/dist ./dist
 COPY --from=api-build --chown=node:node /repo/api/src/generated ./src/generated
 RUN mkdir -p /srv/storage && chown node:node /srv/storage
