@@ -19,9 +19,9 @@ Trois services : **api** (NestJS), **app** (Next.js, espace client et administra
 | `DATABASE_URL` | URL interne PostgreSQL (`postgresql://…`) |
 | `REDIS_URL` | URL interne Redis |
 | `SESSION_SECRET` | 48 octets aléatoires (`node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`) |
-| `COOKIE_DOMAIN` | domaine parent commun, ex. `.votre-domaine.com` |
-| `TRUST_PROXY` | nombre de sauts devant l'API : navigateur → Traefik → Next → API = 3 (à vérifier) |
-| `API_URL`, `APP_URL`, `WEB_URL` | URL publiques (https) ; `APP_URL` et `WEB_URL` alimentent CORS et la protection CSRF |
+| `COOKIE_DOMAIN` | **laisser vide** : cookie limité à l'hôte (aucun attribut `Domain`), jamais de cookie de domaine parent |
+| `TRUST_PROXY` | `1` (Traefik) avec le routage Dokploy direct `/api` → API ; plus si un autre saut est ajouté |
+| `API_URL`, `APP_URL`, `WEB_URL` | URL publiques (https) : `https://api.…`, `https://app.…`, `https://…` ; `APP_URL` et `WEB_URL` alimentent CORS et la protection CSRF, `API_URL` est l'adresse directe pour webhooks et intégrations |
 | `SETUP_SECRET` | 24 caractères aléatoires, **uniquement avant l'installation** |
 | `EMAIL_PROVIDER` | `smtp` |
 | `EMAIL_FROM`, `EMAIL_REPLY_TO` | expéditeur du domaine autorisé, ex. `Yamboka <no-reply@votre-domaine.com>` |

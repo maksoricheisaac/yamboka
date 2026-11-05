@@ -109,6 +109,8 @@ services:
       TRUST_PROXY: ${TRUST_PROXY:-1}
       SETUP_SECRET: ${SETUP_SECRET:-}
       REVALIDATE_SECRET: ${REVALIDATE_SECRET:-}
+      # true : l'API exécute elle-même les tâches BullMQ. false uniquement avec un conteneur worker dédié (voir docs).
+      RUN_PROCESSORS: ${RUN_PROCESSORS:-true}
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:?EMAIL_PROVIDER est requis (console ou smtp)}
       EMAIL_FROM: ${EMAIL_FROM:-}
       EMAIL_REPLY_TO: ${EMAIL_REPLY_TO:-}

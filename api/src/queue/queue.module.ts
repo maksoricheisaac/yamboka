@@ -19,6 +19,16 @@ export function isQueueEnabled(): boolean {
   return process.env.NODE_ENV !== 'test';
 }
 
+/**
+ * Cette instance exécute-t-elle les tâches (processeurs + planificateur) ? Oui par défaut : l'API actuelle les porte.
+ * RUN_PROCESSORS=false : l'instance reste PRODUCTRICE (elle met en file) sans consommer ; à réserver au jour où un
+ * conteneur worker (RUN_PROCESSORS=true, `node dist/worker`) tourne à côté. Sans consommateur, rien n'est exécuté.
+ * Deux instances à true ne dupliquent pas les tâches : BullMQ n'en remet chacune qu'à un seul consommateur.
+ */
+export function areProcessorsEnabled(): boolean {
+  return process.env.RUN_PROCESSORS !== 'false';
+}
+
 @Global()
 @Module({})
 export class QueueModule {

@@ -55,7 +55,7 @@ aucun argent réel n'est échangé. L'intégration OpenPay n'est pas codée : el
 
 ## Premier administrateur (production)
 
-Pas de seed ni de SQL à la main : définir `SETUP_SECRET` sur l'API, ouvrir `https://<app>/installation` et suivre l'assistant. Il se verrouille définitivement une fois l'installation faite. Voir [docs/dev/administration.md](docs/dev/administration.md) et [docs/dev/deploiement.md](docs/dev/deploiement.md) (variables Dokploy).
+Pas de seed ni de SQL à la main : définir `SETUP_SECRET` sur l'API, ouvrir `https://<app>/installation` et suivre l'assistant. Il se verrouille définitivement une fois l'installation faite. Voir [docs/dev/administration.md](docs/dev/administration.md) et [docs/dev/deploiement.md](docs/dev/deploiement.md) (variables Dokploy). Procédure de mise en préproduction, rollback et recette : [docs/dev/preproduction.md](docs/dev/preproduction.md).
 
 ## Administration
 
