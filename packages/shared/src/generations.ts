@@ -1,49 +1,52 @@
 import { z } from 'zod';
+import { VIDEO_DURATION, VIDEO_RESOLUTIONS, type VideoResolution } from './pricing';
 
 /**
- * Contrats du parcours de création : styles (presets) proposés, demande de création, création suivie.
- * Les trois « types de création » de l'interface se déduisent du catalogue :
- *  - fun   : preset de type MOTION (tendance dont la vidéo de référence est fournie par Yamboka) ;
- *  - affiche : preset dont le produit est facturé à l'image ;
- *  - pub   : tout autre preset vidéo (LOOK, OBJECT_SWAP).
+ * Contrats du parcours de création : idées (presets) proposées, demande de création, création suivie.
+ * Yamboka ne produit que des vidéos : UNE photo + UN texte → une vidéo (Wan 3.0, image → vidéo). Le client choisit
+ * lui-même le format, la résolution et la durée ; le coût est calculé avec `videoCostCredits` (voir pricing.ts).
  */
 
-export const CREATION_KINDS = ['affiche', 'pub', 'fun'] as const;
-export type CreationKind = (typeof CREATION_KINDS)[number];
-
-/**
- * Formats d'image proposés. Tous sont acceptés nativement par les modèles utilisés (vérifié auprès de l'API
- * Higgsfield) : le format est demandé au modèle, jamais obtenu en recadrant après coup. Le 4:5 et le 21:9 sont
- * refusés par ces modèles : ils ne sont pas proposés.
- */
-export const CREATION_FORMATS = ['1:1', '4:3', '3:2', '3:4', '2:3', '16:9', '9:16'] as const;
+/** Formats proposés, avec leur usage en clair. Tous sont acceptés nativement par le modèle. */
+export const CREATION_FORMATS = ['9:16', '3:4', '1:1', '4:3', '16:9'] as const;
 export type CreationFormat = (typeof CREATION_FORMATS)[number];
+export const DEFAULT_FORMAT: CreationFormat = '9:16';
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
+/** Public visé par une idée : sert à les classer à l'écran. */
+export const SUGGESTION_AUDIENCES = ['business', 'perso'] as const;
+export type SuggestionAudience = (typeof SUGGESTION_AUDIENCES)[number];
+
+/** Une idée en un clic : un texte par défaut et des réglages par défaut, tous modifiables par le client. */
 export interface StyleView {
   id: string;
   name: string;
   description: string | null;
   category: string;
-  kind: CreationKind;
+  audience: SuggestionAudience;
   /** Mis à la une par l'administrateur. */
   featured: boolean;
-  /** Coût exact en crédits, calculé côté serveur. */
-  credits: number;
-  /** Seconde(s) de vidéo facturée(s), null pour une image. */
-  seconds: number | null;
-  /** Vignette (URL de l'API) ou null si le preset n'en a pas encore. */
+  /** Texte proposé, qui remplit le champ de description. */
+  prompt: string | null;
+  /** Conseil sur la photo à envoyer. */
+  photoHint: string | null;
+  format: CreationFormat | null;
+  resolution: VideoResolution | null;
+  durationSeconds: number | null;
+  /** Vignette (URL de l'API) ou null si l'idée n'en a pas encore. */
   thumbnailUrl: string | null;
 }
 
 export type CreationStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
 export interface CreationOptions {
-  /** Description libre de l'utilisateur (texte, prix, coordonnées, ambiance…). */
+  /** Description saisie par le client. */
   prompt?: string;
   format: CreationFormat;
+  resolution?: VideoResolution;
+  durationSeconds?: number;
   /** Anciens champs séparés : lus pour les créations faites avant le prompt unique, jamais écrits. */
   text?: string;
   price?: string;
@@ -52,13 +55,11 @@ export interface CreationOptions {
 
 export interface CreationView {
   id: string;
-  kind: CreationKind;
-  /** Style choisi par l'utilisateur, ou null s'il n'en a pas choisi (aucun nom n'est inventé). */
+  /** Idée utilisée comme point de départ, ou null. */
   styleName: string | null;
   status: CreationStatus;
-  /** Style (preset) utilisé, pour relancer une création identique. */
   styleId: string | null;
-  /** Description saisie par l'utilisateur (ou reconstituée pour une ancienne création). */
+  /** Description saisie par le client (ou reconstituée pour une ancienne création). */
   prompt: string | null;
   credits: number;
   /** Vrai si les crédits ont été restitués après un échec. */
@@ -69,8 +70,6 @@ export interface CreationView {
   completedAt: string | null;
   /** Date après laquelle le résultat n'est plus conservé. */
   expiresAt: string | null;
-  /** Le résultat est une vidéo (sinon une image). */
-  isVideo: boolean;
   /** Vrai quand la création vient du fournisseur SIMULÉ : aucune IA n'a été utilisée. */
   simulated: boolean;
   /** URLs de l'API (privées : exigent la session du propriétaire). */
@@ -84,29 +83,42 @@ export interface CreationPage {
   nextCursor: string | null;
 }
 
+/** Réglages de la page de création, lus côté serveur : tarifs, bornes, garde-fou, valeur du crédit. */
+export interface CreationConfig {
+  rates: Record<VideoResolution, number>;
+  creditValueFcfa: number;
+  guard: { credits: number; balancePercent: number };
+}
+
 export const MAX_PROMPT_LENGTH = 600;
 
 /**
- * Demande de création (la photo part dans la même requête multipart). Une seule description libre : texte à afficher,
- * prix, coordonnées, ambiance… y sont écrits tels quels. `styleId` est obligatoire pour une tendance (fun) ; pour une
- * affiche ou une pub, le serveur choisit le style par défaut s'il est absent.
+ * Demande de création (la photo part dans la même requête multipart). Le coût N'EST PAS envoyé : le serveur le
+ * recalcule. `personPhoto` : la photo montre une personne, le client a coché « j'ai le droit d'utiliser cette photo ».
  */
 export const createCreationSchema = z.object({
-  kind: z.enum(CREATION_KINDS, { error: 'Choisissez un type de création.' }),
-  styleId: z.uuid('Choisissez un style.').optional(),
+  styleId: z.uuid('Choisis une idée valide.').optional(),
   format: z.enum(CREATION_FORMATS).default('9:16'),
+  resolution: z.enum(VIDEO_RESOLUTIONS).default('480p'),
+  durationSeconds: z.coerce
+    .number()
+    .int('La durée doit être un nombre entier de secondes.')
+    .min(VIDEO_DURATION.min, `La durée minimale est de ${VIDEO_DURATION.min} secondes.`)
+    .max(VIDEO_DURATION.max, `La durée maximale est de ${VIDEO_DURATION.max} secondes.`)
+    .default(VIDEO_DURATION.default),
   prompt: z
     .string()
     .trim()
-    .max(MAX_PROMPT_LENGTH, `${MAX_PROMPT_LENGTH} caractères au maximum.`)
-    .optional()
-    .transform((v) => (v ? v : undefined)),
+    .min(1, 'Décris ta vidéo en quelques mots.')
+    .max(MAX_PROMPT_LENGTH, `${MAX_PROMPT_LENGTH} caractères au maximum.`),
+  personPhoto: z
+    .union([z.boolean(), z.enum(['true', 'false'])])
+    .default(false)
+    .transform((v) => v === true || v === 'true'),
   consent: z
     .union([z.boolean(), z.enum(['true', 'false'])])
-    .transform((v) => v === true || v === 'true')
-    .refine((v) => v, {
-      message: 'Vous devez confirmer que vous avez le droit d’utiliser cette photo.',
-    }),
+    .default(false)
+    .transform((v) => v === true || v === 'true'),
 });
 export type CreateCreationInput = z.infer<typeof createCreationSchema>;
 
@@ -118,7 +130,7 @@ export const REPORT_REASONS = [
 ] as const;
 
 export const reportCreationSchema = z.object({
-  reason: z.enum(REPORT_REASONS, { error: 'Choisissez un motif.' }),
+  reason: z.enum(REPORT_REASONS, { error: 'Choisis un motif.' }),
   details: z.string().trim().max(500).optional(),
 });
 export type ReportCreationInput = z.infer<typeof reportCreationSchema>;

@@ -6,7 +6,7 @@ import { resetDatabase } from '../test/reset-database';
 
 /**
  * Prépare la base jetable des tests de navigateur (Playwright) : DATABASE_URL doit finir par _e2e.
- * Publie aussi un style par type de création (affiche, pub, fun), avec une vignette, pour que le parcours
+ * Publie aussi un style par type de création (pub, fun), avec une vignette, pour que le parcours
  * de création soit testable : sans eux, la page « Créer » n'aurait rien à proposer.
  */
 const url = process.env.DATABASE_URL;
@@ -16,7 +16,6 @@ const STORAGE_DIR = process.env.LOCAL_STORAGE_DIR ?? './storage';
 const THUMB = join(__dirname, '..', '..', 'web', 'public', 'demos', 'danse-apres.webp');
 
 const STYLES = [
-  { name: 'Affiche e2e', category: 'affiche', type: 'LOOK', product: 'IMAGE_EDIT_GROK' },
   { name: 'Pub e2e', category: 'pub', type: 'LOOK', product: 'VIDEO_LIGHT_480' },
   { name: 'Tendance e2e', category: 'danse', type: 'MOTION', product: 'VIDEO_LIGHT_480' },
 ] as const;

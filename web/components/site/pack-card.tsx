@@ -1,4 +1,4 @@
-import { Clapperboard, Image as ImageIcon } from "lucide-react";
+import { Clapperboard } from "lucide-react";
 import { TapScale } from "@/components/motion/motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { PublicOffer, formatFcfa, formatNumber } from "@/content/offer";
 import { signupUrl } from "@/content/site";
 
 /**
- * Offre publique : le prix d'abord, puis ce qu'elle permet (vidéos et images), puis un seul appel à l'action.
+ * Offre publique : le prix d'abord, puis ce qu'elle permet (≈ N vidéos), puis un seul appel à l'action.
  * La barre compare les crédits des trois offres entre elles (largeur relative au plus grand pack) : une aide à la
  * comparaison faite uniquement de données réelles. Une seule offre porte le badge « Recommandé ».
  */
@@ -36,13 +36,8 @@ export function PackCard({ offer, maxCredits }: { offer: PublicOffer; maxCredits
         <li className="flex items-center gap-2.5">
           <Clapperboard className="size-4 shrink-0 text-primary" aria-hidden />
           <span>
-            <strong className="text-base">{formatNumber(offer.videos)}</strong> vidéos de 10 s
-          </span>
-        </li>
-        <li className="flex items-center gap-2.5">
-          <ImageIcon className="size-4 shrink-0 text-primary" aria-hidden />
-          <span>
-            ou <strong className="text-base">{formatNumber(offer.images)}</strong> images
+            <span aria-hidden>≈ </span>
+            <strong className="text-base">{formatNumber(offer.videos)}</strong> vidéos
           </span>
         </li>
       </ul>

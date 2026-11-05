@@ -2,9 +2,9 @@
 
 export const SITE = {
   name: 'Yamboka',
-  tagline: 'Créez des vidéos et des images par IA, payées en mobile money.',
+  tagline: 'Crée des vidéos pro pour ton business en quelques clics.',
   description:
-    'Yamboka est une plateforme en français pour créer des vidéos et des images par intelligence artificielle, avec des crédits prépayés à partir de 5 000 FCFA. Né à Brazzaville, pensé pour l’Afrique.',
+    'Yamboka est une plateforme en français pour créer des vidéos professionnelles par intelligence artificielle à partir d’une simple photo, avec des crédits prépayés à partir de 5 000 FCFA. Né à Brazzaville, pensé pour l’Afrique.',
   url: process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000',
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3001',
   apiUrl: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000',

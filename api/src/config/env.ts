@@ -13,6 +13,8 @@ const envSchema = z.object({
   REDIS_URL: z.string().default('redis://localhost:6380'),
   /** Force la file de tâches (true) ou l'exécution directe (false). Par défaut : active sauf en test. */
   QUEUE_ENABLED: z.enum(['true', 'false']).optional(),
+  /** false : cette instance ne consomme pas la file (à réserver à un futur conteneur worker dédié). Défaut : true. */
+  RUN_PROCESSORS: z.enum(['true', 'false']).optional(),
   SESSION_SECRET: z
     .string()
     .min(32, 'SESSION_SECRET doit contenir au moins 32 caractères'),

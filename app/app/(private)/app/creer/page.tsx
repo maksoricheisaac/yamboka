@@ -13,9 +13,9 @@ export default async function CreatePage({ searchParams }: PageProps<"/app/creer
 
   const styleParam = typeof sp.style === "string" ? sp.style : null;
   const typeParam = typeof sp.type === "string" ? sp.type : null;
-  // Un style demandé (depuis « Tendances ») fixe l'onglet ; sinon « type », sinon l'affiche.
+  // Un style demandé (depuis « Tendances ») fixe l'onglet ; sinon « type », sinon la vidéo pub.
   const fromStyle = styles.find((s) => s.id === styleParam);
-  const kind = fromStyle?.kind ?? (isKind(typeParam) ? typeParam : "affiche");
+  const kind = fromStyle?.kind ?? (isKind(typeParam) ? typeParam : "pub");
 
   const prompt = typeof sp.prompt === "string" ? sp.prompt.slice(0, MAX_PROMPT_LENGTH) : "";
 

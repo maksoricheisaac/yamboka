@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { readFile, writeFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { validateEnv, type Env } from '../src/config/env';
-import { imageSize } from '../src/creations/image-sniff';
 import { createGenerationProvider } from '../src/generation/generation.module';
 
 const MIME: Record<string, string> = {
@@ -84,22 +83,10 @@ async function main() {
     const res = await fetch(st.outputUrl);
     const buf = Buffer.from(await res.arrayBuffer());
     const mime = res.headers.get('content-type');
-    console.log(
-      'résultat :',
-      mime,
-      buf.length,
-      'octets',
-      JSON.stringify(imageSize(buf)),
-    );
+    console.log('résultat :', mime, buf.length, 'octets');
     const out = arg('out');
     if (out) {
-      const ext = (mime ?? '').includes('mp4')
-        ? 'mp4'
-        : (mime ?? '').includes('png')
-          ? 'png'
-          : (mime ?? '').includes('webp')
-            ? 'webp'
-            : 'jpg';
+      const ext = (mime ?? '').includes('mp4') ? 'mp4' : 'bin';
       await writeFile(`${out}.${ext}`, buf);
       console.log('enregistré :', `${out}.${ext}`);
     }

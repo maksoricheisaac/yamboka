@@ -8,6 +8,7 @@ import { AdminModule } from './admin/admin.module';
 import { AuditModule } from './audit/audit.service';
 import { AuthCoreModule } from './auth/auth-core.module';
 import { AuthModule } from './auth/auth.module';
+import { ApiHostGuard } from './auth/api-host.guard';
 import { AuthGuard, OriginGuard, RolesGuard } from './auth/guards';
 import { Env, validateEnv } from './config/env';
 import { CatalogModule } from './catalog/catalog.module';
@@ -22,7 +23,11 @@ import { LegalModule } from './legal/legal.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
-import { isQueueEnabled, QueueModule } from './queue/queue.module';
+import {
+  areProcessorsEnabled,
+  isQueueEnabled,
+  QueueModule,
+} from './queue/queue.module';
 import { SettingsModule } from './settings/settings.module';
 import { SetupModule } from './setup/setup.module';
 import { StorageModule } from './storage/storage.module';
@@ -89,13 +94,15 @@ const emailTracker = (req: Record<string, any>): Promise<string> => {
     CreationsModule,
     AdminModule,
     SetupModule,
-    ...(isQueueEnabled() ? [JobsModule] : []),
+    // Processeurs BullMQ et planificateur : dans cette instance seulement si la file est active ET RUN_PROCESSORS≠false.
+    ...(isQueueEnabled() && areProcessorsEnabled() ? [JobsModule] : []),
     HealthModule,
     ...(process.env.NODE_ENV === 'production' ? [] : [DevModule]),
   ],
   providers: [
-    // Ordre d'exécution : limitation de débit, CSRF, authentification, rôles.
+    // Ordre d'exécution : limitation de débit, hôte d'API, CSRF, authentification, rôles.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: ApiHostGuard },
     { provide: APP_GUARD, useClass: OriginGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

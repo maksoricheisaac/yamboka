@@ -19,8 +19,8 @@ export interface ProductPricing {
 
 export interface Quote {
   credits: number;
-  /** Durée facturée, arrondie à la seconde supérieure (vidéo uniquement). */
-  billableSeconds: number | null;
+  /** Durée facturée, arrondie à la seconde supérieure. */
+  billableSeconds: number;
 }
 
 /** Tolérance sur la durée mesurée (ffprobe renvoie parfois 10.0000001 pour une vidéo de 10 s). */
@@ -30,15 +30,12 @@ export function quoteCredits(
   product: ProductPricing,
   durationSeconds?: number,
 ): Quote {
-  if (!product.active) {
+  // La génération d'images est abandonnée (BillingUnit.IMAGE n'est conservé que pour les données existantes).
+  if (!product.active || product.billingUnit !== 'SECOND') {
     throw new BadRequestException({
       code: 'PRODUCT_UNAVAILABLE',
       message: 'Ce type de création n’est pas disponible pour le moment.',
     });
-  }
-
-  if (product.billingUnit === 'IMAGE') {
-    return { credits: product.creditsPerUnit, billableSeconds: null };
   }
 
   if (durationSeconds === undefined || !Number.isFinite(durationSeconds)) {

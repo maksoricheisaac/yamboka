@@ -1,6 +1,6 @@
 # Yamboka
 
-Plateforme de création d'images et de vidéos par IA, payée en mobile money. Monorepo pnpm :
+Plateforme de création de vidéos pro par IA, payée en mobile money. Monorepo pnpm :
 
 | Dossier | Rôle | Port local |
 |---|---|---|
@@ -21,7 +21,7 @@ PostgreSQL et Redis ne sont jamais exposés publiquement. Documentation techniqu
 | Fichier Compose | `docker/docker-compose.local.yml` | `…dev.yml` | `…staging.yml` | `…prod.yml` |
 | Landing | `http://localhost:3000` | `https://dev.domaine.com` | `https://staging.domaine.com` | `https://domaine.com` |
 | Espace membre | `http://localhost:3001` | `https://app.dev.domaine.com` | `https://app.staging.domaine.com` | `https://app.domaine.com` |
-| API | `http://localhost:4000/api` | `…/api` sur les deux hôtes | idem | idem |
+| API | `http://localhost:4000/api` | `<APP_DOMAIN>/api` (navigateur) et `<API_DOMAIN>/api` (direct) | idem | idem |
 | Images | code monté, rechargement auto | images de déploiement | images de déploiement | images de déploiement |
 | Ports publiés | `127.0.0.1` uniquement | **aucun** | **aucun** | **aucun** |
 | Domains Dokploy / `dokploy-network` | non | oui | oui | oui |
@@ -94,7 +94,7 @@ Les chemins relatifs des fichiers Compose (`context: ..`, `env_file`, volumes) s
 
 ## 4. Routage distant (onglet Domains de Dokploy)
 
-Le routage n'est **pas** dans les fichiers Compose : il se saisit dans l'onglet **Domains** de chaque projet Dokploy (aucun label Traefik dans le dépôt, donc aucun doublon possible). Deux hôtes par environnement ; l'API est servie **sous `/api` sur les deux** : chaque front l'appelle en chemin relatif sur sa propre origine (aucun CORS ni cookie inter-domaines).
+Le routage n'est **pas** dans les fichiers Compose : il se saisit dans l'onglet **Domains** de chaque projet Dokploy (aucun label Traefik dans le dépôt, donc aucun doublon possible). Trois hôtes par environnement : le site public (landing et pages publiques **uniquement**, aucune route `/api`), l'espace membre (qui sert l'API sous `/api`, appelée en chemin relatif : aucun CORS ni cookie inter-domaines) et l'API directe `api.<domaine>` (webhooks, intégrations).
 
 Entrées à créer (4 par environnement, HTTPS activé, certificat `letsencrypt`, **Strip Path désactivé**). Le port est le port **interne** du conteneur : identique dans les trois environnements (aucun port n'est publié sur l'hôte, chaque environnement a son propre réseau).
 
@@ -102,10 +102,12 @@ Entrées à créer (4 par environnement, HTTPS activé, certificat `letsencrypt`
 |---|---|---|---|
 | `web` | `yamboka.com` / `staging.yamboka.com` / `dev.yamboka.com` | `/` | 3000 |
 | `app` | `app.yamboka.com` / `app.staging.yamboka.com` / `app.dev.yamboka.com` | `/` | 3001 |
-| `api` | domaine de la landing | `/api/` | 4000 |
 | `api` | domaine de l'espace membre | `/api/` | 4000 |
+| `api` | `api.yamboka.com` / `api.staging.yamboka.com` / `api.dev.yamboka.com` | `/` | 4000 |
 
-Les domaines saisis doivent être **identiques** à `DOMAIN` / `APP_DOMAIN` du `.env` de l'environnement (qui sert aux URLs publiques, CORS et liens des e-mails).
+Trois domaines publics en production : `yamboka.com`, `app.yamboka.com`, `api.yamboka.com`. L'API directe (`api.<domaine>`) sert les webhooks et les intégrations externes ; c'est le **même** service et le **même** code que `/api` sur l'hôte de l'application (mêmes gardes, mêmes contrôles). Le navigateur continue d'utiliser `https://<APP_DOMAIN>/api` : le cookie `yamboka_session` étant limité à l'hôte, il n'est jamais envoyé à `api.<domaine>`. Par sécurité, l'API refuse (403 `SESSION_NOT_ALLOWED_ON_API_HOST`) toute requête qui porte ce cookie **et** arrive sur `API_URL` ; les appels sans cookie (webhooks SasPay, serveur à serveur) ne sont jamais concernés. Ce garde est inactif quand `API_URL` a le même nom d'hôte que `APP_URL`/`WEB_URL` (local).
+
+Les domaines saisis doivent être **identiques** à `DOMAIN` / `APP_DOMAIN` / `API_DOMAIN` du `.env` de l'environnement (qui sert aux URLs publiques, CORS et liens des e-mails).
 
 - Pas de strip du préfixe : l'API porte elle-même `/api` (`setGlobalPrefix('api')`). Santé : `/api/health`.
 - Seuls `web`, `app` et `api` rejoignent `dokploy-network` (réseau du Traefik de Dokploy) ; `postgres`, `redis` et `migrate` restent sur le réseau interne de l'environnement. `api` et `web` ont sur ce réseau un alias propre à l'environnement (`api-<ENV_NAME>`, `web-<ENV_NAME>`) : les noms de service `api`/`web` existeraient sinon dans tous les environnements à la fois sur `dokploy-network`.
@@ -126,7 +128,7 @@ Le cookie `yamboka_session` est limité à l'hôte (`HttpOnly`, `SameSite=Lax`, 
 
 **Prérequis serveur** : VPS avec Docker et Dokploy installés (Traefik ports 80/443), réseau `dokploy-network` présent, enregistrements DNS créés, dépôt accessible depuis Dokploy.
 
-DNS (six enregistrements `A` vers l'IP du serveur) :
+DNS (neuf enregistrements `A` vers l'IP du serveur) :
 
 | Enregistrement | Hôte servi |
 |---|---|
@@ -136,8 +138,11 @@ DNS (six enregistrements `A` vers l'IP du serveur) :
 | `app.staging` | `app.staging.domaine.com` |
 | `dev` | `dev.domaine.com` |
 | `app.dev` | `app.dev.domaine.com` |
+| `api` | `api.domaine.com` |
+| `api.staging` | `api.staging.domaine.com` |
+| `api.dev` | `api.dev.domaine.com` |
 
-Pour chaque environnement : créer un projet **Compose** dans Dokploy, source = ce dépôt (branche de l'environnement), *Compose Path* = `./docker/docker-compose.<env>.yml`, coller le contenu de `.env.<env>` (secrets renseignés) dans *Environment*, créer les 4 entrées de l'onglet *Domains* (§4), puis déployer.
+Pour chaque environnement : créer un projet **Compose** dans Dokploy, source = ce dépôt (branche de l'environnement), *Compose Path* = `./docker/docker-compose.<env>.yml`, coller le contenu de `.env.<env>` (secrets renseignés) dans *Environment*, créer les 3 entrées de l'onglet *Domains* du site, de l'espace membre et de l'API directe, plus la route `/api/` de l'espace membre (4 entrées au total, §4), puis déployer.
 Hypothèse non vérifiée ici : Dokploy interpole le Compose avec les variables saisies dans *Environment* (c'est ce qui rend les fichiers compatibles avec `--env-file`, car ils n'utilisent aucun `env_file:`). À contrôler au premier déploiement : `docker inspect <conteneur>` doit montrer les bonnes valeurs.
 
 ### Mise à jour et migrations
@@ -149,7 +154,7 @@ Ne jamais utiliser `down -v` ni supprimer un volume sans sauvegarde.
 
 | Service | URL |
 |---|---|
-| SasPay — webhook | `https://<APP_DOMAIN>/api/webhooks/saspay` (+ `SASPAY_WEBHOOK_SECRET` de cet environnement) |
+| SasPay — webhook | `https://<API_DOMAIN>/api/webhooks/saspay` (+ `SASPAY_WEBHOOK_SECRET` de cet environnement). L'ancienne URL `https://<APP_DOMAIN>/api/webhooks/saspay` reste valide pendant la bascule. |
 | Google OAuth — redirection | `https://<APP_DOMAIN>/api/auth/google/callback` (= `GOOGLE_CALLBACK_URL`) ; origine JavaScript : `https://<APP_DOMAIN>` |
 | E-mails (SPF/DKIM) | expéditeur `EMAIL_FROM` sur un domaine autorisé |
 
@@ -165,7 +170,8 @@ Ces chemins étaient déjà `/api/...` (relayés par l'espace membre) : si vos f
 
 ## 7. Vérifications à faire sur le serveur (non exécutables hors de celui-ci)
 
-1. Certificats Let's Encrypt émis pour les six hôtes (HTTP-01 : ports 80/443 ouverts, DNS propagé).
+1. Certificats Let's Encrypt émis pour les neuf hôtes (HTTP-01 : ports 80/443 ouverts, DNS propagé).
 2. Priorité de la route `/api/` sur le fourre-tout de l'hôte (§4).
 3. Interpolation des variables par Dokploy (voir §5).
-4. `curl -I https://<DOMAIN>/`, `https://<APP_DOMAIN>/connexion`, `https://<DOMAIN>/api/health` et `https://<APP_DOMAIN>/api/health`.
+4. `curl -I https://<DOMAIN>/`, `https://<APP_DOMAIN>/connexion`, `https://<API_DOMAIN>/api/health` et `https://<APP_DOMAIN>/api/health` (JSON, pas la page du front) ; `https://<DOMAIN>/api/health` doit répondre 404 (le site public ne sert plus l'API).
+5. Un webhook de test SasPay (`webhook.test`) reçu sur `https://<API_DOMAIN>/api/webhooks/saspay` : réponse 200 dans le tableau de bord SasPay.

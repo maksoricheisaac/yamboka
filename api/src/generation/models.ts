@@ -1,106 +1,60 @@
 /**
  * Registre des modèles Higgsfield utilisés par Yamboka : ce que chacun accepte RÉELLEMENT.
  *
- * Higgsfield accepte sans erreur les champs qu'un modèle ne connaît pas (constaté le 1er nov. 2026 : Soul v2 a
- * accepté `image_urls` puis ignoré la photo). Une requête « acceptée » ne prouve donc rien : c'est ce registre,
- * vérifié contre la documentation officielle et contre l'API (point d'estimation gratuit), qui dit quels
- * paramètres envoyer, et qui interdit d'envoyer une photo à un modèle qui l'ignorerait.
+ * Higgsfield accepte sans erreur les champs qu'un modèle ne connaît pas, et son point d'estimation ne valide que les
+ * bornes (durée), pas les champs inconnus. Une requête « acceptée » ne prouve donc rien : c'est ce registre, vérifié
+ * contre la documentation officielle et par essai réel, qui dit quels paramètres envoyer.
  *
  * Un modèle absent du registre n'est jamais appelé « au hasard » : la création est refusée avant tout débit.
  */
 
-/** Formats d'image proposés aux utilisateurs (voir CREATION_FORMATS dans @yamboka/shared). */
-export type ImageFormat =
-  '1:1' | '4:3' | '3:2' | '3:4' | '2:3' | '16:9' | '9:16';
+/** Modèle unique du catalogue : Wan 3.0 image → vidéo (les produits actifs qui le désignent donnent les tarifs). */
+export const WAN_MODEL = 'alibaba/wan-3.0/image-to-video';
 
 export interface BuildContext {
+  /** Texte final envoyé au modèle (description du client complétée par le gabarit du serveur). */
   prompt: string;
-  /** URL publique de la photo de l'utilisateur chez le fournisseur. */
+  /** URL publique de la photo du client chez le fournisseur : elle devient la première image de la vidéo. */
   imageUrl: string;
-  /** URL de la vidéo de référence (transfert de mouvement). */
-  videoUrl?: string;
+  /** Format demandé : 9:16, 3:4, 1:1, 4:3 ou 16:9. */
   format: string;
-  resolution: string | null;
+  resolution: string;
+  durationSeconds: number;
+  /** Générer aussi une piste sonore. */
+  audio: boolean;
 }
 
 export interface ModelSpec {
-  /** Ce que le modèle produit. */
-  output: 'image' | 'video';
-  /** Le modèle utilise la photo de l'utilisateur. Faux : l'envoyer serait inutile (elle serait ignorée). */
-  usesPhoto: boolean;
-  /** Le modèle exige une vidéo de référence (style « tendance »). */
-  needsReferenceVideo: boolean;
-  /** Formats acceptés nativement ; null quand le format découle de la source (vidéo). */
-  formats: readonly ImageFormat[] | null;
   /** Paramètres exacts à envoyer, et seulement ceux-là. */
   build(ctx: BuildContext): Record<string, unknown>;
 }
 
-const ALL_FORMATS: readonly ImageFormat[] = [
-  '1:1',
-  '4:3',
-  '3:2',
-  '3:4',
-  '2:3',
-  '16:9',
-  '9:16',
-];
-
 /**
- * Soul v2 : texte → image uniquement (documentation officielle, vérifié par essai réel).
- * Aucun champ de photo : le modèle ignorerait une `image_urls`.
+ * Wan 3.0 (Standard), image → vidéo : UNE photo (première image) + UN texte. Vérifié par essais réels le 5 nov. 2026
+ * (480p, 9:16, 5 s : MP4 480×854 de 5,0 s avec piste AAC). Le fournisseur met 1080p par défaut : on envoie TOUJOURS la
+ * résolution. `end_image_url`, `seed` et `enable_thinking` existent mais ne sont pas utilisés.
  */
-const SOUL: ModelSpec = {
-  output: 'image',
-  usesPhoto: false,
-  needsReferenceVideo: false,
-  formats: ALL_FORMATS, // 9:16, 16:9, 4:3, 3:4, 1:1, 2:3, 3:2 : liste officielle
-  build: (c) => ({ prompt: c.prompt, aspect_ratio: c.format }),
-};
-
-/**
- * Grok Image 2.0 : texte → image, ou édition quand `image_urls` est fourni. Contrairement à d'autres modèles
- * testés (Qwen Edit, Marketing Studio), il n'ajoute pas de texte que l'utilisateur n'a pas demandé.
- * Formats acceptés (vérifiés par estimation) : auto, 1:1, 1:2, 2:1, 3:2, 2:3, 4:3, 3:4, 16:9, 9:16.
- * Qualité et résolution : valeurs par défaut du fournisseur (medium, 1k).
- */
-const GROK_EDIT: ModelSpec = {
-  output: 'image',
-  usesPhoto: true,
-  needsReferenceVideo: false,
-  formats: ALL_FORMATS,
+const WAN_3_IMAGE_TO_VIDEO: ModelSpec = {
   build: (c) => ({
     prompt: c.prompt,
-    image_urls: [c.imageUrl],
+    image_url: c.imageUrl,
+    duration: c.durationSeconds,
+    resolution: c.resolution,
     aspect_ratio: c.format,
+    generate_audio: c.audio,
   }),
 };
 
 /**
- * Genjutsu (Light) : transfert de mouvement. Une vidéo de référence ET une photo ; le format de sortie découle
- * des sources. Vérifié par essai réel (480p) : MP4 valide.
+ * Registre : chemin du modèle (tel que stocké dans GenerationProduct.providerModel) → paramètres. Pour ajouter plus tard
+ * Wan 3.0 Prime ou référence → vidéo : une entrée ici + un produit en base ; rien n'est exposé au client tant qu'aucun
+ * produit actif ne le désigne.
  */
-const MOTION_TRANSFER: ModelSpec = {
-  output: 'video',
-  usesPhoto: true,
-  needsReferenceVideo: true,
-  formats: null,
-  build: (c) => ({
-    video_url: c.videoUrl,
-    image_urls: [c.imageUrl],
-    ...(c.resolution ? { resolution: c.resolution } : {}),
-  }),
-};
-
 const MODELS: Record<string, ModelSpec> = {
-  'higgsfield-ai/soul/v2/standard': SOUL,
-  'xai/grok-imagine-image-2.0': GROK_EDIT,
+  [WAN_MODEL]: WAN_3_IMAGE_TO_VIDEO,
 };
 
-/** Le modèle (chemin tel que stocké dans GenerationProduct.providerModel), ou undefined s'il n'est pas géré. */
+/** Le modèle, ou undefined s'il n'est pas géré (la création est alors refusée avant tout débit). */
 export function modelSpecOf(providerModel: string): ModelSpec | undefined {
-  if (MODELS[providerModel]) return MODELS[providerModel];
-  if (/^higgsfield\/genjutsu(-light)?\/motion-transfer\//.test(providerModel))
-    return MOTION_TRANSFER;
-  return undefined;
+  return MODELS[providerModel];
 }

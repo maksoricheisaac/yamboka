@@ -17,12 +17,12 @@ import { JsonLd, organizationLd, pageMetadata, websiteLd } from "@/lib/seo";
 
 export const metadata: Metadata = {
   ...pageMetadata({
-    title: "Créez des vidéos et des images par IA, payées en mobile money",
+    title: "Crée des vidéos pro pour ton business en quelques clics",
     description:
-      "Créez des vidéos et des images par IA, en français et sans carte bancaire. Payez par MTN Mobile Money ou Airtel Money. Né à Brazzaville, pensé pour le Congo.",
+      "Ajoutez la photo de votre produit : Yamboka crée votre vidéo pro par IA, en français et sans carte bancaire. Payez par MTN Mobile Money ou Airtel Money. Né à Brazzaville, pensé pour le Congo.",
     path: "/",
   }),
-  title: { absolute: "Yamboka — Créez des vidéos et des images par IA, payées en mobile money" },
+  title: { absolute: "Yamboka — Crée des vidéos pro pour ton business en quelques clics" },
 };
 
 /** Prix d’entrée réel (offre la moins chère publiée). Rien n’est affiché si les offres sont indisponibles. */
@@ -47,12 +47,12 @@ export default function HomePage() {
           <div className="space-y-6">
             <HeroItem delay={0.05}>
               <h1 id="hero-title" className="text-[2.6rem] font-bold leading-[1.05] sm:text-6xl">
-                Transformez vos vidéos <span className="text-primary">avec l’IA.</span>
+                Crée des vidéos pro <span className="text-primary">pour ton business.</span>
               </h1>
             </HeroItem>
             <HeroItem delay={0.1}>
               <p className="max-w-md text-lg text-muted-foreground sm:text-xl">
-                Envoyez une vidéo et une photo : Yamboka crée la nouvelle version, en quelques minutes, depuis votre téléphone.
+                Ajoute la photo de ton produit : Yamboka crée ta vidéo en quelques clics, depuis ton téléphone.
               </p>
             </HeroItem>
             <HeroItem delay={0.15} className="flex flex-col gap-3 sm:flex-row">
@@ -77,12 +77,11 @@ export default function HomePage() {
 
       {/* 2. Démonstration : voir ce que l’IA peut faire */}
       <Section labelledBy="gallery-title" id="exemples" tone="muted">
-        <SectionHeading id="gallery-title" title="Ce que vous pouvez créer" lead="Glissez pour passer de votre vidéo à la création." />
+        <SectionHeading id="gallery-title" title="Ce que vous pouvez créer" lead="Glissez pour passer du modèle à la création." />
         <Reveal>
           <Showcase demos={media.demos} />
         </Reveal>
         <p className="mt-8 text-sm text-muted-foreground">
-          Des images aussi : portraits et visuels de mode à partir d’un modèle.{" "}
           <Link href="/galerie" className="font-medium text-primary underline-offset-4 hover:underline">
             Voir la galerie
           </Link>

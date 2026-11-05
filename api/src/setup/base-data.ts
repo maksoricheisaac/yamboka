@@ -13,7 +13,7 @@ const PACKS = [
   {
     name: 'Starter',
     price: 5000,
-    credits: 1250,
+    credits: 500,
     bonusPercent: 0,
     featured: false,
     publicVisible: true,
@@ -21,7 +21,7 @@ const PACKS = [
   {
     name: 'Pro',
     price: 10000,
-    credits: 2600,
+    credits: 1000,
     bonusPercent: 0,
     featured: true,
     publicVisible: true,
@@ -29,7 +29,7 @@ const PACKS = [
   {
     name: 'Business',
     price: 25000,
-    credits: 6800,
+    credits: 2500,
     bonusPercent: 0,
     featured: false,
     publicVisible: true,
@@ -37,131 +37,109 @@ const PACKS = [
 ];
 
 /**
- * Modèle de référence des équivalences (« ≈ 12 vidéos de 10 s ») : 1 vidéo de 10 s = 100 crédits, donc 10 crédits/s.
- * Le modèle Higgsfield n'est pas encore choisi : 0,04 $/s est un prix provisoire qui donne ⌈0,04 × 575 ÷ 2,5⌉ = 10
- * crédits/s. À remplacer par le prix réel du modèle retenu (administration : coût par modèle).
+ * Modèle vidéo par défaut (suivi des coûts dans l'administration) : Wan 3.0 Standard, image → vidéo,
+ * 0,05 $ par seconde en 480p (prix vérifié par estimation officielle et essai réel, 5 nov. 2026).
  */
 const DEFAULT_MODEL = {
   code: 'DEFAULT_VIDEO',
-  name: 'Modèle vidéo par défaut (prix provisoire)',
-  providerModel: 'a-definir',
+  name: 'Wan 3.0 · image → vidéo',
+  providerModel: 'alibaba/wan-3.0/image-to-video',
   resolution: null,
-  usdPerSecond: '0.04',
+  usdPerSecond: '0.05',
   usdPerSecondWithAudio: null,
-  minSeconds: 5,
-  maxSeconds: 10,
+  minSeconds: 2,
+  maxSeconds: 30,
   isDefault: true,
   active: true,
   sortOrder: 0,
 } as const;
 
+/**
+ * Produits vidéo : un par résolution. 1 crédit = 10 FCFA ; 4 / 8 / 16 crédits par seconde ; coût Higgsfield
+ * 0,05 / 0,10 / 0,20 $ par seconde. Les tarifs se modifient dans l'administration (Offre > Produits).
+ * Genjutsu est abandonné : ses produits, s'ils existent déjà, sont désactivés par la migration (jamais recréés ici).
+ */
+const WAN_PRODUCT = {
+  providerModel: 'alibaba/wan-3.0/image-to-video',
+  billingUnit: 'SECOND',
+  billableMultiplier: 1,
+  minSeconds: 2,
+  maxSeconds: 30,
+  phase: 'MVP',
+  active: true,
+} as const;
 const PRODUCTS = [
+  { ...WAN_PRODUCT, code: 'WAN_I2V_480', name: 'Vidéo Wan 3.0 · Standard (480p)', resolution: '480p', creditsPerUnit: 4, providerCostUsdPerUnit: '0.05' },
+  { ...WAN_PRODUCT, code: 'WAN_I2V_720', name: 'Vidéo Wan 3.0 · HD (720p)', resolution: '720p', creditsPerUnit: 8, providerCostUsdPerUnit: '0.10' },
+  { ...WAN_PRODUCT, code: 'WAN_I2V_1080', name: 'Vidéo Wan 3.0 · Full HD (1080p)', resolution: '1080p', creditsPerUnit: 16, providerCostUsdPerUnit: '0.20' },
+] as const;
+
+const DEFAULTS_BUSINESS = { format: '9:16', resolution: '480p', durationSeconds: 5 };
+const IDEAS = [
   {
-    code: 'VIDEO_LIGHT_480',
-    name: 'Vidéo Light 480p',
-    providerModel: 'higgsfield/genjutsu-light/motion-transfer/v1.0',
-    resolution: '480p',
-    billingUnit: 'SECOND',
-    creditsPerUnit: 10,
-    providerCostUsdPerUnit: '0.04',
-    billableMultiplier: 1,
-    minSeconds: 4,
-    maxSeconds: 15,
-    phase: 'MVP',
-    active: true,
+    name: 'Le produit tourne',
+    category: 'produit',
+    audience: 'business',
+    description: 'La caméra tourne autour de ton produit.',
+    defaultPrompt: 'La caméra tourne lentement autour du produit, éclairage de studio, le produit est mis en valeur.',
+    photoHint: 'Photo nette, bien éclairée, produit au centre sur fond simple.',
+    defaults: DEFAULTS_BUSINESS,
   },
   {
-    code: 'IMAGE_SOUL2',
-    name: 'Image portrait (Soul 2)',
-    providerModel: 'higgsfield-ai/soul/v2/standard',
-    resolution: null,
-    billingUnit: 'IMAGE',
-    creditsPerUnit: 2,
-    providerCostUsdPerUnit: '0.0057',
-    billableMultiplier: 1,
-    minSeconds: null,
-    maxSeconds: null,
-    phase: 'MVP',
-    active: true,
+    name: 'Zoom sur le produit',
+    category: 'produit',
+    audience: 'business',
+    description: 'Un zoom lent qui attire le regard.',
+    defaultPrompt: 'Zoom lent sur le produit, mise au point nette sur les détails.',
+    photoHint: 'Photo nette, produit bien visible et centré.',
+    defaults: DEFAULTS_BUSINESS,
   },
   {
-    code: 'IMAGE_EDIT_GROK',
-    name: 'Image à partir d’une photo (Grok Image 2.0)',
-    providerModel: 'xai/grok-imagine-image-2.0',
-    resolution: null,
-    billingUnit: 'IMAGE',
-    // 0,07 $ par image (estimation officielle) = 40 FCFA ; règle du projet : ⌈40 ÷ 2,5⌉ = 17 crédits.
-    creditsPerUnit: 17,
-    providerCostUsdPerUnit: '0.07',
-    billableMultiplier: 1,
-    minSeconds: null,
-    maxSeconds: null,
-    phase: 'MVP',
-    active: true,
+    name: 'Annonce de promo',
+    category: 'promo',
+    audience: 'business',
+    description: 'Ton produit en vedette pour une promotion.',
+    defaultPrompt: 'Le produit est mis en vedette avec un mouvement de caméra dynamique, ambiance festive de promotion.',
+    photoHint: 'Photo du produit seul, bien éclairée.',
+    defaults: DEFAULTS_BUSINESS,
   },
   {
-    code: 'VIDEO_LIGHT_720',
-    name: 'Vidéo Light 720p',
-    providerModel: 'higgsfield/genjutsu-light/motion-transfer/v1.0',
-    resolution: '720p',
-    billingUnit: 'SECOND',
-    creditsPerUnit: 8,
-    providerCostUsdPerUnit: '0.10',
-    billableMultiplier: 2,
-    minSeconds: 4,
-    maxSeconds: 15,
-    phase: 'PHASE_2',
-    active: false,
+    name: 'Ouverture ou nouveauté',
+    category: 'nouveauté',
+    audience: 'business',
+    description: 'Présente ta boutique ou ta nouveauté.',
+    defaultPrompt: 'Révélation du produit nouveau, mouvement de caméra élégant, ambiance chaleureuse.',
+    photoHint: 'Photo de la boutique ou du produit, nette et lumineuse.',
+    defaults: DEFAULTS_BUSINESS,
   },
   {
-    code: 'VIDEO_PRO_480',
-    name: 'Vidéo Pro 480p',
-    providerModel: 'higgsfield/genjutsu/motion-transfer/v1.0',
-    resolution: '480p',
-    billingUnit: 'SECOND',
-    creditsPerUnit: 13,
-    providerCostUsdPerUnit: '0.318',
-    billableMultiplier: 1,
-    minSeconds: 1,
-    maxSeconds: 30,
-    phase: 'PHASE_2',
-    active: false,
+    name: 'Sourire et coucou',
+    category: 'moi',
+    audience: 'perso',
+    description: 'Tu souris et tu fais coucou.',
+    defaultPrompt: 'La personne sourit et fait coucou à la caméra.',
+    photoHint: 'Photo de face, visage bien visible et éclairé.',
+    defaults: DEFAULTS_BUSINESS,
   },
   {
-    code: 'VIDEO_PRO_720',
-    name: 'Vidéo Pro 720p',
-    providerModel: 'higgsfield/genjutsu/motion-transfer/v1.0',
-    resolution: '720p',
-    billingUnit: 'SECOND',
-    creditsPerUnit: 28,
-    providerCostUsdPerUnit: '0.681',
-    billableMultiplier: 1,
-    minSeconds: 1,
-    maxSeconds: 30,
-    phase: 'PHASE_2',
-    active: false,
-  },
-  {
-    code: 'POSTER_IDEOGRAM',
-    name: 'Affiche avec texte',
-    providerModel: 'ideogram',
-    resolution: null,
-    billingUnit: 'IMAGE',
-    creditsPerUnit: 4,
-    providerCostUsdPerUnit: '0.03',
-    billableMultiplier: 1,
-    minSeconds: null,
-    maxSeconds: null,
-    phase: 'PHASE_2',
-    active: false,
+    name: 'Anniversaire et fête',
+    category: 'fête',
+    audience: 'perso',
+    description: 'Une vidéo de fête personnalisée.',
+    defaultPrompt: 'La personne sourit, des ballons et des confettis tombent autour d’elle, ambiance de fête.',
+    photoHint: 'Photo de face, visage bien visible et éclairé.',
+    defaults: DEFAULTS_BUSINESS,
   },
 ] as const;
 
 const SETTINGS: Record<string, unknown> = {
-  usdToXafRate: 575,
-  fxFeePercent: 6,
+  usdToXafRate: 620,
+  creditValueFcfa: 10,
+  generationConfirmCredits: 100,
+  generationConfirmBalancePercent: 50,
+  fxFeePercent: 0,
   openpayCommissionPercent: 5,
-  regenOverheadPercent: 15,
+  regenOverheadPercent: 0,
   minMarginPercent: 15,
   circuitLossPercent: 9,
   hfCostFcfaPerCredit: 2.5,
@@ -209,7 +187,7 @@ export async function seedBaseData(db: Db): Promise<{
     where: { currency: 'XAF' },
     update: {},
     // Valeur indicative d'un crédit : prix du pack d'entrée ÷ ses crédits (5 000 ÷ 1 250).
-    create: { currency: 'XAF', creditValue: 4 },
+    create: { currency: 'XAF', creditValue: 10 },
   });
 
   for (const [i, p] of PACKS.entries()) {
@@ -226,44 +204,20 @@ export async function seedBaseData(db: Db): Promise<{
     create: DEFAULT_MODEL,
   });
 
-  const products = new Map<string, string>();
   for (const p of PRODUCTS) {
-    const row = await db.generationProduct.upsert({
+    await db.generationProduct.upsert({
       where: { code: p.code },
       update: {},
       create: p,
     });
-    products.set(p.code, row.id);
   }
 
-  const videoId = products.get('VIDEO_LIGHT_480')!;
-  const presets = [
-    {
-      name: 'Danse afro',
-      category: 'danse',
-      type: 'MOTION',
-      description: 'Fais danser ton personnage sur le mouvement de ta vidéo.',
-    },
-    {
-      name: 'Pub de boutique',
-      category: 'pub',
-      type: 'LOOK',
-      description:
-        'Une courte publicité pour ta boutique à partir de ta vidéo.',
-    },
-    {
-      name: 'Anniversaire',
-      category: 'anniversaire',
-      type: 'MOTION',
-      description: "Une vidéo d'anniversaire personnalisée.",
-    },
-  ] as const;
-  for (const [i, pr] of presets.entries()) {
-    const exists = await db.preset.findFirst({ where: { name: pr.name } });
-    // Invisibles tant que leurs vignettes et vidéos d'exemple n'existent pas (lot 6).
+  // Idées proposées au client : un texte et des réglages par défaut, tous modifiables. Aucune vidéo de référence.
+  for (const [i, idea] of IDEAS.entries()) {
+    const exists = await db.preset.findFirst({ where: { name: idea.name } });
     if (!exists)
       await db.preset.create({
-        data: { ...pr, productId: videoId, sortOrder: i, visible: false },
+        data: { ...idea, type: 'LOOK', sortOrder: i, visible: true },
       });
   }
 

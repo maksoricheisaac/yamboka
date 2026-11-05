@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import type { VideoResolution } from './pricing';
 
 /** Contrats du catalogue : packs de crédits, produits de génération, devis. */
+
 
 export interface PackView {
   id: string;
@@ -11,14 +13,14 @@ export interface PackView {
   bonusPercent: number;
   totalCredits: number;
   featured: boolean;
-  /** Ce que permet le pack, calculé côté serveur à partir des produits actifs (secondes de vidéo OU images). */
-  equivalent: { videoSeconds: number; images: number };
+  /** Ce que permet le pack à chaque résolution : secondes de vidéo et vidéos de 5 s, calculés depuis les tarifs en base. */
+  equivalent: Record<VideoResolution, { seconds: number; videos: number }>;
 }
 
 export interface ProductView {
   code: string;
   name: string;
-  billingUnit: 'SECOND' | 'IMAGE';
+  billingUnit: 'SECOND';
   creditsPerUnit: number;
   minSeconds: number | null;
   maxSeconds: number | null;

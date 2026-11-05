@@ -87,11 +87,8 @@ describe('quoteCredits', () => {
     );
   });
 
-  it('image = prix fixe, sans durée', () => {
-    expect(quoteCredits(imageSoul)).toEqual({
-      credits: 2,
-      billableSeconds: null,
-    });
+  it('refuse un produit d’image : la génération d’images est abandonnée', () => {
+    expect(codeOf(() => quoteCredits(imageSoul))).toBe('PRODUCT_UNAVAILABLE');
   });
 
   it('refuse un produit inactif', () => {
@@ -114,12 +111,6 @@ describe('computeMargin (chiffres du business plan)', () => {
     const m = computeMargin(videoLight, packs.agence, 10, settings);
     expect(m.marginPercent).toBeCloseTo(17.9, 0);
     expect(m.belowThreshold).toBe(false);
-  });
-
-  it('image portrait : ≈ 87 % de marge, coût ≈ 4 FCFA', () => {
-    const m = computeMargin(imageSoul, packs.decouverte, 1, settings);
-    expect(m.providerCostFcfa).toBeCloseTo(4, 0);
-    expect(m.marginPercent).toBeCloseTo(87, 0);
   });
 
   it('alerte quand la marge passe sous le seuil (hausse du dollar)', () => {

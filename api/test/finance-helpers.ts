@@ -84,7 +84,7 @@ export async function makeGeneration(
 ) {
   const prisma = prismaOf(app);
   const product = await prisma.generationProduct.findUniqueOrThrow({
-    where: { code: 'VIDEO_LIGHT_480' },
+    where: { code: 'WAN_I2V_480' },
   });
   return prisma.generation.create({
     data: { userId, productId: product.id, creditsCost, consentAt: new Date() },

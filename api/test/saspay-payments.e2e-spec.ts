@@ -321,13 +321,13 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       const { client, userId, row, id } = await started();
       confirm(row.externalReference!);
       expect(await payments.verify(id)).toBe('SUCCESS');
-      expect(await creditsOf(client)).toBe(1250 + 250); // pack + bonus de premier achat
+      expect(await creditsOf(client)).toBe(500 + 100); // pack + bonus de premier achat
       const rows = await prisma.creditLedger.findMany({
         where: { paymentId: id },
       });
       expect(rows.map((r) => `${r.type}:${r.amount}`).sort()).toEqual([
-        'FIRST_PURCHASE_BONUS:250',
-        'PURCHASE:1250',
+        'FIRST_PURCHASE_BONUS:100',
+        'PURCHASE:500',
       ]);
       const p = await prisma.payment.findUniqueOrThrow({ where: { id } });
       expect(p.clientFee).toBe(270);
@@ -341,7 +341,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       await Promise.all(Array.from({ length: 6 }, () => payments.verify(id)));
       await payments.verify(id);
       await payments.reconcile(new Date(), 'saspay');
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
       expect(
         await prisma.creditLedger.count({ where: { paymentId: id } }),
       ).toBe(2);
@@ -411,7 +411,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       // Au retour du service, la confirmation aboutit, une seule fois.
       confirm(row.externalReference!);
       expect(await payments.verify(id)).toBe('SUCCESS');
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
     });
 
     it('reprise après une panne interne : un paiement confirmé mais pas crédité est traité sans doublon', async () => {
@@ -431,7 +431,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
 
       expect(await payments.verify(id)).toBe('SUCCESS');
       expect(await payments.verify(id)).toBe('SUCCESS');
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
     });
   });
 
@@ -440,7 +440,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       const { client, row } = await started();
       confirm(row.externalReference!);
       await payments.reconcile(new Date(), 'saspay');
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
     });
 
     it('au bout d’une heure sans confirmation, le paiement est déclaré échoué (pas d’attente infinie)', async () => {
@@ -466,7 +466,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       expect(
         (await prisma.payment.findUniqueOrThrow({ where: { id } })).status,
       ).toBe('SUCCESS');
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
     });
   });
 
@@ -520,7 +520,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ received: true });
       expect(await statusOf(id)).toBe('SUCCESS');
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
       const [evt] = await events(ref);
       expect(evt.paymentId).toBe(id);
       expect(evt.processedAt).not.toBeNull();
@@ -538,7 +538,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       );
       expect(results.every((r) => r.status === 200)).toBe(true);
       await post(raw);
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
       expect(
         await prisma.creditLedger.count({ where: { paymentId: id } }),
       ).toBe(2);
@@ -636,7 +636,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       await post(body('transaction.success', ref));
       await post(body('transaction.created', ref, { status: 'PENDING' }));
       await post(body('transaction.success', ref));
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
     });
 
     it('notification « succès » pour un échec déjà constaté : aucun crédit', async () => {
@@ -661,7 +661,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       expect(await statusOf(id)).toBe('PENDING');
       confirm(ref);
       await payments.reconcile(new Date(), 'saspay');
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
     });
   });
 
@@ -796,7 +796,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
           .status,
       ).toBe('SUCCESS');
       await admin.post(`/api/admin/payments/${id}/verify`).expect(200);
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
       expect(
         await prisma.creditLedger.count({ where: { paymentId: id } }),
       ).toBe(2);

@@ -307,6 +307,13 @@ export class AdminOfferService {
       active: input.active ?? current.active,
       creditsPerUnit: input.creditsPerUnit ?? current.creditsPerUnit,
     };
+    if (next.active && current.billingUnit !== 'SECOND') {
+      throw new BadRequestException({
+        code: 'PRODUCT_RETIRED',
+        message:
+          'La génération d’images est abandonnée : ce produit ne peut pas être réactivé.',
+      });
+    }
 
     if (next.active) {
       const [others, packs, s] = await Promise.all([
@@ -370,7 +377,7 @@ export class AdminOfferService {
       name: p.name,
       category: p.category,
       type: p.type,
-      productCode: p.product.code,
+      productCode: p.product?.code ?? '',
       visible: p.visible,
       featured: p.featured,
     }));
@@ -430,7 +437,8 @@ export class AdminOfferService {
         code: 'NOT_FOUND',
         message: 'Preset introuvable.',
       });
-    if (visible && !preset.product.active) {
+    // Une idée n'a plus de produit obligatoire (le produit se déduit de la résolution) : seule une ancienne idée Genjutsu est bloquée.
+    if (visible && preset.product && !preset.product.active) {
       throw new BadRequestException({
         code: 'PRODUCT_INACTIVE',
         message:

@@ -83,6 +83,10 @@ Le panneau « Mode simulation » n'apparaît que si le paiement est simulé ; av
 
 BullMQ + Redis (`REDIS_URL`). En test (`NODE_ENV=test`) la file est désactivée et les tâches s'exécutent en direct ; `QUEUE_ENABLED=true` la force.
 
+**Worker (préparé, non déployé).** Les processeurs et le planificateur tournent dans l'API (`RUN_PROCESSORS=true`, défaut). Pour les extraire plus tard sans refonte : lancer un second conteneur de la même image avec la commande `node dist/worker` (aucun port, aucun domaine) et `RUN_PROCESSORS=true`, **puis** passer l'API à `RUN_PROCESSORS=false` au même déploiement. Deux instances à `true` ne dupliquent pas les tâches (BullMQ n'en remet chacune qu'à un consommateur) ; une API à `false` sans worker ne traite plus rien (paiements non rattrapés, générations non suivies).
+
+**Webhook SasPay.** URL de production : `https://api.<domaine>/api/webhooks/saspay` (l'ancienne `https://app.<domaine>/api/webhooks/saspay` atteint le même code et reste valide). Signature HMAC-SHA256 sur le corps brut + horodatage (300 s), contenu jamais cru : le paiement est revérifié auprès de SasPay, montant et devise contrôlés, passage à SUCCESS atomique, notifications dédupliquées.
+
 | File | Tâche | Déclencheur |
 |---|---|---|
 | `payments` | `verify-payment` | Callback (une tâche par paiement tant qu'elle n'est pas terminée ; 5 tentatives, attente exponentielle) |

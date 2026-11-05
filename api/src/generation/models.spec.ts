@@ -1,74 +1,44 @@
 import { modelSpecOf } from './models';
 
 const ctx = {
-  prompt: 'Affiche pour ma robe, texte PROMO -20 %',
+  prompt: 'La caméra tourne lentement autour des chaussures.',
   imageUrl: 'https://files.test/photo.jpg',
-  videoUrl: 'https://files.test/ref.mp4',
-  format: '3:4',
+  format: '9:16',
   resolution: '480p',
+  durationSeconds: 5,
+  audio: true,
 };
 
 describe('modelSpecOf', () => {
-  it('Grok Image 2.0 : envoie la photo, la description et le format, et rien d’autre', () => {
-    const spec = modelSpecOf('xai/grok-imagine-image-2.0')!;
-    expect(spec).toMatchObject({
-      output: 'image',
-      usesPhoto: true,
-      needsReferenceVideo: false,
-    });
+  it('Wan 3.0 image → vidéo : envoie la photo, le texte, la durée, la résolution, le format et l’audio, rien d’autre', () => {
+    const spec = modelSpecOf('alibaba/wan-3.0/image-to-video')!;
     expect(spec.build(ctx)).toEqual({
       prompt: ctx.prompt,
-      image_urls: [ctx.imageUrl],
-      aspect_ratio: '3:4',
+      image_url: ctx.imageUrl,
+      duration: 5,
+      resolution: '480p',
+      aspect_ratio: '9:16',
+      generate_audio: true,
     });
-    expect(spec.formats).toEqual([
-      '1:1',
-      '4:3',
-      '3:2',
-      '3:4',
-      '2:3',
-      '16:9',
-      '9:16',
-    ]);
   });
 
-  it('Soul v2 : texte → image, n’utilise pas la photo et ne la reçoit jamais', () => {
-    const spec = modelSpecOf('higgsfield-ai/soul/v2/standard')!;
-    expect(spec.usesPhoto).toBe(false);
-    expect(spec.build(ctx)).toEqual({
-      prompt: ctx.prompt,
-      aspect_ratio: '3:4',
+  it('envoie toujours la résolution et peut couper le son', () => {
+    const spec = modelSpecOf('alibaba/wan-3.0/image-to-video')!;
+    expect(spec.build({ ...ctx, resolution: '1080p', audio: false })).toMatchObject({
+      resolution: '1080p',
+      generate_audio: false,
     });
-    expect(JSON.stringify(spec.build(ctx))).not.toContain('image_urls');
   });
 
-  it.each([
-    'higgsfield/genjutsu-light/motion-transfer/v1.0',
-    'higgsfield/genjutsu/motion-transfer/v1.0',
-  ])(
-    '%s : vidéo de référence + photo, résolution, sans texte ni format',
-    (model) => {
-      const spec = modelSpecOf(model)!;
-      expect(spec).toMatchObject({
-        output: 'video',
-        usesPhoto: true,
-        needsReferenceVideo: true,
-        formats: null,
-      });
-      expect(spec.build(ctx)).toEqual({
-        video_url: ctx.videoUrl,
-        image_urls: [ctx.imageUrl],
-        resolution: '480p',
-      });
-      expect(spec.build({ ...ctx, resolution: null })).not.toHaveProperty(
-        'resolution',
-      );
-    },
-  );
-
-  it('un modèle inconnu n’est jamais appelé au hasard', () => {
-    expect(modelSpecOf('a-definir')).toBeUndefined();
-    expect(modelSpecOf('ideogram')).toBeUndefined();
-    expect(modelSpecOf('')).toBeUndefined();
+  it('un modèle inconnu n’est jamais appelé au hasard (Genjutsu, images, Prime non exposé)', () => {
+    for (const m of [
+      'a-definir',
+      '',
+      'higgsfield/genjutsu-light/motion-transfer/v1.0',
+      'higgsfield/genjutsu-light/object-swap/v1.0',
+      'xai/grok-imagine-image-2.0',
+      'alibaba/wan-3.0-prime/image-to-video',
+    ])
+      expect(modelSpecOf(m)).toBeUndefined();
   });
 });

@@ -38,7 +38,7 @@ export function CreationCard({ creation, priority = false }: { creation: Creatio
             <span aria-hidden className="size-10 animate-spin rounded-full border-4 border-background/40 border-t-background motion-reduce:animate-none" />
           </div>
         )}
-        {creation.status === "COMPLETED" && creation.isVideo && (
+        {creation.status === "COMPLETED" && (
           <span className="absolute bottom-2 right-2 grid size-8 place-items-center rounded-full bg-foreground/70 text-background" aria-hidden>
             <Play className="size-4 fill-current" />
           </span>

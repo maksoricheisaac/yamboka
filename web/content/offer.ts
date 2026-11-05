@@ -7,9 +7,10 @@ import { cacheLife, cacheTag } from 'next/cache';
  * on retombe sur les valeurs du business plan ci-dessous : le site reste utilisable.
  */
 
-/** Tarif de référence : 1 vidéo de 10 s = 100 crédits (10 crédits par seconde). */
+/** Tarif de référence provisoire : 10 crédits par seconde, vidéo de 4 secondes (durée fixe des modèles Yamboka). */
 export const VIDEO_CREDITS_PER_SECOND = 10;
-export const VIDEO_10S_CREDITS = VIDEO_CREDITS_PER_SECOND * 10;
+export const VIDEO_SECONDS = 4;
+export const VIDEO_CREDITS = VIDEO_CREDITS_PER_SECOND * VIDEO_SECONDS;
 
 export interface PublicOffer {
   name: string;
@@ -18,26 +19,18 @@ export interface PublicOffer {
   bonusPercent: number;
   /** Ce que permet l'offre, en exemples concrets. */
   example: string;
-  /** Nombre de vidéos de 10 s et d'images que permet l'offre (mêmes bases que `example`). */
+  /** Nombre de vidéos que permet l'offre (même base que `example`). */
   videos: number;
-  images: number;
   featured: boolean;
   /** Intitulé explicite de la place de l'offre dans la gamme. */
   role: string;
 }
 
 const MAX_PUBLIC_OFFERS = 3;
-export const IMAGE_CREDITS = 2;
 
-const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
-
-/** « 2 vidéos de 10 s ou 51 images » : deux façons de dépenser le même solde. */
-export function exampleFor(videoSeconds: number, images: number): string {
-  const videos = Math.floor(videoSeconds / 10);
-  const parts: string[] = [];
-  if (videos > 0) parts.push(`${plural(videos, 'vidéo')} de 10 s`);
-  if (images > 0) parts.push(plural(images, 'image'));
-  return parts.join(' ou ');
+/** « ≈ 31 vidéos » : ce que permet le solde, en nombre de vidéos. */
+export function exampleFor(videos: number): string {
+  return videos > 0 ? `≈ ${videos} vidéo${videos > 1 ? 's' : ''}` : '';
 }
 
 function withRoles(offers: Omit<PublicOffer, 'role'>[]): PublicOffer[] {
@@ -65,9 +58,8 @@ function staticOffer(name: string, priceFcfa: number, base: number, bonusPercent
     priceFcfa,
     totalCredits: total,
     bonusPercent,
-    example: exampleFor(Math.floor(total / VIDEO_CREDITS_PER_SECOND), Math.floor(total / IMAGE_CREDITS)),
-    videos: Math.floor(total / VIDEO_CREDITS_PER_SECOND / 10),
-    images: Math.floor(total / IMAGE_CREDITS),
+    example: exampleFor(Math.floor(total / VIDEO_CREDITS)),
+    videos: Math.floor(total / VIDEO_CREDITS),
     featured,
   };
 }
@@ -85,7 +77,7 @@ interface ApiPack {
   totalCredits: number;
   bonusPercent: number;
   featured: boolean;
-  equivalent: { videoSeconds: number; images: number };
+  equivalent: { videos: number };
 }
 
 /**
@@ -119,9 +111,8 @@ export async function getPublicOffers(): Promise<PublicOffer[]> {
       priceFcfa: p.priceFcfa,
       totalCredits: p.totalCredits,
       bonusPercent: p.bonusPercent,
-      example: exampleFor(p.equivalent.videoSeconds, p.equivalent.images),
-      videos: Math.floor(p.equivalent.videoSeconds / 10),
-      images: p.equivalent.images,
+      example: exampleFor(p.equivalent.videos),
+      videos: p.equivalent.videos,
       featured: p.featured,
     })),
   );
@@ -137,6 +128,5 @@ export function formatNumber(value: number): string {
 
 /** Consommation des créations disponibles (affichée en clair, sans tableau comparatif). */
 export const UNIT_PRICES = [
-  { label: 'Vidéo', detail: '5 ou 10 secondes', price: '10 crédits la seconde', example: '10 secondes = 100 crédits' },
-  { label: 'Image portrait', detail: 'Portrait et mode', price: '2 crédits l’image', example: '2 crédits' },
+  { label: 'Vidéo', detail: `${VIDEO_SECONDS} secondes`, price: `${VIDEO_CREDITS} crédits la vidéo`, example: `${VIDEO_SECONDS} secondes = ${VIDEO_CREDITS} crédits` },
 ];

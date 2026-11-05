@@ -71,6 +71,7 @@ enum GenerationStatus {
 
 enum BillingUnit {
   SECOND
+  /// Abandonné (Yamboka ne produit que des vidéos) : conservé pour les données existantes, jamais utilisé par le code.
   IMAGE
 }
 
@@ -89,6 +90,7 @@ enum MediaRole {
   INPUT_VIDEO
   INPUT_IMAGE
   OUTPUT_VIDEO
+  /// Abandonné : résultats d'images des anciennes créations, conservés (masqués) tant que le propriétaire n'a pas décidé.
   OUTPUT_IMAGE
   THUMBNAIL
   PRESET_THUMBNAIL
@@ -308,7 +310,7 @@ model CreditPack {
 
 model GenerationProduct {
   id                     String       @id @default(uuid()) @db.Uuid
-  code                   String       @unique // VIDEO_LIGHT_480, IMAGE_SOUL2…
+  code                   String       @unique // VIDEO_LIGHT_480…
   name                   String
   providerModel          String
   resolution             String?
@@ -333,17 +335,24 @@ model Preset {
   description    String?
   category       String // danse, pub, anniversaire, mode…
   type           PresetType
-  productId      String     @db.Uuid
+  /// Hérité (Genjutsu) : une idée ne désigne plus de produit ; le produit se déduit de la résolution choisie.
+  productId      String?    @db.Uuid
   defaultPrompt  String?
   requestedItems Json? // éléments demandés à l'utilisateur
   sortOrder      Int        @default(0)
   visible        Boolean    @default(false)
   /// Mise en avant éditoriale (« à la une »), distincte de la publication : décidée par l'administrateur.
   featured       Boolean    @default(false)
+  /// Public visé : « business » ou « perso » (classement des idées à l'écran).
+  audience       String     @default("business")
+  /// Conseil sur la photo à envoyer pour cette idée.
+  photoHint      String?
+  /// Réglages proposés par défaut (modifiables par le client) : { format, resolution, durationSeconds }.
+  defaults       Json?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  product     GenerationProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product     GenerationProduct? @relation(fields: [productId], references: [id], onDelete: Restrict)
   media       MediaFile[]
   generations Generation[]
 

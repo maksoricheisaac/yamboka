@@ -3,16 +3,15 @@ import { Suspense } from "react";
 import { CtaBand, PageHero, Section, SectionHeading } from "@/components/site/blocks";
 import { Ban, CalendarClock, Info, RotateCcw } from "lucide-react";
 import { Stagger, StaggerItem } from "@/components/motion/motion";
-import { CostPicker } from "@/components/site/cost-picker";
 import { Offers } from "@/components/site/pricing-section";
-import { IMAGE_CREDITS, VIDEO_CREDITS_PER_SECOND, getPublicOffers } from "@/content/offer";
+import { VIDEO_CREDITS, VIDEO_SECONDS, getPublicOffers } from "@/content/offer";
 import { SITE } from "@/content/site";
 import { JsonLd, pageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = pageMetadata({
   title: "Tarifs",
   description:
-    "Trois offres de crédits, sans abonnement, payables en mobile money. Prix tout compris, frais Mobile Money inclus : une vidéo de 10 secondes consomme 100 crédits, une image 2 crédits.",
+    "Trois offres de crédits, sans abonnement, payables en mobile money. Prix tout compris, frais Mobile Money inclus : une vidéo consomme un nombre fixe de crédits, affiché avant de confirmer.",
   path: "/tarifs",
 });
 
@@ -26,7 +25,7 @@ async function OffersLd() {
         "@graph": offers.map((o) => ({
           "@type": "Product",
           name: `Crédits Yamboka — offre ${o.name}`,
-          description: `${o.totalCredits} crédits pour créer des vidéos et des images par IA. Par exemple : ${o.example}.`,
+          description: `${o.totalCredits} crédits pour créer des vidéos pro par IA. Par exemple : ${o.example}.`,
           brand: { "@type": "Brand", name: SITE.name },
           offers: {
             "@type": "Offer",
@@ -73,9 +72,12 @@ export default function PricingPage() {
 
       <Section tone="muted" labelledBy="costs-title">
         <SectionHeading id="costs-title" title="Combien coûte une création ?" lead="Le coût exact est toujours affiché, en crédits et en FCFA, avant que vous confirmiez." />
-        <CostPicker videoPerSecond={VIDEO_CREDITS_PER_SECOND} imageCredits={IMAGE_CREDITS} />
+        <p aria-live="polite" className="font-heading text-4xl font-bold sm:text-5xl">
+          <span className="text-primary">{VIDEO_CREDITS}</span>{" "}
+          <span className="text-xl font-semibold text-foreground sm:text-2xl">crédits pour une vidéo de {VIDEO_SECONDS} secondes</span>
+        </p>
         <p className="mt-6 text-sm text-muted-foreground">
-          La durée d’une vidéo est arrondie à la seconde supérieure. Les tarifs peuvent évoluer ; le prix affiché au moment de confirmer fait foi.
+          Les tarifs peuvent évoluer ; le prix affiché au moment de confirmer fait foi.
         </p>
       </Section>
 

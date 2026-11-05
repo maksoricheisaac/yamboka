@@ -1,8 +1,9 @@
-import { modelSpecOf } from '../generation/models';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { PackView, ProductView, QuoteView } from '@yamboka/shared';
+import { VIDEO_RESOLUTIONS, packEquivalents } from '@yamboka/shared';
+import type { CreditRates } from '@yamboka/shared';
+import { WAN_MODEL } from '../generation/models';
 import { CreditsService } from '../credits/credits.service';
-import { creditsPerSecond } from '../billing/credits';
 import type { GenerationProduct } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -50,15 +51,17 @@ export class CatalogService {
       }),
       this.prisma.generationProduct.findMany({ where: { active: true } }),
     ]);
-    // Équivalent « images » : le produit qui fabrique réellement une affiche à partir d'une photo (pas un modèle texte → image
-    // qui ignorerait la photo), le plus ancien en cas d'égalité : le résultat ne dépend pas de l'ordre de lecture en base.
-    const image = products
-      .filter(
-        (p) =>
-          p.billingUnit === 'IMAGE' && modelSpecOf(p.providerModel)?.usesPhoto,
-      )
-      .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())[0];
-    const perSecond = await this.referenceCreditsPerSecond(products);
+    // Tarifs par résolution : lus en base (produits vidéo actifs), jamais en dur.
+    const rates = {} as CreditRates;
+    for (const r of VIDEO_RESOLUTIONS) {
+      rates[r] =
+        products.find(
+          (p) =>
+            p.resolution === r &&
+            p.billingUnit === 'SECOND' &&
+            p.providerModel === WAN_MODEL,
+        )?.creditsPerUnit ?? 0;
+    }
 
     return packs.map((p) => {
       const total = packTotalCredits({
@@ -75,36 +78,8 @@ export class CatalogService {
         bonusPercent: p.bonusPercent,
         totalCredits: total,
         featured: p.featured,
-        equivalent: {
-          videoSeconds: perSecond ? Math.floor(total / perSecond) : 0,
-          images: image ? Math.floor(total / image.creditsPerUnit) : 0,
-        },
+        equivalent: packEquivalents(total, rates),
       };
-    });
-  }
-
-  /**
-   * Crédits par seconde du modèle par défaut (base des « ≈ 12 vidéos de 10 s »), calculés depuis son prix en $/s.
-   * Sans modèle par défaut, repli sur le produit vidéo actif.
-   */
-  private async referenceCreditsPerSecond(
-    products: GenerationProduct[],
-  ): Promise<number> {
-    const model = await this.prisma.modelPricing.findFirst({
-      where: { isDefault: true, active: true },
-    });
-    if (!model) {
-      return (
-        products.find((p) => p.billingUnit === 'SECOND')?.creditsPerUnit ?? 0
-      );
-    }
-    const [fcfaPerUsd, fcfaPerCredit] = await Promise.all([
-      this.settings.get('usdToXafRate'),
-      this.settings.get('hfCostFcfaPerCredit'),
-    ]);
-    return creditsPerSecond(model.usdPerSecond.toString(), {
-      fcfaPerUsd,
-      fcfaPerCredit,
     });
   }
 
@@ -123,13 +98,13 @@ export class CatalogService {
 
   async listProducts(): Promise<ProductView[]> {
     const products = await this.prisma.generationProduct.findMany({
-      where: { active: true },
+      where: { active: true, billingUnit: 'SECOND' },
       orderBy: { createdAt: 'asc' },
     });
     return products.map((p) => ({
       code: p.code,
       name: p.name,
-      billingUnit: p.billingUnit,
+      billingUnit: 'SECOND' as const,
       creditsPerUnit: p.creditsPerUnit,
       minSeconds: p.minSeconds,
       maxSeconds: p.maxSeconds,
@@ -201,8 +176,8 @@ export class CatalogService {
     ]);
     const rows: { product: string; pack: string; margin: Margin }[] = [];
     for (const product of products) {
-      // Référence : une vidéo de 10 s, ou une image.
-      const units = product.billingUnit === 'SECOND' ? 10 : 1;
+      // Référence : une vidéo de 10 s.
+      const units = 10;
       for (const pack of packs) {
         rows.push({
           product: product.code,

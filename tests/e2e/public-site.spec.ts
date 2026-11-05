@@ -69,7 +69,7 @@ test('le lien Accueil et le logo ramènent à la page d’accueil ; le menu mobi
 
 test('la page d’accueil tient en trois sections et un appel final, avec des actions fonctionnelles', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Transformez vos vidéos');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Crée des vidéos pro');
   for (const name of ['Ce que vous pouvez créer', 'Trois étapes', 'Votre première création']) {
     await expect(page.getByRole('heading', { level: 2, name: new RegExp(name) })).toBeVisible();
   }
@@ -106,15 +106,15 @@ test('la page tarifs affiche trois offres avec prix en FCFA, exemple concret et 
   await expect(page.getByText('Créateur', { exact: true })).toHaveCount(0);
 });
 
-test('tarifs : sélecteur de coût et comparaison des offres', async ({ page }) => {
+test('tarifs : coût d’une vidéo et comparaison des offres, sans aucune image', async ({ page }) => {
   await page.goto('/tarifs');
-  await page.getByRole('button', { name: 'Vidéo 5 s' }).click();
-  await expect(page.getByText('50', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Image' }).click();
-  await expect(page.getByRole('button', { name: 'Image' })).toHaveAttribute('aria-pressed', 'true');
-  // Une seule offre recommandée, chaque offre annonce ce qu'elle permet.
+  await expect(page.getByText(/crédits pour une vidéo de 4 secondes/)).toBeVisible();
+  // Plus de choix « Image » : Yamboka ne produit que des vidéos.
+  await expect(page.getByRole('button', { name: 'Image' })).toHaveCount(0);
+  await expect(page.getByText(/\bimages?\b/i).first()).toHaveCount(0);
+  // Une seule offre recommandée, chaque offre annonce ce qu'elle permet en nombre de vidéos.
   await expect(page.getByText('Recommandé', { exact: true })).toHaveCount(1);
-  await expect(page.locator('article').filter({ hasText: 'Pro' })).toContainText(/vidéos de 10 s/);
+  await expect(page.locator('article').filter({ hasText: 'Pro' })).toContainText(/≈\s*\d+[\s  ]*vidéos/);
 });
 
 test('fonctionnalités : chaque capacité indique si elle est disponible ou prévue au lancement', async ({ page }) => {
@@ -122,13 +122,15 @@ test('fonctionnalités : chaque capacité indique si elle est disponible ou pré
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Ce que Yamboka vous permet');
   await expect(page.getByText('Disponible dans votre espace').first()).toBeVisible();
   await expect(page.getByText('Au lancement').first()).toBeVisible();
-  await expect(page.getByRole('heading', { level: 2, name: 'Transformez une vidéo' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Créez une vidéo à partir d’une photo' })).toBeVisible();
 });
 
 test('exemples : filtre, fenêtre de consultation, navigation et fermeture au clavier', async ({ page }) => {
   await page.goto('/galerie');
+  await expect(page.getByRole('button', { name: /^Ouvrir :/ })).toHaveCount(3);
   await page.getByRole('button', { name: 'Fêtes' }).click();
-  await expect(page.getByRole('button', { name: /^Ouvrir :/ })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /^Ouvrir :/ })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Tout' }).click();
   await page.getByRole('button', { name: /Ouvrir : Anniversaire/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Anniversaire' });
   await expect(dialog).toBeVisible();
@@ -143,7 +145,8 @@ test('exemples : filtre, fenêtre de consultation, navigation et fermeture au cl
     .toBe(true);
   await expect(dialog.getByRole('link', { name: /Créer mon compte/ })).toHaveAttribute('href', /\/inscription$/);
   await dialog.getByRole('button', { name: 'Exemple suivant' }).click();
-  await expect(page.getByRole('dialog', { name: 'Invitation d’événement' })).toBeVisible();
+  // Après le dernier exemple (Anniversaire), on revient au premier : Danse afro.
+  await expect(page.getByRole('dialog', { name: 'Danse afro' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   // Le focus revient sur la vignette qui a ouvert la fenêtre (sinon l'utilisateur au clavier repart du haut de la page).
@@ -211,7 +214,7 @@ test('page introuvable : 404 en français', async ({ page }) => {
 test('le hero est lisible sans animation : titre, deux appels à l’action, démonstration marquée comme illustrative', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Transformez vos vidéos');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Crée des vidéos pro');
   await expect(page.getByRole('link', { name: /Créer mon compte/ }).first()).toBeVisible();
   await expect(page.getByRole('link', { name: 'Voir des exemples' })).toHaveAttribute('href', '#exemples');
   // Illustration étiquetée tant qu’il n’y a pas de vraie création ; sinon la légende annonce un exemple généré.
@@ -242,7 +245,7 @@ test('le contenu principal est dans le HTML sans JavaScript (connexion lente, ro
   const ctx = await browser.newContext({ javaScriptEnabled: false, baseURL });
   const page = await ctx.newPage();
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Transformez vos vidéos');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Crée des vidéos pro');
   await expect(page.getByRole('heading', { level: 2, name: /Trois étapes/ })).toBeVisible();
   await expect(page.getByRole('link', { name: /Créer mon compte/ }).first()).toHaveAttribute('href', /\/inscription$/);
   // Le prix d’entrée (offres réelles ou, à défaut, valeurs du business plan) est dans le HTML initial.

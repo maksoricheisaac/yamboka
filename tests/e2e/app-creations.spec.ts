@@ -34,23 +34,24 @@ async function pickPhoto(page: Page) {
 const generateButton = (page: Page) => page.getByRole('button', { name: /^Générer/ });
 
 test.describe('Création : parcours', () => {
-  test('affiche trois types, un style par type, coût et solde avant de lancer', async ({ page, request }) => {
+  test('affiche deux types, un style par type, coût et solde avant de lancer', async ({ page, request }) => {
     await accountWithCredits(page, request);
     await expect(page.getByRole('heading', { level: 1, name: /Qu’allez-vous créer/ })).toBeVisible();
     const tabs = page.getByRole('tablist', { name: 'Type de création' });
-    for (const name of ['Affiche', 'Vidéo pub', 'Vidéo fun']) await expect(tabs.getByRole('tab', { name })).toBeVisible();
+    for (const name of ['Vidéo pub', 'Vidéo fun']) await expect(tabs.getByRole('tab', { name })).toBeVisible();
 
-    // Affiche : 17 crédits. Le bouton annonce le coût ET le solde restant (1 500 − 17 = 1 483).
-    await expect(generateButton(page)).toContainText('Générer · 17 crédits');
-    await expect(page.getByText(/Solde après : 1\s?483 crédits/)).toBeVisible();
+    // Vidéo pub : 50 crédits. Le bouton annonce le coût ET le solde restant (1 500 − 50 = 1 450).
+    await expect(generateButton(page)).toContainText('Générer · 50 crédits');
+    await expect(page.getByText(/Solde après : 1\s?450 crédits/)).toBeVisible();
     await expect(page.getByText(/crédits sont restitués/)).toBeVisible();
     // Un seul champ de description : plus de message, de prix ni de téléphone séparés.
     await expect(page.getByLabel('Décrivez ce que vous voulez')).toBeVisible();
     for (const gone of ['Votre message', 'Texte à afficher', 'Prix', 'Téléphone']) await expect(page.getByText(gone, { exact: true })).toHaveCount(0);
-    // Les sept formats sont proposés, chacun avec son ratio.
-    for (const ratio of ['1:1', '4:3', '3:2', '3:4', '2:3', '16:9', '9:16']) {
+    // Les trois formats sont proposés, chacun avec son ratio. Plus aucun format d'image (4:3, 3:2, 3:4, 2:3).
+    for (const ratio of ['9:16', '1:1', '16:9']) {
       await expect(page.getByRole('radiogroup').getByText(ratio, { exact: true })).toBeVisible();
     }
+    for (const gone of ['4:3', '3:2', '3:4', '2:3']) await expect(page.getByRole('radiogroup').getByText(gone, { exact: true })).toHaveCount(0);
 
     await tabs.getByRole('tab', { name: 'Vidéo fun' }).click();
     await expect(generateButton(page)).toContainText('Générer · 50 crédits');
@@ -108,7 +109,7 @@ test.describe('Création : parcours', () => {
   test('suppression d’une création non signalée', async ({ page, request }) => {
     await accountWithCredits(page, request);
     await pickPhoto(page);
-    await page.getByLabel('Décrivez ce que vous voulez').fill('Affiche élégante, fond luxueux');
+    await page.getByLabel('Décrivez ce que vous voulez').fill('Vidéo élégante, fond luxueux');
     await page.getByRole('checkbox', { name: /Je confirme/ }).click();
     await generateButton(page).click();
     await expect(page.getByRole('button', { name: 'Partager sur WhatsApp' })).toBeVisible({ timeout: 40_000 });
@@ -135,7 +136,7 @@ test.describe('Création : parcours', () => {
 
   test('sans assez de crédits : message et lien vers la recharge, pas de bouton Générer', async ({ page, request }) => {
     await accountWithCredits(page, request, false);
-    await expect(page.getByText(/Il vous manque 17 crédits/)).toBeVisible();
+    await expect(page.getByText(/Il vous manque 50 crédits/)).toBeVisible();
     await expect(generateButton(page)).toHaveCount(0);
     await page.getByRole('link', { name: 'Recharger mes crédits' }).click();
     await expect(page).toHaveURL(/\/app\/credits$/);
@@ -155,15 +156,25 @@ test.describe('Tendances, navigation et mise en page', () => {
     await expect(page.getByRole('radio', { name: /Tendance e2e/ })).toBeChecked();
   });
 
-  test('un modèle d’affiche choisi dans Tendances reste modifiable et retirable', async ({ page, request }) => {
+  test('un modèle de vidéo pub choisi dans Tendances reste modifiable et retirable', async ({ page, request }) => {
     await accountWithCredits(page, request);
     await page.goto('/app/tendances');
-    await page.getByRole('button', { name: 'Affiches' }).click();
-    await page.getByRole('link', { name: /Affiche e2e/ }).click();
-    await expect(page.getByRole('tab', { name: 'Affiche', selected: true })).toBeVisible();
-    await expect(page.getByText('Modèle : Affiche e2e')).toBeVisible();
+    await page.getByRole('button', { name: 'Vidéos pub' }).click();
+    await page.getByRole('link', { name: /Pub e2e/ }).click();
+    await expect(page.getByRole('tab', { name: 'Vidéo pub', selected: true })).toBeVisible();
+    await expect(page.getByText('Modèle : Pub e2e')).toBeVisible();
     await page.getByRole('button', { name: 'Retirer le modèle' }).click();
-    await expect(page.getByText('Modèle : Affiche e2e')).toHaveCount(0);
+    await expect(page.getByText('Modèle : Pub e2e')).toHaveCount(0);
+  });
+
+  test('plus aucune trace de la génération d’images : pas d’onglet ni de filtre « Affiche », ancien lien redirigé vers la vidéo', async ({ page, request }) => {
+    await accountWithCredits(page, request);
+    await page.goto('/app/tendances');
+    await expect(page.getByRole('button', { name: /^Affiches?$/ })).toHaveCount(0);
+    await page.goto('/app/creer?type=affiche');
+    await expect(page).toHaveURL(/\/app\/creer\?type=pub$/);
+    await expect(page.getByRole('tab', { name: 'Vidéo pub', selected: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Affiche/ })).toHaveCount(0);
   });
 
   test('aucun débordement horizontal et navigation adaptée à l’écran', async ({ page, request }) => {
@@ -182,15 +193,11 @@ test.describe('Tendances, navigation et mise en page', () => {
   });
 });
 
-test.describe('Création d’affiche : formats et honnêteté du résultat', () => {
+test.describe('Création de vidéo pub : formats et honnêteté du résultat', () => {
   const GROUPS: Record<string, string> = {
-    '1:1': 'Publications sur les réseaux sociaux',
-    '4:3': 'Affiche horizontale, visuel classique',
-    '3:2': 'Affiche horizontale, photo',
-    '3:4': 'Affiche verticale',
-    '2:3': 'Affiche verticale, poster',
-    '16:9': 'Bannière, visuel très large',
-    '9:16': 'Stories, statuts WhatsApp, mobile',
+    '9:16': 'Statut WhatsApp, TikTok, Reels',
+    '1:1': 'Publication Facebook ou Instagram',
+    '16:9': 'YouTube, télévision, ordinateur',
   };
 
   test('chaque format change l’aperçu à ses proportions exactes et précise son usage', async ({ page, request }) => {
@@ -208,11 +215,10 @@ test.describe('Création d’affiche : formats et honnêteté du résultat', () 
     }
   });
 
-  test('une affiche sans style choisi n’a ni titre inventé ni texte ajouté, et la simulation est dite clairement', async ({ page, request }) => {
+  test('une vidéo pub sans style choisi n’a ni titre inventé ni texte ajouté, et la simulation est dite clairement', async ({ page, request }) => {
     await accountWithCredits(page, request);
     await pickPhoto(page);
-    await page.getByRole('radiogroup').getByText('3:4', { exact: true }).click();
-    await page.getByLabel('Décrivez ce que vous voulez').fill('Affiche pour ma robe, texte PROMO -20 %');
+    await page.getByLabel('Décrivez ce que vous voulez').fill('Pub pour ma robe, texte PROMO -20 %');
     await page.getByRole('checkbox', { name: /Je confirme/ }).click();
     await generateButton(page).click();
     await expect(page.getByText(/crédits utilisés/)).toBeVisible({ timeout: 40_000 });
@@ -220,16 +226,14 @@ test.describe('Création d’affiche : formats et honnêteté du résultat', () 
     // Mode simulation : annoncé en toutes lettres, jamais présenté comme une création de l'IA.
     await expect(page.getByText('Simulation · aucune IA utilisée')).toBeVisible();
     await expect(page.getByText('Généré par IA · Yamboka')).toHaveCount(0);
-    // Le résultat respecte le format demandé (576 × 768 pour du 3:4) et n'est pas la photo envoyée (1 × 1).
-    const img = page.locator('figure img').first();
-    await expect(img).toBeVisible();
-    const size = await img.evaluate((el: HTMLImageElement) => ({ w: el.naturalWidth, h: el.naturalHeight }));
-    expect(size).toEqual({ w: 576, h: 768 });
+    // Le résultat est une vidéo (plus jamais une image).
+    await expect(page.locator('figure video').first()).toBeVisible();
+    await expect(page.locator('figure img')).toHaveCount(0);
     // Aucun nom de style ni titre inventé : titre neutre, et le texte demandé est le seul texte de l'utilisateur.
     await page.goto('/app/creations');
-    await page.getByRole('link', { name: /^Affiche — prête/ }).first().click();
-    await expect(page.getByRole('heading', { level: 1, name: 'Votre affiche' })).toBeVisible();
-    for (const invented of ['Boutique en vitrine', 'Affiche e2e']) await expect(page.getByText(invented)).toHaveCount(0);
-    await expect(page.getByText('Affiche pour ma robe, texte PROMO -20 %')).toBeVisible();
+    await page.getByRole('link', { name: /^Vidéo pub — prête/ }).first().click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Votre vidéo publicitaire' })).toBeVisible();
+    for (const invented of ['Boutique en vitrine', 'Pub e2e']) await expect(page.getByText(invented)).toHaveCount(0);
+    await expect(page.getByText('Pub pour ma robe, texte PROMO -20 %')).toBeVisible();
   });
 });

@@ -4,7 +4,7 @@ import { getMedia } from "@/lib/media";
 import { pageMetadata } from "@/lib/seo";
 import { CtaBand, PageHero, Prose } from "@/components/site/blocks";
 
-export const metadata: Metadata = pageMetadata({ title: "À propos", description: "Yamboka, « du pays, de chez nous » en lingala : une plateforme de création vidéo et image par IA née à Brazzaville, pensée pour l’Afrique du mobile money.", path: "/a-propos" });
+export const metadata: Metadata = pageMetadata({ title: "À propos", description: "Yamboka, « du pays, de chez nous » en lingala : une plateforme de création de vidéos par IA née à Brazzaville, pensée pour l’Afrique du mobile money.", path: "/a-propos" });
 
 export default function AboutPage() {
   const { aPropos } = getMedia();
@@ -49,10 +49,10 @@ export default function AboutPage() {
         <h2>La feuille de route</h2>
         <ul>
           <li>
-            <strong>Lancement :</strong> vidéo 480p, images, premiers modèles, achat de crédits par mobile money.
+            <strong>Lancement :</strong> vidéo 480p, premiers modèles, achat de crédits par mobile money.
           </li>
           <li>
-            <strong>Ensuite :</strong> définition 720p, qualité Pro, affiches avec texte, notifications WhatsApp,
+            <strong>Ensuite :</strong> définition 720p, qualité Pro, notifications WhatsApp,
             offres pour entreprises et parrainage.
           </li>
           <li>

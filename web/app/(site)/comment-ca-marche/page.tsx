@@ -20,8 +20,8 @@ const JOURNEY = [
     note: "Le paiement mobile money ouvrira au lancement.",
   },
   {
-    title: "Créez votre vidéo ou votre image",
-    text: "Trois étapes : le style, votre photo, puis la confirmation avec le coût exact, votre solde restant et le consentement.",
+    title: "Créez votre vidéo",
+    text: "Trois étapes : le modèle, votre photo, puis la confirmation avec le coût exact, votre solde restant et le consentement.",
     note: "Si votre solde est insuffisant, le pack le plus adapté vous est proposé.",
   },
   {
