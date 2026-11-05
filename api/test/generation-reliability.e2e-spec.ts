@@ -80,7 +80,6 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
   let credits: CreditsService;
   let storage: StorageDriver;
   const provider = new ScriptedProvider();
-  let motionStyle: string;
   let fetchSpy: jest.SpiedFunction<typeof fetch>;
   let mp4: Buffer;
 
@@ -97,34 +96,6 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
     credits = app.get(CreditsService);
     storage = app.get(StorageDriver);
     mp4 = await readFile(join(process.cwd(), 'assets', 'mock-output.mp4'));
-
-    // Un style « tendance » (transfert de mouvement) avec sa vidéo de référence.
-    const video = await prisma.generationProduct.findUniqueOrThrow({
-      where: { code: 'VIDEO_LIGHT_480' },
-    });
-    const preset = await prisma.preset.create({
-      data: {
-        name: `Tendance ${Date.now()}`,
-        category: 'test',
-        type: 'MOTION',
-        productId: video.id,
-        visible: true,
-      },
-    });
-    const key = `presets/${preset.id}/example.mp4`;
-    await storage.put(key, mp4, 'video/mp4');
-    await prisma.mediaFile.create({
-      data: {
-        role: 'PRESET_EXAMPLE_VIDEO',
-        bucket: 'PRESETS',
-        key,
-        mimeType: 'video/mp4',
-        sizeBytes: mp4.length,
-        presetId: preset.id,
-        verifiedAt: new Date(),
-      },
-    });
-    motionStyle = preset.id;
   });
   afterAll(async () => {
     await app.close();
@@ -196,31 +167,37 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
   }
 
   describe('Vidéos', () => {
+    /** Demande par défaut : 9:16, 480p, 5 s = 20 crédits. */
     const fun = (extra: Record<string, string> = {}) => ({
-      kind: 'fun',
-      styleId: motionStyle,
+      prompt: 'La caméra tourne autour de mes chaussures',
       format: '9:16',
-      consent: 'true',
+      resolution: '480p',
+      durationSeconds: '5',
       ...extra,
     });
 
-    it('envoie vidéo de référence ET photo, sans texte ni format, et livre un vrai MP4', async () => {
+    it('envoie la photo, le texte et les réglages du client à Wan 3.0, et livre un vrai MP4', async () => {
       completeWith(mp4, 'video/mp4', 'https://cdn.higgsfield.test/out.mp4');
       const { client, userId, creation } = await create(fun(), 60);
       expect(creation).toMatchObject({
         status: 'COMPLETED',
-        credits: 50,
+        credits: 20,
         simulated: false,
       });
       expect(provider.submitted[0].model).toBe(
-        'higgsfield/genjutsu-light/motion-transfer/v1.0',
+        'alibaba/wan-3.0/image-to-video',
       );
+      // Paramètres EXACTS du modèle ; le texte du client est complété par le gabarit du serveur.
       expect(provider.submitted[0].input).toEqual({
-        video_url: 'https://files.higgsfield.test/in-2',
-        image_urls: ['https://files.higgsfield.test/in-1'],
+        prompt: expect.stringContaining('La caméra tourne autour de mes chaussures'),
+        image_url: 'https://files.higgsfield.test/in-1',
+        duration: 5,
         resolution: '480p',
+        aspect_ratio: '9:16',
+        generate_audio: true,
       });
-      expect(provider.uploads).toBe(2); // photo + vidéo de référence
+      expect(provider.submitted[0].input.prompt).toContain('Le produit');
+      expect(provider.uploads).toBe(1); // la photo, rien d'autre
       const file = await client
         .get(`/api/creations/${creation.id}/file`)
         .expect(200);
@@ -234,10 +211,10 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       expect(media.sizeBytes).toBe(mp4.length);
       expect((await storage.get(media.key)).equals(mp4)).toBe(true);
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await balance(client)).toBe(10);
+      expect(await balance(client)).toBe(40);
       expect(await lotsMatchLedger(app, userId)).toEqual({
-        ledger: 10,
-        lots: 10,
+        ledger: 40,
+        lots: 40,
       });
     });
 
@@ -260,7 +237,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       ).not.toBe('COMPLETED');
       expect(await outputs(creation.id)).toBe(0);
       expect(await ledgerTypes(creation.id)).toEqual(['RESERVE']);
-      expect(await balance(client)).toBe(10);
+      expect(await balance(client)).toBe(40);
     });
 
     it.each([
@@ -363,7 +340,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       provider.submitError = new GenerationUnavailableError('panne');
       const { client, userId, creation } = await create(fun(), 60);
       expect(creation.status).toBe('PENDING');
-      expect(await balance(client)).toBe(10); // réservé, pas encore consommé
+      expect(await balance(client)).toBe(40); // réservé, pas encore consommé
       provider.submitError = null;
       completeWith(mp4, 'video/mp4');
       await creations.advance(creation.id);
@@ -375,8 +352,8 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       expect(provider.submitted).toHaveLength(1);
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
       expect(await lotsMatchLedger(app, userId)).toEqual({
-        ledger: 10,
-        lots: 10,
+        ledger: 40,
+        lots: 40,
       });
     });
 
@@ -386,7 +363,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       await creations.advance(creation.id);
       await creations.advance(creation.id);
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await balance(client)).toBe(10);
+      expect(await balance(client)).toBe(40);
     });
 
     it('délai dépassé alors que les crédits sont déjà consommés : jamais remboursée à tort, la création se termine', async () => {
@@ -403,51 +380,21 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
         .creation;
       expect(after.status).toBe('COMPLETED');
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await balance(client)).toBe(10);
+      expect(await balance(client)).toBe(40);
     });
 
-    it('un style vidéo sans vidéo de référence n’est ni proposé ni accepté (jamais débité pour rien)', async () => {
-      const video = await prisma.generationProduct.findUniqueOrThrow({
-        where: { code: 'VIDEO_LIGHT_480' },
-      });
-      const bare = await prisma.preset.create({
-        data: {
-          name: `Sans vidéo ${Date.now()}`,
-          category: 'test',
-          type: 'MOTION',
-          productId: video.id,
-          visible: true,
-        },
-      });
-      try {
-        const { client, res } = await create(fun({ styleId: bare.id }), 60);
-        expect(res.status).toBe(400);
-        expect(res.body.code).toBe('STYLE_UNAVAILABLE');
-        expect(await balance(client)).toBe(60);
-        const listed = (
-          await client.get('/api/creations/styles').expect(200)
-        ).body.styles.map((s: { id: string }) => s.id);
-        expect(listed).not.toContain(bare.id);
-        expect(listed).toContain(motionStyle);
-      } finally {
-        await prisma.preset.delete({ where: { id: bare.id } });
-      }
-    });
-
-    it('une vidéo « pub » sans style est refusée avec un vrai fournisseur (aucune vidéo de référence à envoyer)', async () => {
-      const { client, res } = await create(
-        {
-          kind: 'pub',
-          format: '9:16',
-          consent: 'true',
-          prompt: 'Zoom sur mon produit',
-        },
-        60,
+    it('1080p, 30 s, 3:4 : tout part au fournisseur tel que choisi, et 480 crédits sont réservés', async () => {
+      const { client, creation } = await create(
+        fun({ resolution: '1080p', durationSeconds: '30', format: '3:4' }),
+        600,
       );
-      expect(res.status).toBe(400);
-      expect(res.body.code).toBe('STYLE_UNAVAILABLE');
-      expect(provider.submitted).toHaveLength(0);
-      expect(await balance(client)).toBe(60);
+      expect(creation.credits).toBe(480);
+      expect(provider.submitted[0].input).toMatchObject({
+        duration: 30,
+        resolution: '1080p',
+        aspect_ratio: '3:4',
+      });
+      expect(await balance(client)).toBe(120);
     });
   });
 });

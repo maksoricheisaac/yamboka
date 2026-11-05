@@ -273,8 +273,14 @@ describe('Administration (e2e)', () => {
 
   describe('Tendances : mise à la une', () => {
     it('décision éditoriale de l’administrateur, distincte de la publication, vérifiée côté serveur', async () => {
-      const preset = await prisma.preset.findFirstOrThrow({
-        where: { name: 'Danse afro' },
+      // Une idée non publiée, créée pour le test (les idées de départ sont déjà publiées).
+      const preset = await prisma.preset.create({
+        data: {
+          name: `Idée à la une ${Date.now()}`,
+          category: 'test',
+          type: 'LOOK',
+          visible: false,
+        },
       });
       const { client } = await customer();
       const stylesOf = async () =>
@@ -366,7 +372,7 @@ describe('Administration (e2e)', () => {
         .post('/api/admin/packs', {
           name: 'Quatrième',
           price: 7000,
-          credits: 1700,
+          credits: 700,
           bonusPercent: 0,
           reason: 'Pack de test',
         })

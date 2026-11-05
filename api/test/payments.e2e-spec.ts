@@ -74,7 +74,7 @@ describe('Paiements simulés (e2e)', () => {
         status: 'PENDING',
         packName: 'Starter',
         amountFcfa: 5000,
-        credits: 1250, // crédits du pack ; le bonus de premier achat n'est connu qu'à la confirmation
+        credits: 500, // crédits du pack ; le bonus de premier achat n'est connu qu'à la confirmation
         bonusCredits: 0,
         operator: 'MTN',
         simulated: true,
@@ -93,7 +93,7 @@ describe('Paiements simulés (e2e)', () => {
       expect(res.status).toBe(201);
       expect(res.body.payment).toMatchObject({
         amountFcfa: 5000,
-        credits: 1250,
+        credits: 500,
       });
     });
 
@@ -206,11 +206,11 @@ describe('Paiements simulés (e2e)', () => {
       expect(done.body.payment.status).toBe('SUCCESS');
       expect(done.body.payment.creditedAt).not.toBeNull();
 
-      expect(await creditsOf(client)).toBe(1250 + 250);
+      expect(await creditsOf(client)).toBe(500 + 100);
       const rows = await ledgerOfPayment(id);
       expect(rows.map((r) => `${r.type}:${r.amount}`).sort()).toEqual([
-        'FIRST_PURCHASE_BONUS:250',
-        'PURCHASE:1250',
+        'FIRST_PURCHASE_BONUS:100',
+        'PURCHASE:500',
       ]);
       // Les crédits achetés expirent dans 12 mois.
       const months =
@@ -221,14 +221,14 @@ describe('Paiements simulés (e2e)', () => {
       const notif = await prisma.notification.findFirstOrThrow({
         where: { userId, type: 'PAYMENT_SUCCESS' },
       });
-      expect(notif.body).toContain('1500 crédits');
+      expect(notif.body).toContain('600 crédits');
 
       const receipt = await client
         .get(`/api/payments/${id}/receipt`)
         .expect(200);
       expect(receipt.body.receipt).toMatchObject({
         amountFcfa: 5000,
-        credits: 1500,
+        credits: 600,
       });
       expect(receipt.body.receipt.receiptNumber).toMatch(/^YAM-/);
     });
@@ -247,7 +247,7 @@ describe('Paiements simulés (e2e)', () => {
         await simulate(client, body.payment.id, 'success');
         const rows = await ledgerOfPayment(body.payment.id);
         expect(rows.map((r) => r.type)).toEqual(['PURCHASE']);
-        expect(await creditsOf(client)).toBe(2600);
+        expect(await creditsOf(client)).toBe(1000);
       } finally {
         await prisma.creditPack.update({
           where: { id: pack.id },
@@ -269,10 +269,10 @@ describe('Paiements simulés (e2e)', () => {
         const { body } = await buy(client, 'Pro');
         const done = await simulate(client, body.payment.id, 'success');
         expect(done.body.payment).toMatchObject({
-          credits: 3900,
-          bonusCredits: 1300,
+          credits: 1500,
+          bonusCredits: 500,
         });
-        expect(await creditsOf(client)).toBe(3900);
+        expect(await creditsOf(client)).toBe(1500);
       } finally {
         await prisma.creditPack.update({
           where: { id: pack.id },
@@ -291,7 +291,7 @@ describe('Paiements simulés (e2e)', () => {
       try {
         const { body } = await buy(client, 'Pro');
         await simulate(client, body.payment.id, 'success');
-        expect(await creditsOf(client)).toBe(2600);
+        expect(await creditsOf(client)).toBe(1000);
       } finally {
         await prisma.setting.update({
           where: { key: 'firstPurchaseBonusEnabled' },
@@ -304,10 +304,10 @@ describe('Paiements simulés (e2e)', () => {
       const { client } = await verifiedClient(app);
       const first = (await buy(client, 'Pro')).body.payment.id;
       await simulate(client, first, 'success');
-      expect(await creditsOf(client)).toBe(3120);
+      expect(await creditsOf(client)).toBe(1200);
       const second = (await buy(client, 'Starter')).body.payment.id;
       await simulate(client, second, 'success');
-      expect(await creditsOf(client)).toBe(3120 + 1250);
+      expect(await creditsOf(client)).toBe(1200 + 500);
       const bonuses = await prisma.creditLedger.count({
         where: { type: 'FIRST_PURCHASE_BONUS', payment: { id: first } },
       });
@@ -322,7 +322,7 @@ describe('Paiements simulés (e2e)', () => {
       expect(await creditsOf(client)).toBe(0);
       const ok = (await buy(client, 'Starter')).body.payment.id;
       await simulate(client, ok, 'success');
-      expect(await creditsOf(client)).toBe(1250 + 250);
+      expect(await creditsOf(client)).toBe(500 + 100);
     });
 
     it('deux premiers paiements confirmés en même temps : un seul bonus', async () => {
@@ -340,14 +340,14 @@ describe('Paiements simulés (e2e)', () => {
       });
       expect(bonuses).toHaveLength(1);
       const total = await creditsOf(client);
-      expect([2600 + 1250 + 520, 2600 + 1250 + 250]).toContain(total);
+      expect([1000 + 500 + 200, 1000 + 500 + 100]).toContain(total);
     });
 
     it('callbacks dupliqués simultanés : crédité une seule fois (recette)', async () => {
       const { client } = await verifiedClient(app);
       const { body } = await buy(client, 'Starter');
       await simulate(client, body.payment.id, 'success', 5);
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
       expect(await ledgerOfPayment(body.payment.id)).toHaveLength(2);
     });
 
@@ -366,7 +366,7 @@ describe('Paiements simulés (e2e)', () => {
       expect(
         posts.every((r) => r.status === 200 && r.body.received === true),
       ).toBe(true);
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
     });
 
     it('plusieurs vérifications simultanées : une seule crédite', async () => {
@@ -379,7 +379,7 @@ describe('Paiements simulés (e2e)', () => {
       await Promise.all(
         Array.from({ length: 10 }, () => payments.verify(body.payment.id)),
       );
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
       expect(await ledgerOfPayment(body.payment.id)).toHaveLength(2);
     });
   });
@@ -487,7 +487,7 @@ describe('Paiements simulés (e2e)', () => {
 
         const back = await simulate(client, body.payment.id, 'success');
         expect(back.body.payment.status).toBe('SUCCESS');
-        expect(await creditsOf(client)).toBe(1500);
+        expect(await creditsOf(client)).toBe(600);
       },
     );
   });
@@ -504,10 +504,10 @@ describe('Paiements simulés (e2e)', () => {
       expect(await creditsOf(client)).toBe(0);
 
       await payments.reconcile();
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
       await payments.reconcile();
       await payments.reconcile();
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
     });
 
     it('déclare échoué un paiement jamais confirmé au bout de 24 h', async () => {
@@ -551,7 +551,7 @@ describe('Paiements simulés (e2e)', () => {
         (await client.get(`/api/payments/${body.payment.id}`)).body.payment
           .status,
       ).toBe('SUCCESS');
-      expect(await creditsOf(client)).toBe(1500);
+      expect(await creditsOf(client)).toBe(600);
     });
 
     it('un paiement qui n’a jamais joint le fournisseur est abandonné après 10 minutes', async () => {
@@ -566,7 +566,7 @@ describe('Paiements simulés (e2e)', () => {
           country: 'CG',
           currency: 'XAF',
           amount: 5000,
-          credits: 1250,
+          credits: 500,
           gateway: 'mock',
           operator: 'MTN',
           payerPhone: PHONE,
@@ -649,9 +649,9 @@ describe('Paiements simulés (e2e)', () => {
       const balance = (await client.get('/api/credits/balance').expect(200))
         .body;
       expect(balance).toEqual({
-        credits: 1500,
-        creditValueFcfa: 4,
-        valueFcfa: 1500 * 4,
+        credits: 600,
+        creditValueFcfa: 10,
+        valueFcfa: 600 * 10,
       });
 
       const ledger = (await client.get('/api/credits/ledger').expect(200)).body;
@@ -660,8 +660,8 @@ describe('Paiements simulés (e2e)', () => {
           .map((i: { type: string; amount: number }) => [i.type, i.amount])
           .sort(),
       ).toEqual([
-        ['FIRST_PURCHASE_BONUS', 250],
-        ['PURCHASE', 1250],
+        ['FIRST_PURCHASE_BONUS', 100],
+        ['PURCHASE', 500],
       ]);
       expect(ledger.nextCursor).toBeNull();
       expect((await ledgerOf(app, userId)).length).toBe(2);
