@@ -9,3 +9,4 @@ export * from './admin';
 export * from './admin-views';
 export * from './generations';
 export * from './notifications';
+export * from './pricing';

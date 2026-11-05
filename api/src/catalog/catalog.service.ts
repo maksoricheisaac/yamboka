@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { PackView, ProductView, QuoteView } from '@yamboka/shared';
-import { VIDEO_SECONDS } from '@yamboka/shared';
+import { VIDEO_RESOLUTIONS, packEquivalents } from '@yamboka/shared';
+import type { CreditRates } from '@yamboka/shared';
+import { WAN_MODEL } from '../generation/models';
 import { CreditsService } from '../credits/credits.service';
-import { creditsPerSecond } from '../billing/credits';
 import type { GenerationProduct } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -50,7 +51,17 @@ export class CatalogService {
       }),
       this.prisma.generationProduct.findMany({ where: { active: true } }),
     ]);
-    const perSecond = await this.referenceCreditsPerSecond(products);
+    // Tarifs par résolution : lus en base (produits vidéo actifs), jamais en dur.
+    const rates = {} as CreditRates;
+    for (const r of VIDEO_RESOLUTIONS) {
+      rates[r] =
+        products.find(
+          (p) =>
+            p.resolution === r &&
+            p.billingUnit === 'SECOND' &&
+            p.providerModel === WAN_MODEL,
+        )?.creditsPerUnit ?? 0;
+    }
 
     return packs.map((p) => {
       const total = packTotalCredits({
@@ -67,37 +78,8 @@ export class CatalogService {
         bonusPercent: p.bonusPercent,
         totalCredits: total,
         featured: p.featured,
-        equivalent: {
-          videos: perSecond
-            ? Math.floor(total / (perSecond * VIDEO_SECONDS))
-            : 0,
-        },
+        equivalent: packEquivalents(total, rates),
       };
-    });
-  }
-
-  /**
-   * Crédits par seconde du modèle par défaut (base des « ≈ N vidéos »), calculés depuis son prix en $/s.
-   * Sans modèle par défaut, repli sur le produit vidéo actif.
-   */
-  private async referenceCreditsPerSecond(
-    products: GenerationProduct[],
-  ): Promise<number> {
-    const model = await this.prisma.modelPricing.findFirst({
-      where: { isDefault: true, active: true },
-    });
-    if (!model) {
-      return (
-        products.find((p) => p.billingUnit === 'SECOND')?.creditsPerUnit ?? 0
-      );
-    }
-    const [fcfaPerUsd, fcfaPerCredit] = await Promise.all([
-      this.settings.get('usdToXafRate'),
-      this.settings.get('hfCostFcfaPerCredit'),
-    ]);
-    return creditsPerSecond(model.usdPerSecond.toString(), {
-      fcfaPerUsd,
-      fcfaPerCredit,
     });
   }
 

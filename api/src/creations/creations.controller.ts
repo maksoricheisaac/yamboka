@@ -22,9 +22,10 @@ import type {
   CreationView,
   ReportCreationInput,
   StyleView,
+  CreationConfig,
 } from '@yamboka/shared';
 import {
-  CREATION_KINDS,
+  SUGGESTION_AUDIENCES,
   MAX_UPLOAD_BYTES,
   createCreationSchema,
   reportCreationSchema,
@@ -36,7 +37,7 @@ import type { AuthUser } from '../common/decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { CreationsService, type UploadedImage } from './creations.service';
 
-const stylesQuery = z.object({ kind: z.enum(CREATION_KINDS).optional() });
+const stylesQuery = z.object({ audience: z.enum(SUGGESTION_AUDIENCES).optional() });
 const listQuery = z.object({
   cursor: z.uuid().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(24),
@@ -54,12 +55,20 @@ export class CreationsController {
 
   @Get('styles')
   @ApiOperation({
-    summary: 'Styles proposés, avec leur coût en crédits (calculé côté serveur)',
+    summary: 'Idées proposées (texte et réglages par défaut, modifiables par le client)',
   })
   async styles(
     @Query(new ZodPipe(stylesQuery)) q: z.infer<typeof stylesQuery>,
   ): Promise<{ styles: StyleView[] }> {
-    return { styles: await this.creations.listStyles(q.kind) };
+    return { styles: await this.creations.listStyles(q.audience) };
+  }
+
+  @Get('config')
+  @ApiOperation({
+    summary: 'Tarifs par résolution, valeur du crédit et seuil de confirmation (lus en base)',
+  })
+  async config(): Promise<CreationConfig> {
+    return this.creations.config();
   }
 
   @Get('styles/:id/thumbnail')

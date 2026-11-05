@@ -1,43 +1,44 @@
 import { modelSpecOf } from './models';
 
 const ctx = {
-  prompt: 'Ma robe en wax',
+  prompt: 'La caméra tourne lentement autour des chaussures.',
   imageUrl: 'https://files.test/photo.jpg',
-  videoUrl: 'https://files.test/ref.mp4',
   format: '9:16',
   resolution: '480p',
+  durationSeconds: 5,
+  audio: true,
 };
 
 describe('modelSpecOf', () => {
-  it.each([
-    'higgsfield/genjutsu-light/motion-transfer/v1.0',
-    'higgsfield/genjutsu/motion-transfer/v1.0',
-  ])(
-    '%s : vidéo de référence + photo, résolution, sans texte ni format',
-    (model) => {
-      const spec = modelSpecOf(model)!;
-      expect(spec).toMatchObject({
-        usesPhoto: true,
-        needsReferenceVideo: true,
-        formats: null,
-      });
-      expect(spec.build(ctx)).toEqual({
-        video_url: ctx.videoUrl,
-        image_urls: [ctx.imageUrl],
-        resolution: '480p',
-      });
-      expect(spec.build({ ...ctx, resolution: null })).not.toHaveProperty(
-        'resolution',
-      );
-    },
-  );
+  it('Wan 3.0 image → vidéo : envoie la photo, le texte, la durée, la résolution, le format et l’audio, rien d’autre', () => {
+    const spec = modelSpecOf('alibaba/wan-3.0/image-to-video')!;
+    expect(spec.build(ctx)).toEqual({
+      prompt: ctx.prompt,
+      image_url: ctx.imageUrl,
+      duration: 5,
+      resolution: '480p',
+      aspect_ratio: '9:16',
+      generate_audio: true,
+    });
+  });
 
-  it('un modèle inconnu n’est jamais appelé au hasard', () => {
-    expect(modelSpecOf('a-definir')).toBeUndefined();
-    expect(modelSpecOf('ideogram')).toBeUndefined();
-    // Les modèles d'image sont abandonnés : Yamboka ne les appelle plus.
-    expect(modelSpecOf('xai/grok-imagine-image-2.0')).toBeUndefined();
-    expect(modelSpecOf('higgsfield-ai/soul/v2/standard')).toBeUndefined();
-    expect(modelSpecOf('')).toBeUndefined();
+  it('envoie toujours la résolution et peut couper le son', () => {
+    const spec = modelSpecOf('alibaba/wan-3.0/image-to-video')!;
+    expect(spec.build({ ...ctx, resolution: '1080p', audio: false })).toMatchObject({
+      resolution: '1080p',
+      generate_audio: false,
+    });
+  });
+
+  it('un modèle inconnu n’est jamais appelé au hasard (Genjutsu, images, Prime non exposé)', () => {
+    for (const m of [
+      'a-definir',
+      '',
+      'higgsfield/genjutsu-light/motion-transfer/v1.0',
+      'higgsfield/genjutsu-light/object-swap/v1.0',
+      'xai/grok-imagine-image-2.0',
+      'alibaba/wan-3.0-prime/image-to-video',
+    ])
+      expect(modelSpecOf(m)).toBeUndefined();
   });
 });

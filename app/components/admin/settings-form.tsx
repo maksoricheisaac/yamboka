@@ -60,6 +60,9 @@ const GROUPS: { tab: TabId; title: string; fields: Def[] }[] = [
     tab: "generation",
     title: "Limites de génération et seuils d’alerte",
     fields: [
+      { key: "creditValueFcfa", label: "Valeur d’un crédit affichée aux clients (FCFA)", kind: "number" },
+      { key: "generationConfirmCredits", label: "Confirmation avant génération : à partir de (crédits)", kind: "number" },
+      { key: "generationConfirmBalancePercent", label: "Confirmation avant génération : à partir de (% du solde)", kind: "number" },
       { key: "maxConcurrentGenerationsPerUser", label: "Générations simultanées par client", kind: "number" },
       { key: "maxConcurrentGenerationsGlobal", label: "Générations simultanées au total", kind: "number" },
       { key: "providerBalanceAlertUsd", label: "Alerte solde fournisseur (USD)", kind: "number" },

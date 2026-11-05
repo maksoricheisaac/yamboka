@@ -66,10 +66,12 @@ export class CreditsService {
     return _sum.amount ?? 0;
   }
 
-  /** Valeur d'un crédit dans la devise (XAF : 25 FCFA au lancement), paramétrable dans l'admin. */
-  async creditValue(currency = 'XAF', db: Db = this.prisma): Promise<number> {
-    const row = await db.currencySetting.findUnique({ where: { currency } });
-    return row?.creditValue ?? 25;
+  /** Valeur d'un crédit en FCFA (1 crédit = 10 FCFA au tarif Starter), paramétrable dans l'administration. */
+  async creditValue(_currency = 'XAF', db: Db = this.prisma): Promise<number> {
+    const row = await db.setting.findUnique({
+      where: { key: 'creditValueFcfa' },
+    });
+    return typeof row?.value === 'number' && row.value > 0 ? row.value : 10;
   }
 
   // ───────────── Achat et bonus de premier achat ─────────────
