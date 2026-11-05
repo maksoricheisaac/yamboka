@@ -15,7 +15,7 @@ export function ResultActions({ creation, onEdit, extra }: { creation: CreationV
   const [sharing, setSharing] = useState(false);
   const download = mediaUrl(creation.downloadUrl);
   // « Refaire » rouvre le formulaire avec le même style et la même description, à modifier avant de relancer.
-  const redo = new URLSearchParams({ type: creation.kind });
+  const redo = new URLSearchParams();
   if (creation.styleId) redo.set("style", creation.styleId);
   if (creation.prompt) redo.set("prompt", creation.prompt);
   const redoHref = `/app/creer?${redo}`;

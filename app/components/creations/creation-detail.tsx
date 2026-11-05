@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { REPORT_REASONS, type CreationView } from "@yamboka/shared";
-import { Flag, Loader2, ShieldCheck, Trash2, TriangleAlert } from "lucide-react";
+import { Clapperboard, Flag, Loader2, ShieldCheck, Trash2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toaster";
 import { ApiError, apiDelete, apiGet, apiPost } from "@/lib/api-client";
-import { KINDS, creationHeading, credits, isRunning, mediaUrl, ratioOf } from "@/lib/creations";
+import { creationHeading, credits, isRunning, mediaUrl, ratioOf } from "@/lib/creations";
 import { formatDateTime } from "@/lib/format";
 import { CreationMedia } from "./creation-media";
 import { ResultActions } from "./result-actions";
@@ -45,7 +45,6 @@ export function CreationDetail({ initial }: { initial: CreationView }) {
   const [reporting, setReporting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
 
-  const Icon = KINDS[c.kind].icon;
   const poster = mediaUrl(c.thumbnailUrl);
 
   async function remove() {
@@ -124,7 +123,7 @@ export function CreationDetail({ initial }: { initial: CreationView }) {
       <div className="space-y-5">
         <div className="space-y-2">
           <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
-            <Icon className="size-4" aria-hidden /> {KINDS[c.kind].label}
+            <Clapperboard className="size-4" aria-hidden /> Vidéo
           </p>
           <h1 className="text-3xl font-bold">{creationHeading(c)}</h1>
           <StatusPill creation={c} />
@@ -133,7 +132,7 @@ export function CreationDetail({ initial }: { initial: CreationView }) {
         {c.status === "COMPLETED" && <ResultActions creation={c} />}
         {c.status === "FAILED" && (
           <Button asChild size="lg" className="h-12 w-full">
-            <Link href={`/app/creer?${new URLSearchParams({ type: c.kind, ...(c.styleId ? { style: c.styleId } : {}), ...(c.prompt ? { prompt: c.prompt } : {}) })}`}>Réessayer</Link>
+            <Link href={`/app/creer?${new URLSearchParams({ ...(c.styleId ? { style: c.styleId } : {}), ...(c.prompt ? { prompt: c.prompt } : {}) })}`}>Réessayer</Link>
           </Button>
         )}
 

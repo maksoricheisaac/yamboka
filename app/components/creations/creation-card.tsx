@@ -1,7 +1,7 @@
 import type { CreationView } from "@yamboka/shared";
-import { Play, TriangleAlert } from "lucide-react";
+import { Clapperboard, Play, TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { KINDS, creationTitle, isRunning, mediaUrl } from "@/lib/creations";
+import { creationTitle, isRunning, mediaUrl } from "@/lib/creations";
 import { StatusPill } from "./status-pill";
 
 /**
@@ -11,7 +11,6 @@ import { StatusPill } from "./status-pill";
 export function CreationCard({ creation, priority = false }: { creation: CreationView; priority?: boolean }) {
   const thumb = mediaUrl(creation.thumbnailUrl);
   const running = isRunning(creation);
-  const Icon = KINDS[creation.kind].icon;
   return (
     <Link
       href={`/app/creations/${creation.id}`}
@@ -30,7 +29,7 @@ export function CreationCard({ creation, priority = false }: { creation: Creatio
           />
         ) : (
           <div className="grid size-full place-items-center text-muted-foreground">
-            {creation.status === "FAILED" ? <TriangleAlert className="size-8" aria-hidden /> : <Icon className="size-8" aria-hidden />}
+            {creation.status === "FAILED" ? <TriangleAlert className="size-8" aria-hidden /> : <Clapperboard className="size-8" aria-hidden />}
           </div>
         )}
         {running && (
@@ -44,12 +43,12 @@ export function CreationCard({ creation, priority = false }: { creation: Creatio
           </span>
         )}
         <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/90 px-2 py-0.5 text-[0.7rem] font-semibold shadow-sm">
-          <Icon className="size-3" aria-hidden /> {KINDS[creation.kind].short}
+          <Clapperboard className="size-3" aria-hidden /> Vidéo
         </span>
         <span className="absolute right-2 top-2 rounded-full bg-foreground/70 px-1.5 py-0.5 text-[0.65rem] font-semibold text-background">{creation.options.format}</span>
       </div>
       <div className="space-y-1.5 p-3">
-        <p className="truncate text-sm font-semibold">{creation.styleName ?? KINDS[creation.kind].label}</p>
+        <p className="truncate text-sm font-semibold">{creation.styleName ?? "Votre vidéo"}</p>
         <StatusPill creation={creation} />
       </div>
     </Link>

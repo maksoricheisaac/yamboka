@@ -39,7 +39,7 @@ const nextConfig: NextConfig = {
       {
         source: "/app/creer",
         has: [{ type: "query" as const, key: "type", value: "affiche" }],
-        destination: "/app/creer?type=pub",
+        destination: "/app/creer",
         permanent: true,
       },
     ];

@@ -55,7 +55,7 @@ export const USER_NAV: NavGroup[] = [
       { title: "Tableau de bord", href: "/app", icon: LayoutDashboard, exact: true },
       { title: "Créer", href: "/app/creer", icon: Sparkles },
       { title: "Mes créations", href: "/app/creations", icon: GalleryVertical },
-      { title: "Tendances", href: "/app/tendances", icon: TrendingUp },
+      { title: "Idées", href: "/app/tendances", icon: TrendingUp },
     ],
   },
   {
@@ -127,7 +127,7 @@ export const USER_TABS: { title: string; href: string; icon: LucideIcon; exact?:
   { title: "Accueil", href: "/app", icon: LayoutDashboard, exact: true },
   { title: "Créer", href: "/app/creer", icon: Sparkles },
   { title: "Créations", href: "/app/creations", icon: GalleryVertical },
-  { title: "Tendances", href: "/app/tendances", icon: TrendingUp },
+  { title: "Idées", href: "/app/tendances", icon: TrendingUp },
   { title: "Crédits", href: "/app/credits", icon: Coins },
 ];
 
