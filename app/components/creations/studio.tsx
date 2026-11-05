@@ -1,8 +1,23 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { MAX_PROMPT_LENGTH, type CreationFormat, type CreationKind, type CreationView, type StyleView } from "@yamboka/shared";
-import { Coins, Loader2, Pencil, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
+import {
+  DEFAULT_FORMAT,
+  DEFAULT_RESOLUTION,
+  MAX_PROMPT_LENGTH,
+  RESOLUTION_LABELS,
+  VIDEO_DURATION,
+  VIDEO_RESOLUTIONS,
+  isValidDuration,
+  needsConfirmation,
+  videoCostCredits,
+  type CreationConfig,
+  type CreationFormat,
+  type CreationView,
+  type StyleView,
+  type VideoResolution,
+} from "@yamboka/shared";
+import { Coins, Loader2, Pencil, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -12,7 +27,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, apiGet, apiUpload } from "@/lib/api-client";
-import { FORMATS, KINDS, KIND_ORDER, PROMPT_HINTS, credits, isRunning, ratioValue } from "@/lib/creations";
+import { FORMATS, PROMPT_HINT, credits, isRunning, ratioValue } from "@/lib/creations";
 import { formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CreationMedia } from "./creation-media";
@@ -23,15 +38,16 @@ import { StylePicker } from "./style-picker";
 
 interface StudioProps {
   styles: StyleView[];
+  /** Tarifs par résolution et garde-fou, lus côté serveur. */
+  config: CreationConfig;
   balance: number;
   emailVerified: boolean;
-  initialKind: CreationKind;
-  /** Style demandé depuis « Tendances » : la tendance (fun) ou le modèle d'une pub. */
+  /** Idée demandée depuis « Idées » : remplit le texte et les réglages par défaut (tous modifiables). */
   initialStyleId: string | null;
   initialPrompt: string;
 }
 
-type FieldErrors = Partial<Record<"photo" | "style" | "prompt" | "consent", string>>;
+type FieldErrors = Partial<Record<"photo" | "prompt" | "consent" | "duration" | "confirm", string>>;
 
 /** Un pictogramme à la proportion exacte du format : on comprend sans lire. */
 function RatioGlyph({ format }: { format: CreationFormat }) {
@@ -42,20 +58,21 @@ function RatioGlyph({ format }: { format: CreationFormat }) {
   return <span aria-hidden className="block rounded-[3px] border-2 border-current" style={{ width, height }} />;
 }
 
-export function Studio({ styles, balance, emailVerified, initialKind, initialStyleId, initialPrompt }: StudioProps) {
+export function Studio({ styles, config, balance, emailVerified, initialStyleId, initialPrompt }: StudioProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const [kind, setKind] = useState<CreationKind>(initialKind);
-  // Tendance choisie (fun), et modèle facultatif d'une pub (venu de « Tendances »).
-  const initialStyle = styles.find((s) => s.id === initialStyleId);
-  const [trendId, setTrendId] = useState<string | null>(initialStyle?.kind === "fun" ? initialStyle.id : (styles.find((s) => s.kind === "fun")?.id ?? null));
-  const [modelId, setModelId] = useState<string | null>(initialStyle && initialStyle.kind !== "fun" ? initialStyle.id : null);
+  const initialStyle = styles.find((s) => s.id === initialStyleId) ?? null;
+  const [styleId, setStyleId] = useState<string | null>(initialStyle?.id ?? null);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState(initialPrompt);
-  const [format, setFormat] = useState<CreationFormat>("9:16");
+  const [prompt, setPrompt] = useState(initialPrompt || initialStyle?.prompt || "");
+  const [format, setFormat] = useState<CreationFormat>(initialStyle?.format ?? DEFAULT_FORMAT);
+  const [resolution, setResolution] = useState<VideoResolution>(initialStyle?.resolution ?? DEFAULT_RESOLUTION);
+  const [duration, setDuration] = useState<number>(initialStyle?.durationSeconds ?? VIDEO_DURATION.default);
   const [consent, setConsent] = useState(false);
+  const [personPhoto, setPersonPhoto] = useState(false);
+  const [confirmCost, setConfirmCost] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -73,16 +90,26 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
     setErrors((e) => ({ ...e, photo: undefined }));
   }
 
-  const fun = kind === "fun";
-  const kindStyles = styles.filter((s) => s.kind === kind);
-  const model = !fun ? (styles.find((s) => s.id === modelId && s.kind === kind) ?? null) : null;
-  // Style qui sera utilisé : la tendance choisie, le modèle, ou le style par défaut du type (choisi par le serveur).
-  const style = fun ? (styles.find((s) => s.id === trendId) ?? null) : (model ?? kindStyles[0] ?? null);
-  const cost = style?.credits ?? 0;
+  /** Choisir une idée remplit le texte et les réglages proposés ; le client peut tout modifier ensuite. */
+  function pickIdea(id: string) {
+    const idea = styles.find((x) => x.id === id);
+    if (!idea) return;
+    setStyleId(id);
+    if (idea.prompt) setPrompt(idea.prompt);
+    if (idea.format) setFormat(idea.format);
+    if (idea.resolution) setResolution(idea.resolution);
+    if (idea.durationSeconds) setDuration(idea.durationSeconds);
+    setErrors((e) => ({ ...e, prompt: undefined }));
+  }
+
+  const idea = styles.find((x) => x.id === styleId) ?? null;
+  const durationOk = isValidDuration(duration);
+  // Le serveur recalcule ce coût : l'affichage et le débit utilisent la même fonction.
+  const cost = durationOk ? videoCostCredits(config.rates, resolution, duration) : 0;
   const after = balance - cost;
   const enough = after >= 0;
+  const mustConfirm = durationOk && needsConfirmation(cost, balance, config.guard);
   const tracking = creationId !== null;
-  const effectiveFormat: CreationFormat = fun ? "9:16" : format;
 
   const { data: creation } = useQuery({
     queryKey: ["creation", creationId],
@@ -102,10 +129,11 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
 
   function validate(): FieldErrors {
     const e: FieldErrors = {};
-    if (!photo) e.photo = fun ? "Ajoutez votre selfie." : "Ajoutez la photo de votre produit.";
-    if (fun && !style) e.style = "Choisissez une tendance.";
-    if (!fun && !prompt.trim()) e.prompt = "Décrivez ce que vous souhaitez.";
+    if (!photo) e.photo = "Ajoutez votre photo.";
+    if (!prompt.trim()) e.prompt = "Décrivez votre vidéo en quelques mots.";
+    if (!durationOk) e.duration = `La durée doit être comprise entre ${VIDEO_DURATION.min} et ${VIDEO_DURATION.max} secondes.`;
     if (!consent) e.consent = "Confirmez que vous avez le droit d’utiliser cette photo.";
+    if (mustConfirm && !confirmCost) e.confirm = `Confirmez la dépense de ${credits(cost)}.`;
     return e;
   }
 
@@ -118,12 +146,13 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
     try {
       const form = new FormData();
       form.set("photo", photo, "photo.jpg");
-      form.set("kind", kind);
-      if (fun && style) form.set("styleId", style.id);
-      if (model) form.set("styleId", model.id);
-      form.set("format", effectiveFormat);
+      if (idea) form.set("styleId", idea.id);
+      form.set("format", format);
+      form.set("resolution", resolution);
+      form.set("durationSeconds", String(duration));
       form.set("consent", "true");
-      if (prompt.trim()) form.set("prompt", prompt.trim());
+      form.set("personPhoto", String(personPhoto));
+      form.set("prompt", prompt.trim());
       const { creation: created } = await apiUpload<{ creation: CreationView }>("/creations", form);
       queryClient.setQueryData(["creation", created.id], created);
       setCreationId(created.id);
@@ -134,7 +163,7 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
         for (const d of err.details) {
           if (d.field === "prompt") next.prompt = d.message;
           else if (d.field === "consent") next.consent = d.message;
-          else if (d.field === "styleId") next.style = d.message;
+          else if (d.field === "durationSeconds") next.duration = d.message;
         }
         setErrors(next);
         if (Object.keys(next).length === 0) setFormError(err.message);
@@ -151,81 +180,40 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
     setFormError(null);
   }
 
-  const canSubmit = emailVerified && !sending && !!style && enough;
+  const canSubmit = emailVerified && !sending && durationOk && enough;
   const showPreview = tracking || !!photoUrl;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] lg:items-start lg:gap-10">
       {/* ───────── Formulaire ───────── */}
       <div className="min-w-0 space-y-6">
-        <div role="tablist" aria-label="Type de création" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
-          {KIND_ORDER.map((k) => {
-            const Icon = KINDS[k].icon;
-            const active = kind === k;
-            return (
-              <button
-                key={k}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                disabled={tracking}
-                onClick={() => {
-                  setKind(k);
-                  setErrors({});
-                  setFormError(null);
-                }}
-                className={cn(
-                  "flex h-11 items-center justify-center gap-1.5 rounded-lg px-1 text-sm font-semibold outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/60 disabled:opacity-60",
-                  active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon className="size-4 shrink-0" aria-hidden />
-                <span className="truncate">{KINDS[k].label}</span>
-              </button>
-            );
-          })}
-        </div>
-
         <section className="space-y-2.5" aria-labelledby="photo-title">
-          <h2 id="photo-title" className="font-heading text-base font-bold">{KINDS[kind].photoLabel}</h2>
-          <PhotoDrop label={fun ? "Ajouter votre selfie" : "Ajouter une photo"} previewUrl={photoUrl} onPick={pickPhoto} disabled={tracking} error={errors.photo} />
+          <h2 id="photo-title" className="font-heading text-base font-bold">Votre photo</h2>
+          <PhotoDrop label="Ajouter une photo" previewUrl={photoUrl} onPick={pickPhoto} disabled={tracking} error={errors.photo} />
         </section>
 
-        {fun && (
-          <section className="space-y-2.5" aria-labelledby="trend-title">
-            <h2 id="trend-title" className="font-heading text-base font-bold">Choisissez une tendance</h2>
-            {kindStyles.length === 0 ? (
-              <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">Aucune tendance n’est disponible pour le moment.</p>
-            ) : (
-              <StylePicker styles={kindStyles} value={trendId} onChange={setTrendId} legend="Tendances" disabled={tracking} />
-            )}
-            {errors.style && <p role="alert" className="text-sm font-medium text-destructive">{errors.style}</p>}
+        {styles.length > 0 && (
+          <section className="space-y-2.5" aria-labelledby="idea-title">
+            <h2 id="idea-title" className="font-heading text-base font-bold">
+              Partir d’une idée <span className="ml-1.5 text-sm font-normal text-muted-foreground">(facultatif)</span>
+            </h2>
+            <StylePicker styles={styles} value={styleId} onChange={pickIdea} legend="Idées" disabled={tracking} />
+            {idea?.photoHint && <p className="text-sm text-muted-foreground">Conseil photo : {idea.photoHint}</p>}
           </section>
         )}
 
         <div className="space-y-2.5">
           <div className="flex items-baseline justify-between gap-3">
-            <Label htmlFor="creation-prompt" id="prompt-title" className="font-heading text-base font-bold">
-              {fun ? "Instructions" : "Décrivez ce que vous voulez"}
-              {fun && <span className="ml-1.5 text-sm font-normal text-muted-foreground">(facultatif)</span>}
-            </Label>
+            <Label htmlFor="creation-prompt" id="prompt-title" className="font-heading text-base font-bold">Décrivez votre vidéo</Label>
             <span className="text-xs tabular-nums text-muted-foreground" aria-hidden>{prompt.length}/{MAX_PROMPT_LENGTH}</span>
           </div>
-          {model && (
-            <p className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-primary/10 py-1 pl-3 pr-1 text-sm font-medium text-primary">
-              <span className="truncate">Modèle : {model.name}</span>
-              <button type="button" onClick={() => setModelId(null)} disabled={tracking} aria-label="Retirer le modèle" className="grid size-6 shrink-0 place-items-center rounded-full outline-none hover:bg-primary/15 focus-visible:ring-2 focus-visible:ring-ring">
-                <X className="size-3.5" aria-hidden />
-              </button>
-            </p>
-          )}
           <Textarea
             id="creation-prompt"
             value={prompt}
             maxLength={MAX_PROMPT_LENGTH}
             rows={5}
             disabled={tracking}
-            placeholder={PROMPT_HINTS[kind]}
+            placeholder={PROMPT_HINT}
             aria-invalid={!!errors.prompt}
             aria-describedby={errors.prompt ? "prompt-error" : undefined}
             onChange={(e) => {
@@ -237,28 +225,70 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
           {errors.prompt && <p id="prompt-error" role="alert" className="text-sm font-medium text-destructive">{errors.prompt}</p>}
         </div>
 
-        {!fun && (
-          <section className="space-y-2.5" aria-labelledby="format-title">
-            <h2 id="format-title" className="font-heading text-base font-bold">Format</h2>
-            <div role="radiogroup" aria-labelledby="format-title" className="grid grid-cols-3 gap-2">
-              {FORMATS.map((f) => (
-                <label key={f.value} className="cursor-pointer">
-                  <input type="radio" name="format" value={f.value} checked={format === f.value} onChange={() => setFormat(f.value)} disabled={tracking} className="peer sr-only" />
-                  <span className="flex h-full min-h-20 flex-col items-center justify-center gap-1.5 rounded-xl border bg-card px-2 py-2.5 text-muted-foreground transition-colors peer-checked:border-primary peer-checked:bg-primary/8 peer-checked:text-primary peer-checked:ring-2 peer-checked:ring-primary/30 peer-focus-visible:ring-3 peer-focus-visible:ring-ring/70 peer-disabled:opacity-60">
-                    <span className="grid h-8 place-items-center">
-                      <RatioGlyph format={f.value} />
-                    </span>
-                    <span className="text-sm font-semibold text-foreground">{f.label}</span>
-                    <span className="text-[0.7rem] leading-none">{f.value}</span>
+        <section className="space-y-2.5" aria-labelledby="format-title">
+          <h2 id="format-title" className="font-heading text-base font-bold">Format</h2>
+          <div role="radiogroup" aria-labelledby="format-title" className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+            {FORMATS.map((f) => (
+              <label key={f.value} className="cursor-pointer">
+                <input type="radio" name="format" value={f.value} checked={format === f.value} onChange={() => setFormat(f.value)} disabled={tracking} className="peer sr-only" />
+                <span className="flex h-full min-h-20 flex-col items-center justify-center gap-1.5 rounded-xl border bg-card px-2 py-2.5 text-muted-foreground transition-colors peer-checked:border-primary peer-checked:bg-primary/8 peer-checked:text-primary peer-checked:ring-2 peer-checked:ring-primary/30 peer-focus-visible:ring-3 peer-focus-visible:ring-ring/70 peer-disabled:opacity-60">
+                  <span className="grid h-8 place-items-center">
+                    <RatioGlyph format={f.value} />
                   </span>
-                </label>
-              ))}
-            </div>
-            <p className="text-sm text-muted-foreground" aria-live="polite">
-              {FORMATS.find((f) => f.value === format)?.where}
-            </p>
-          </section>
-        )}
+                  <span className="text-center text-xs font-semibold leading-tight text-foreground">{f.label}</span>
+                  <span className="text-[0.7rem] leading-none">{f.value}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            {FORMATS.find((f) => f.value === format)?.where}
+          </p>
+        </section>
+
+        <section className="space-y-2.5" aria-labelledby="resolution-title">
+          <h2 id="resolution-title" className="font-heading text-base font-bold">Qualité</h2>
+          <div role="radiogroup" aria-labelledby="resolution-title" className="grid grid-cols-3 gap-2">
+            {VIDEO_RESOLUTIONS.map((r) => (
+              <label key={r} className="cursor-pointer">
+                <input type="radio" name="resolution" value={r} checked={resolution === r} onChange={() => setResolution(r)} disabled={tracking} className="peer sr-only" />
+                <span className="flex h-full flex-col items-center justify-center gap-0.5 rounded-xl border bg-card px-2 py-3 text-center transition-colors peer-checked:border-primary peer-checked:bg-primary/8 peer-checked:ring-2 peer-checked:ring-primary/30 peer-focus-visible:ring-3 peer-focus-visible:ring-ring/70 peer-disabled:opacity-60">
+                  <span className="text-sm font-semibold">{RESOLUTION_LABELS[r]}</span>
+                  <span className="text-[0.7rem] text-muted-foreground">{r}</span>
+                  <span className="text-xs font-medium text-primary">{credits(config.rates[r])} / s</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </section>
+
+        <section className="space-y-2.5" aria-labelledby="duration-title">
+          <div className="flex items-baseline justify-between gap-3">
+            <Label htmlFor="creation-duration" id="duration-title" className="font-heading text-base font-bold">Durée</Label>
+            <span className="text-sm font-semibold tabular-nums">{duration} s</span>
+          </div>
+          <input
+            id="creation-duration"
+            type="range"
+            min={VIDEO_DURATION.min}
+            max={VIDEO_DURATION.max}
+            step={1}
+            value={duration}
+            disabled={tracking}
+            onChange={(e) => {
+              setDuration(Number(e.target.value));
+              setErrors((x) => ({ ...x, duration: undefined, confirm: undefined }));
+              setConfirmCost(false);
+            }}
+            aria-describedby={errors.duration ? "duration-error" : undefined}
+            className="h-6 w-full cursor-pointer accent-primary disabled:opacity-60"
+          />
+          <p className="flex justify-between text-xs text-muted-foreground">
+            <span>{VIDEO_DURATION.min} s</span>
+            <span>{VIDEO_DURATION.max} s</span>
+          </p>
+          {errors.duration && <p id="duration-error" role="alert" className="text-sm font-medium text-destructive">{errors.duration}</p>}
+        </section>
 
         {/* ───────── Lancement : coût avant confirmation ───────── */}
         {!tracking && (
@@ -272,6 +302,23 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
                 {errors.consent && <p role="alert" className="text-sm font-medium text-destructive">{errors.consent}</p>}
               </div>
             </div>
+            <div className="flex items-start gap-2.5">
+              <Checkbox id="creation-person" checked={personPhoto} onCheckedChange={(v) => setPersonPhoto(v === true)} className="mt-0.5 size-5" />
+              <Label htmlFor="creation-person" className="cursor-pointer text-[0.8rem] font-normal leading-snug text-muted-foreground">
+                Cette photo montre une personne.
+              </Label>
+            </div>
+            {mustConfirm && enough && (
+              <div className="flex items-start gap-2.5 rounded-xl bg-accent/15 p-2.5">
+                <Checkbox id="creation-confirm" checked={confirmCost} onCheckedChange={(v) => { setConfirmCost(v === true); setErrors((e) => ({ ...e, confirm: undefined })); }} aria-invalid={!!errors.confirm} className="mt-0.5 size-5" />
+                <div className="space-y-0.5">
+                  <Label htmlFor="creation-confirm" className="cursor-pointer text-[0.8rem] font-medium leading-snug">
+                    Cette vidéo coûte {credits(cost)}, soit une part importante de votre solde. Je confirme.
+                  </Label>
+                  {errors.confirm && <p role="alert" className="text-sm font-medium text-destructive">{errors.confirm}</p>}
+                </div>
+              </div>
+            )}
             {!emailVerified && (
               <Alert className="border-accent bg-accent/15" role="status">
                 <AlertDescription>
@@ -284,11 +331,7 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
                 <AlertDescription>{formError}</AlertDescription>
               </Alert>
             )}
-            {!style ? (
-              <p className="rounded-xl bg-muted p-3 text-center text-sm text-muted-foreground" role="status">
-                {fun ? "Choisissez une tendance pour continuer." : "Ce type de création n’est pas disponible pour le moment."}
-              </p>
-            ) : emailVerified && !enough ? (
+            {emailVerified && !enough ? (
               <>
                 <p className="flex items-center gap-2 text-sm font-medium" role="status">
                   <Coins className="size-4 text-primary" aria-hidden />
@@ -304,7 +347,7 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
                 {sending ? "Envoi en cours…" : `Générer · ${credits(cost)}`}
               </Button>
             )}
-            {style && (
+            {durationOk && (
               <p className="text-center text-xs text-muted-foreground">
                 {enough ? `Solde après : ${formatNumber(after)} ${after > 1 ? "crédits" : "crédit"}` : `Solde : ${formatNumber(balance)} ${balance > 1 ? "crédits" : "crédit"}`} · Si la création échoue, vos crédits sont restitués.
               </p>
@@ -315,10 +358,10 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
 
       {/* ───────── Aperçu, attente, résultat ───────── */}
       <aside ref={resultRef} aria-label="Aperçu" className={cn("min-w-0 space-y-4 lg:sticky lg:top-4", !showPreview && "hidden lg:block")}>
-        {!tracking && <CreationPreview format={effectiveFormat} photoUrl={photoUrl} caption={fun && style ? `Tendance : ${style.name}` : undefined} />}
+        {!tracking && <CreationPreview format={format} photoUrl={photoUrl} caption={idea ? `Idée : ${idea.name}` : undefined} />}
 
         {tracking && creation && isRunning(creation) && (
-          <CreationPreview format={effectiveFormat} photoUrl={photoUrl} caption=" ">
+          <CreationPreview format={format} photoUrl={photoUrl} caption=" ">
             <div role="status" className="absolute inset-0 grid place-content-center justify-items-center gap-3 bg-black/55 p-4 text-center text-white backdrop-blur-sm">
               <span aria-hidden className="size-10 animate-spin rounded-full border-4 border-white/25 border-t-accent motion-reduce:animate-none" />
               <div>
@@ -332,7 +375,7 @@ export function Studio({ styles, balance, emailVerified, initialKind, initialSty
         {tracking && creation?.status === "COMPLETED" && <CreationMedia creation={creation} />}
 
         {tracking && creation?.status === "FAILED" && (
-          <CreationPreview format={effectiveFormat} photoUrl={photoUrl} caption=" ">
+          <CreationPreview format={format} photoUrl={photoUrl} caption=" ">
             <div className="absolute inset-0 grid place-content-center justify-items-center gap-2 bg-black/65 p-4 text-center text-white">
               <TriangleAlert className="size-8 text-accent" aria-hidden />
               <p className="font-heading text-base font-bold">La création n’a pas abouti</p>

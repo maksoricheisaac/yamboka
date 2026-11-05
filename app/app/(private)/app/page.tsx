@@ -1,7 +1,7 @@
-import { ArrowRight, CheckCircle2, Circle, Coins } from "lucide-react";
+import { ArrowRight, CheckCircle2, Circle, Clapperboard, Coins, Lightbulb } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { CreationKind, StyleView } from "@yamboka/shared";
+import { VIDEO_DURATION, videoCostCredits, type CreationConfig } from "@yamboka/shared";
 import { VerifyEmailBanner } from "@/components/auth/resend-verification";
 import { CreationsGallery } from "@/components/creations/creations-gallery";
 import { NotificationsCard, type NotificationItem } from "@/components/creations/notifications-card";
@@ -9,7 +9,7 @@ import { CreditReel } from "@/components/studio/credit-reel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth";
-import { KINDS, KIND_ORDER, credits } from "@/lib/creations";
+import { credits } from "@/lib/creations";
 import { formatFcfa } from "@/lib/format";
 import { serverGet } from "@/lib/server-api";
 
@@ -25,14 +25,16 @@ function StepIcon({ done }: { done: boolean }) {
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const [{ styles }, notifications] = await Promise.all([
-    serverGet<{ styles: StyleView[] }>("/creations/styles"),
+  const [config, notifications] = await Promise.all([
+    serverGet<CreationConfig>("/creations/config"),
     serverGet<{ unread: number; items: NotificationItem[] }>("/notifications"),
   ]);
-  const from = (k: CreationKind) => {
-    const costs = styles.filter((s) => s.kind === k).map((s) => s.credits);
-    return costs.length ? Math.min(...costs) : null;
-  };
+  // Prix d'appel : la plus courte vidéo, à la résolution la moins chère.
+  const fromPrice = videoCostCredits(config.rates, "480p", VIDEO_DURATION.min);
+  const actions = [
+    { href: "/app/creer", label: "Créer une vidéo", hint: "Une photo, quelques mots, une vidéo", icon: Clapperboard, price: `Dès ${credits(fromPrice)}` },
+    { href: "/app/tendances", label: "Partir d’une idée", hint: "Des textes et réglages prêts à l’emploi", icon: Lightbulb, price: "Gratuit à parcourir" },
+  ];
   const steps = [
     { label: user.emailVerified ? "Adresse e-mail confirmée" : "Confirmer mon adresse e-mail", done: user.emailVerified, href: "/verifier-email", cta: "Confirmer" },
     { label: "Acheter des crédits", done: user.credits > 0, href: "/app/credits", cta: "Acheter" },
@@ -52,24 +54,23 @@ export default async function DashboardPage() {
       <section aria-labelledby="create-title" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
         <div className="space-y-3">
           <h2 id="create-title" className="sr-only">Créer</h2>
-          <ul className="grid gap-3 sm:grid-cols-3">
-            {KIND_ORDER.map((k, i) => {
-              const Icon = KINDS[k].icon;
-              const price = from(k);
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {actions.map((act, i) => {
+              const Icon = act.icon;
               return (
-                <li key={k}>
+                <li key={act.href}>
                   <Link
-                    href={`/app/creer?type=${k}`}
+                    href={act.href}
                     className={`group relative flex h-full min-h-36 flex-col justify-between gap-6 overflow-hidden rounded-3xl border p-5 shadow-soft outline-none transition-[transform,box-shadow] hover:-translate-y-0.5 focus-visible:ring-3 focus-visible:ring-ring/70 motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${i === 0 ? "bg-primary text-primary-foreground" : "bg-card"}`}
                   >
                     <span className={`grid size-11 place-items-center rounded-2xl ${i === 0 ? "bg-primary-foreground/15" : "bg-primary/10 text-primary"}`}>
                       <Icon className="size-6" aria-hidden />
                     </span>
                     <span>
-                      <span className="block font-heading text-xl font-bold leading-tight">{KINDS[k].label}</span>
-                      <span className={`mt-1 block text-sm ${i === 0 ? "text-primary-foreground/85" : "text-muted-foreground"}`}>{KINDS[k].hint}</span>
+                      <span className="block font-heading text-xl font-bold leading-tight">{act.label}</span>
+                      <span className={`mt-1 block text-sm ${i === 0 ? "text-primary-foreground/85" : "text-muted-foreground"}`}>{act.hint}</span>
                       <span className="mt-3 flex items-center justify-between text-sm font-semibold">
-                        <span>{price === null ? "Bientôt" : `Dès ${credits(price)}`}</span>
+                        <span>{act.price}</span>
                         <ArrowRight className="size-4 transition-transform group-hover:translate-x-1 motion-reduce:transition-none" aria-hidden />
                       </span>
                     </span>

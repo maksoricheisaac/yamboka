@@ -22,7 +22,8 @@ Trois services : **api** (NestJS), **app** (Next.js, espace client et administra
 | `COOKIE_DOMAIN` | **laisser vide** : cookie limité à l'hôte (aucun attribut `Domain`), jamais de cookie de domaine parent |
 | `TRUST_PROXY` | `1` (Traefik) avec le routage Dokploy direct `/api` → API ; plus si un autre saut est ajouté |
 | `API_URL`, `APP_URL`, `WEB_URL` | URL publiques (https) : `https://api.…`, `https://app.…`, `https://…` ; `APP_URL` et `WEB_URL` alimentent CORS et la protection CSRF, `API_URL` est l'adresse directe pour webhooks et intégrations |
-| `SETUP_SECRET` | 24 caractères aléatoires, **uniquement avant l'installation** |
+| `SETUP_SECRET` | 24 caractères minimum, **uniquement avant l'installation** : `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` |
+| `REVALIDATE_SECRET` | 16 caractères minimum, **identique sur l'API et sur `web`** : `node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"` |
 | `EMAIL_PROVIDER` | `smtp` |
 | `EMAIL_FROM`, `EMAIL_REPLY_TO` | expéditeur du domaine autorisé, ex. `Yamboka <no-reply@votre-domaine.com>` |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD` | fournis par l'hébergeur de messagerie (587 + `false`, ou 465 + `true`) |

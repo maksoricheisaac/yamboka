@@ -1,47 +1,20 @@
-import type { CreationFormat, CreationKind, CreationView } from "@yamboka/shared";
-import { Clapperboard, PartyPopper, type LucideIcon } from "lucide-react";
+import type { CreationFormat, CreationView } from "@yamboka/shared";
 
 /** Les URL de médias renvoyées par l'API commencent déjà par /api, chemin relatif résolu sur l'hôte courant. */
 export function mediaUrl(url: string | null): string | null {
   return url;
 }
 
-export const KINDS: Record<CreationKind, { label: string; short: string; hint: string; icon: LucideIcon; photoLabel: string }> = {
-  pub: {
-    label: "Vidéo pub",
-    short: "Vidéo pub",
-    hint: "Une courte vidéo pour vendre",
-    icon: Clapperboard,
-    photoLabel: "Photo du produit",
-  },
-  fun: {
-    label: "Vidéo fun",
-    short: "Vidéo fun",
-    hint: "Votre selfie, dans une tendance",
-    icon: PartyPopper,
-    photoLabel: "Votre selfie",
-  },
-};
+/** Exemple concret affiché dans le champ de description (placeholder). */
+export const PROMPT_HINT =
+  "Ex : Fais tourner lentement le produit avec un éclairage de studio, puis un zoom cinématographique.";
 
-/** Exemples concrets affichés dans le champ de description (placeholder). */
-export const PROMPT_HINTS: Record<CreationKind, string> = {
-  pub: "Ex : Fais tourner lentement le produit avec un éclairage de studio, puis un zoom cinématographique. Texte : 10 000 FCFA.",
-  fun: "Ex : Ajoute une ambiance de fête, avec des lumières colorées.",
-};
-
-export const KIND_ORDER: CreationKind[] = ["pub", "fun"];
-
-export function isKind(value: string | undefined | null): value is CreationKind {
-  return value === "pub" || value === "fun";
-}
-
-/**
- * Formats de vidéo proposés, présentés par usage. Le format découle de la vidéo de référence du modèle choisi par
- * Yamboka : il n'est jamais obtenu en recadrant après coup, donc aucune déformation.
- */
+/** Formats de vidéo proposés, présentés par usage. Tous sont acceptés nativement par le modèle (aucun recadrage). */
 export const FORMATS: { value: CreationFormat; group: string; label: string; where: string; ratio: string }[] = [
   { value: "9:16", group: "Vertical", label: "Statut / Reels", where: "Statut WhatsApp, TikTok, Reels", ratio: "9 / 16" },
+  { value: "3:4", group: "Portrait", label: "Portrait", where: "Publication portrait, Facebook ou Instagram", ratio: "3 / 4" },
   { value: "1:1", group: "Carré", label: "Post", where: "Publication Facebook ou Instagram", ratio: "1 / 1" },
+  { value: "4:3", group: "Paysage", label: "Classique", where: "Écran classique, présentation", ratio: "4 / 3" },
   { value: "16:9", group: "Paysage", label: "Écran", where: "YouTube, télévision, ordinateur", ratio: "16 / 9" },
 ];
 
@@ -74,14 +47,13 @@ export function isRunning(c: Pick<CreationView, "status">): boolean {
 }
 
 /** Libellé court d'une création pour les lecteurs d'écran et les titres. */
-export function creationTitle(c: Pick<CreationView, "styleName" | "kind">): string {
-  return c.styleName ? `${KINDS[c.kind].label} · ${c.styleName}` : KINDS[c.kind].label;
+export function creationTitle(c: Pick<CreationView, "styleName">): string {
+  return c.styleName ? `Vidéo · ${c.styleName}` : "Vidéo";
 }
 
-/** Titre de la page d'une création : le style CHOISI par l'utilisateur, sinon un titre neutre (jamais un nom inventé). */
-export function creationHeading(c: Pick<CreationView, "styleName" | "kind">): string {
-  if (c.styleName) return c.styleName;
-  return c.kind === "pub" ? "Votre vidéo publicitaire" : "Votre vidéo tendance";
+/** Titre de la page d'une création : l'idée CHOISIE par le client, sinon un titre neutre (jamais un nom inventé). */
+export function creationHeading(c: Pick<CreationView, "styleName">): string {
+  return c.styleName ?? "Votre vidéo";
 }
 
 /** Réduit une photo avant l'envoi : moins de données sur une connexion lente, et plus d'infos de position (EXIF). */

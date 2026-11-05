@@ -3,7 +3,7 @@
 import type { StyleView } from "@yamboka/shared";
 import { Check, ImageOff } from "lucide-react";
 import { useId } from "react";
-import { credits, mediaUrl } from "@/lib/creations";
+import { mediaUrl } from "@/lib/creations";
 import { cn } from "@/lib/utils";
 
 /** Visuel d'un style : sa vignette, ou un dégradé neutre tant que l'administrateur n'en a pas publié. */
@@ -56,7 +56,7 @@ export function StylePicker({
               </span>
               <span className="block px-2.5 py-2">
                 <span className="block truncate text-sm font-semibold">{s.name}</span>
-                <span className="block text-xs text-muted-foreground">{credits(s.credits)}</span>
+                <span className="block text-xs text-muted-foreground">{s.category}</span>
               </span>
             </span>
           </label>
