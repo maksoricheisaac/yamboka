@@ -21,10 +21,10 @@ export default async function CreatePage({ searchParams }: PageProps<"/app/creer
   const prompt = typeof sp.prompt === "string" ? sp.prompt.slice(0, MAX_PROMPT_LENGTH) : "";
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Qu’allez-vous créer ?</h1>
-        <p className="mt-1 text-muted-foreground">Une photo, quelques mots : Yamboka en fait une vidéo.</p>
+    <div className="mx-auto w-full max-w-3xl space-y-6 pt-4 sm:pt-10">
+      <div className="space-y-1 text-center">
+        <h1 className="font-heading text-3xl font-bold sm:text-4xl">Quelle vidéo voulez-vous créer ?</h1>
+        <p className="text-muted-foreground">Une photo, quelques mots : Yamboka en fait une vidéo.</p>
       </div>
       <Studio
         styles={styles}

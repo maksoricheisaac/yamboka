@@ -1,16 +1,14 @@
-import { ArrowRight, CheckCircle2, Circle, Clapperboard, Coins, Lightbulb } from "lucide-react";
+import { CheckCircle2, Circle, Coins } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { VIDEO_DURATION, videoCostCredits, type CreationConfig } from "@yamboka/shared";
+import type { CreationConfig, StyleView } from "@yamboka/shared";
 import { VerifyEmailBanner } from "@/components/auth/resend-verification";
 import { CreationsGallery } from "@/components/creations/creations-gallery";
 import { NotificationsCard, type NotificationItem } from "@/components/creations/notifications-card";
-import { CreditReel } from "@/components/studio/credit-reel";
-import { Button } from "@/components/ui/button";
+import { Studio } from "@/components/creations/studio";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth";
-import { credits } from "@/lib/creations";
-import { formatFcfa } from "@/lib/format";
+import { formatFcfa, formatNumber } from "@/lib/format";
 import { serverGet } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
@@ -25,16 +23,11 @@ function StepIcon({ done }: { done: boolean }) {
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const [config, notifications] = await Promise.all([
+  const [{ styles }, config, notifications] = await Promise.all([
+    serverGet<{ styles: StyleView[] }>("/creations/styles"),
     serverGet<CreationConfig>("/creations/config"),
     serverGet<{ unread: number; items: NotificationItem[] }>("/notifications"),
   ]);
-  // Prix d'appel : la plus courte vidéo, à la résolution la moins chère.
-  const fromPrice = videoCostCredits(config.rates, "480p", VIDEO_DURATION.min);
-  const actions = [
-    { href: "/app/creer", label: "Créer une vidéo", hint: "Une photo, quelques mots, une vidéo", icon: Clapperboard, price: `Dès ${credits(fromPrice)}` },
-    { href: "/app/tendances", label: "Partir d’une idée", hint: "Des textes et réglages prêts à l’emploi", icon: Lightbulb, price: "Gratuit à parcourir" },
-  ];
   const steps = [
     { label: user.emailVerified ? "Adresse e-mail confirmée" : "Confirmer mon adresse e-mail", done: user.emailVerified, href: "/verifier-email", cta: "Confirmer" },
     { label: "Acheter des crédits", done: user.credits > 0, href: "/app/credits", cta: "Acheter" },
@@ -43,59 +36,22 @@ export default async function DashboardPage() {
   const onboarding = steps.some((s) => !s.done);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold">Bonjour {user.firstName}</h1>
-        <p className="mt-1 text-muted-foreground">Que voulez-vous créer aujourd’hui ?</p>
-      </div>
-
+    <div className="space-y-10">
       {!user.emailVerified && <VerifyEmailBanner email={user.email} />}
 
-      <section aria-labelledby="create-title" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
-        <div className="space-y-3">
-          <h2 id="create-title" className="sr-only">Créer</h2>
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {actions.map((act, i) => {
-              const Icon = act.icon;
-              return (
-                <li key={act.href}>
-                  <Link
-                    href={act.href}
-                    className={`group relative flex h-full min-h-36 flex-col justify-between gap-6 overflow-hidden rounded-3xl border p-5 shadow-soft outline-none transition-[transform,box-shadow] hover:-translate-y-0.5 focus-visible:ring-3 focus-visible:ring-ring/70 motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${i === 0 ? "bg-primary text-primary-foreground" : "bg-card"}`}
-                  >
-                    <span className={`grid size-11 place-items-center rounded-2xl ${i === 0 ? "bg-primary-foreground/15" : "bg-primary/10 text-primary"}`}>
-                      <Icon className="size-6" aria-hidden />
-                    </span>
-                    <span>
-                      <span className="block font-heading text-xl font-bold leading-tight">{act.label}</span>
-                      <span className={`mt-1 block text-sm ${i === 0 ? "text-primary-foreground/85" : "text-muted-foreground"}`}>{act.hint}</span>
-                      <span className="mt-3 flex items-center justify-between text-sm font-semibold">
-                        <span>{act.price}</span>
-                        <ArrowRight className="size-4 transition-transform group-hover:translate-x-1 motion-reduce:transition-none" aria-hidden />
-                      </span>
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+      {/* Accueil : on arrive directement sur la création, comme dans un chat. */}
+      <section aria-labelledby="create-title" className="mx-auto w-full max-w-3xl space-y-6 pt-4 sm:pt-10">
+        <div className="space-y-1 text-center">
+          <p className="text-sm text-muted-foreground">Bonjour {user.firstName}</p>
+          <h1 id="create-title" className="font-heading text-3xl font-bold sm:text-4xl">Quelle vidéo voulez-vous créer ?</h1>
         </div>
-
-        <Card className="lg:row-span-1">
-          <CardHeader className="pb-0">
-            <CardDescription className="flex items-center gap-2">
-              <Coins className="size-4" aria-hidden /> Votre solde
-            </CardDescription>
-            <CardTitle className="sr-only">{user.credits} crédits</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-center text-sm text-muted-foreground">
-            <CreditReel credits={user.credits} className="w-32 sm:w-36" />
-            <p>≈ {formatFcfa(user.credits * user.creditValueFcfa)}</p>
-            <Button asChild className="w-full">
-              <Link href="/app/credits">Recharger</Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <Studio styles={styles} config={config} balance={user.credits} emailVerified={user.emailVerified} initialStyleId={null} initialPrompt="" />
+        <p className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <Coins className="size-4" aria-hidden /> {formatNumber(user.credits)} {user.credits > 1 ? "crédits" : "crédit"} · ≈ {formatFcfa(user.credits * user.creditValueFcfa)}
+          </span>
+          <Link href="/app/credits" className="font-medium text-primary underline-offset-4 hover:underline">Recharger</Link>
+        </p>
       </section>
 
       <section aria-labelledby="latest-title" className="space-y-4">
