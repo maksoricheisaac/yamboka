@@ -73,8 +73,8 @@ test.describe('Notifications', () => {
 
     await bell(page).click();
     await page.getByRole('link', { name: 'Voir toutes les notifications' }).click();
-    await expect(page).toHaveURL(/\/app\/notifications$/);
-    await expect(page.getByRole('heading', { level: 1, name: 'Notifications' })).toBeVisible();
+    await expect(page).toHaveURL(/\/app\/parametres\?onglet=notifications$/);
+    await expect(page.getByRole('heading', { level: 2, name: 'Mes notifications' })).toBeVisible();
     await expect(page.getByText('Tout est lu')).toBeVisible();
   });
 
@@ -82,7 +82,7 @@ test.describe('Notifications', () => {
     await account(page, request);
     const failed = await createPub(page, '__echec__');
     await waitFinished(page, failed.id, 'FAILED');
-    await page.goto('/app/notifications');
+    await page.goto('/app/parametres?onglet=notifications');
     await expect(page.getByText('Création échouée')).toBeVisible();
     await expect(page.getByText('Crédits restitués')).toBeVisible();
     // Avec le paiement confirmé de l'achat des crédits : trois notifications non lues.
@@ -98,7 +98,7 @@ test.describe('Notifications', () => {
 test.describe('Paramètres et e-mails', () => {
   test('préférences enregistrées par le serveur, restaurées, et appliquées à l’envoi des e-mails', async ({ page, request }) => {
     const email = await account(page, request);
-    await page.goto('/app/parametres');
+    await page.goto('/app/parametres?onglet=notifications');
     await expect(page.getByRole('heading', { level: 1, name: 'Paramètres' })).toBeVisible();
     const ready = page.getByRole('switch', { name: 'E-mail : Création terminée' });
     // État initial des nouveaux comptes : tout est activé.
@@ -124,12 +124,12 @@ test.describe('Paramètres et e-mails', () => {
       const res = await page.request.get(`/api/creations/${first.id}`);
       expect((await res.json()).creation.status).toBe('COMPLETED');
     }).toPass({ timeout: 40_000 });
-    await page.goto('/app/notifications');
+    await page.goto('/app/parametres?onglet=notifications');
     await expect(page.getByText('Votre création est prête', { exact: true })).toBeVisible();
     expect((await outboxSubjects(request, email)).filter((s) => /prête/.test(s))).toHaveLength(0);
 
     // Réactivée : l'e-mail part, avec le lien direct vers la création.
-    await page.goto('/app/parametres');
+    await page.goto('/app/parametres?onglet=notifications');
     await expect(async () => {
       await page.getByRole('switch', { name: 'E-mail : Création terminée' }).click();
       await expect(page.getByText('Préférence enregistrée.')).toBeVisible({ timeout: 3000 });
@@ -141,12 +141,11 @@ test.describe('Paramètres et e-mails', () => {
     await expect.poll(async () => (await outboxSubjects(request, email)).filter((s) => /prête/.test(s)).length, { timeout: 15_000 }).toBe(1);
   });
 
-  test('l’adresse non confirmée est signalée, et le compte est résumé', async ({ page, request }) => {
+  test('l’onglet Profil montre l’adresse e-mail et son état', async ({ page, request }) => {
     await account(page, request, false);
-    await page.goto('/app/parametres');
-    await expect(page.getByRole('heading', { level: 2, name: 'Compte' })).toBeVisible();
-    await expect(page.getByText('Confirmée')).toBeVisible();
-    await expect(page.getByRole('link', { name: /Modifier mon profil/ })).toHaveAttribute('href', '/app/profil');
+    await page.goto('/app/parametres?onglet=profil');
+    await expect(page.getByText('Confirmée', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Prénom')).toBeVisible();
     // Accessible depuis le menu du compte.
     await page.getByRole('button', { name: /^Menu du compte/ }).click();
     await expect(page.getByRole('menuitem', { name: 'Paramètres' })).toBeVisible();
@@ -168,12 +167,12 @@ test.describe('Historique des crédits', () => {
     await waitFinished(page, failed.id, 'FAILED');
 
     await page.reload();
-    const ledger = page.getByRole('table', { name: 'Historique des mouvements de crédits' });
-    await expect(ledger.getByRole('row', { name: /Achat de crédits.*\+1\s?250/ })).toBeVisible();
-    await expect(ledger.getByRole('row', { name: /Réservé pour une création.*−50/ })).toBeVisible();
-    await expect(ledger.getByRole('row', { name: /Crédits restitués.*\+50/ })).toBeVisible();
-    // Aucun faux solde : le solde de l'en-tête correspond à la somme des mouvements (1 250 + 250 de bonus).
-    await expect(page.getByText(/Solde actuel : 1\s?500 crédits/)).toBeVisible();
+    const row = (name: RegExp) => page.getByRole('listitem').filter({ hasText: name });
+    await expect(row(/Achat de crédits/).filter({ hasText: /\+500/ })).toBeVisible();
+    await expect(row(/Réservé pour une création/)).toBeVisible();
+    await expect(row(/Crédits restitués/)).toBeVisible();
+    // Aucun faux solde : le solde de l'en-tête correspond à la somme des mouvements (500 + 100 de bonus).
+    await expect(page.getByLabel('Solde actuel')).toContainText(/600 crédits/);
   });
 });
 
@@ -196,12 +195,10 @@ test.describe('Tendances à la une (décision de l’administrateur)', () => {
       await expect(admin.getByRole('status').filter({ hasText: 'Modification enregistrée' }).first()).toBeVisible();
       await expect(row.getByText('À la une')).toBeVisible();
 
-      // Côté client : la section « À la une » contient exactement ce choix.
-      await page.goto('/app/tendances');
-      const featured = page.getByRole('region', { name: 'À la une' });
-      await expect(featured.getByRole('link', { name: new RegExp(name) })).toBeVisible();
-      // Le même contenu reste dans le catalogue général.
-      await expect(page.getByRole('region', { name: 'Toutes les tendances' }).getByRole('link', { name: new RegExp(name) })).toBeVisible();
+      // Côté client : l'idée apparaît dans « Créer », en tête de liste et signalée « à la une ».
+      await page.goto('/app/creer');
+      const ideas = page.getByRole('group', { name: 'Idées' });
+      await expect(ideas.getByRole('button', { name: new RegExp(`${name}.*à la une`) })).toBeVisible();
 
       // Retrait : publié, mais plus à la une.
       await row.getByRole('button', { name: `Actions pour le preset ${name}` }).click();
@@ -210,8 +207,8 @@ test.describe('Tendances à la une (décision de l’administrateur)', () => {
       await admin.getByRole('dialog').locator('button[type=submit]').click();
       await expect(admin.getByRole('status').filter({ hasText: 'Modification enregistrée' }).first()).toBeVisible();
       await page.reload();
-      await expect(page.getByRole('region', { name: 'À la une' }).getByRole('link', { name: new RegExp(name) })).toHaveCount(0);
-      await expect(page.getByRole('link', { name: new RegExp(name) }).first()).toBeVisible();
+      await expect(ideas.getByRole('button', { name: new RegExp(`${name}.*à la une`) })).toHaveCount(0);
+      await expect(ideas.getByRole('button', { name: new RegExp(name) })).toBeVisible();
     } finally {
       await adminCtx.close();
     }

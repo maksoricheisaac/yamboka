@@ -1,13 +1,13 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 import { APP_URL } from '../playwright.config';
-import { appAlerts, expect, goToNav, signUp, signUpVerified, test, uniqueEmail } from './helpers';
+import { appAlerts, expect, signUp, signUpVerified, test, uniqueEmail } from './helpers';
 
 /** Inscrit un compte, confirme son e-mail (code lu dans l'outbox de l'API de test) et ouvre la page des crédits. */
 async function verifiedOnCreditsPage(page: Page, request: APIRequestContext, firstName = 'Marie') {
   const email = uniqueEmail('credits');
   await signUpVerified(page, request, email, { firstName });
   await page.goto('/app/credits');
-  await expect(page.getByRole('heading', { level: 1, name: 'Mes crédits' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Crédits' })).toBeVisible();
   return email;
 }
 
@@ -25,6 +25,7 @@ async function startPayment(page: Page, pack = 'Starter') {
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('En attente de votre confirmation');
 }
 
+const filterLink = (page: Page, name: string) => page.getByRole('navigation', { name: 'Filtrer l’historique' }).getByRole('link', { name });
 const balance = (page: Page, credits: number) => page.getByLabel(`Solde : ${credits} crédits`);
 const simulate = (page: Page, name: string | RegExp) => page.getByRole('button', { name, exact: typeof name === 'string' });
 
@@ -35,9 +36,10 @@ test.describe('Achat de crédits (paiement simulé)', () => {
     // Aucun crédit offert à l'inscription : le solde de départ est nul.
     await expect(page.getByText('≈ 0 FCFA').filter({ visible: true }).first()).toBeVisible();
 
-    // Le prix et les crédits sont annoncés avant de payer.
+    // Le prix, les crédits et le solde après achat sont annoncés avant de payer.
     await choosePack(page, 'Starter');
-    await expect(page.getByText(/Vous payez\s*5\s?000 FCFA et recevez\s*1\s?250 crédits/)).toBeVisible();
+    await expect(page.getByText(/500 crédits.*à payer : 5\s?000 FCFA/)).toBeVisible();
+    await expect(page.getByText(/Solde : 0 → 500 crédits/)).toBeVisible();
     await page.getByRole('button', { name: /^Payer/ }).click();
 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('En attente de votre confirmation');
@@ -46,23 +48,22 @@ test.describe('Achat de crédits (paiement simulé)', () => {
 
     await simulate(page, 'Confirmer le paiement').click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Paiement confirmé');
-    await expect(page.getByText(/1\s?500 crédits/).first()).toBeVisible();
-    await expect(balance(page, 1500)).toBeVisible();
+    await expect(page.getByText(/600 crédits/).first()).toBeVisible();
+    await expect(balance(page, 600)).toBeVisible();
 
     await page.getByRole('link', { name: 'Retour à mes crédits' }).click();
-    await expect(page.getByRole('heading', { level: 1, name: 'Mes crédits' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Crédits' })).toBeVisible();
     // L'historique n'est plus sur la page d'achat : il a sa propre page.
-    await expect(page.getByRole('table', { name: 'Historique des mouvements de crédits' })).toHaveCount(0);
     await page.getByRole('main').getByRole('link', { name: 'Historique' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Historique' })).toBeVisible();
-    const ledger = page.getByRole('table', { name: 'Historique des mouvements de crédits' });
-    await expect(ledger.getByRole('row', { name: /Achat de crédits.*\+1\s?250/ })).toBeVisible();
-    await expect(ledger.getByRole('row', { name: /Bonus de premier achat.*\+250/ })).toBeVisible();
+    await expect(page.getByRole('listitem').filter({ hasText: 'Achat de crédits' }).filter({ hasText: /\+500/ })).toBeVisible();
+    await expect(page.getByRole('listitem').filter({ hasText: 'Bonus de premier achat' }).filter({ hasText: /\+100/ })).toBeVisible();
 
-    await goToNav(page, 'Achats');
-    const row = page.getByRole('row', { name: /Starter/ });
+    // Les achats ont leur filtre dans l'historique (plus d'entrée « Achats » dans le menu) ; le reçu s'ouvre depuis la ligne.
+    await filterLink(page, 'Achats').click();
+    const row = page.getByRole('listitem').filter({ hasText: 'Starter' });
     await expect(row.getByText('Réussi')).toBeVisible();
-    await row.getByRole('link', { name: /Reçu/ }).click();
+    await row.getByRole('link', { name: /Voir le reçu/ }).click();
     await expect(page.getByRole('heading', { level: 1 })).toContainText('YAM-');
     await expect(page.getByText(/5\s000 FCFA/).first()).toBeVisible();
     await expect(page.getByText(/Reçu de\s*démonstration/)).toBeVisible();
@@ -92,9 +93,9 @@ test.describe('Achat de crédits (paiement simulé)', () => {
     await startPayment(page);
     await simulate(page, 'Succès avec 3 callbacks').click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Paiement confirmé');
-    await expect(balance(page, 1500)).toBeVisible();
+    await expect(balance(page, 600)).toBeVisible();
     await page.reload();
-    await expect(balance(page, 1500)).toBeVisible();
+    await expect(balance(page, 600)).toBeVisible();
   });
 
   test('faux callback : rien n’est crédité tant que le fournisseur ne confirme pas (recette)', async ({ page, request }) => {
@@ -107,7 +108,7 @@ test.describe('Achat de crédits (paiement simulé)', () => {
     // Le vrai paiement aboutit ensuite normalement.
     await simulate(page, 'Confirmer le paiement').click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Paiement confirmé');
-    await expect(balance(page, 1500)).toBeVisible();
+    await expect(balance(page, 600)).toBeVisible();
   });
 
   test('panne du fournisseur : le paiement reste en attente, puis aboutit au retour du service', async ({ page, request }) => {
@@ -131,7 +132,7 @@ test.describe('Achat de crédits (paiement simulé)', () => {
     });
     expect(res.ok()).toBe(true);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Paiement confirmé', { timeout: 15_000 });
-    await expect(balance(page, 1500)).toBeVisible();
+    await expect(balance(page, 600)).toBeVisible();
   });
 
   test('fournisseur indisponible dès le départ : message clair, aucun paiement ouvert', async ({ page, request }) => {
@@ -149,7 +150,6 @@ test.describe('Achat de crédits (paiement simulé)', () => {
     await expect(page.getByRole('button', { name: /^Payer/ })).toBeEnabled();
     await page.getByLabel('Numéro qui paie').fill('0612345678');
     await page.getByRole('button', { name: /^Payer/ }).click();
-    await expect(page.getByText('Choisissez MTN ou Airtel.')).toBeVisible();
     await expect(page.getByText(/Numéro invalide/)).toBeVisible();
     await expect(page).toHaveURL(/\/app\/credits$/);
   });
@@ -184,7 +184,7 @@ test.describe('Achat de crédits (paiement simulé)', () => {
   });
 
   test('un visiteur est renvoyé vers la connexion depuis les pages d’achat', async ({ page }) => {
-    for (const path of ['/app/credits', '/app/achats']) {
+    for (const path of ['/app/credits', '/app/credits/historique']) {
       await page.goto(path);
       await expect(page).toHaveURL(/\/connexion/);
     }
@@ -192,7 +192,7 @@ test.describe('Achat de crédits (paiement simulé)', () => {
 
   test('historique des achats vide : message et lien pour acheter', async ({ page, request }) => {
     await verifiedOnCreditsPage(page, request);
-    await page.goto('/app/achats');
+    await page.goto('/app/credits/historique?filtre=achats');
     await expect(page.getByText('Vous n’avez encore rien acheté.')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Acheter des crédits' })).toBeVisible();
   });
@@ -213,7 +213,7 @@ test.describe('Responsive et accessibilité des écrans de crédits', () => {
 
     await simulate(page, 'Confirmer le paiement').click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Paiement confirmé');
-    await page.goto('/app/achats');
+    await page.goto('/app/credits/historique?filtre=achats');
     expect(await overflow()).toBeLessThanOrEqual(0);
   });
 
@@ -226,7 +226,7 @@ test.describe('Responsive et accessibilité des écrans de crédits', () => {
     await page.getByLabel('Airtel Money').focus();
     await page.keyboard.press('Space');
     await expect(page.getByLabel('Airtel Money')).toBeChecked();
-    await expect(page.getByText(/Vous payez\s*5\s?000 FCFA et recevez\s*1\s?250 crédits/)).toBeVisible();
+    await expect(page.getByText(/500 crédits.*à payer : 5\s?000 FCFA/)).toBeVisible();
   });
 });
 

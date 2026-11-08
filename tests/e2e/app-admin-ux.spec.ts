@@ -102,8 +102,7 @@ test.describe('Administration — composants partagés (période, menus d’acti
     await signUpVerified(page, request, uniqueEmail('achat-ux'));
     await page.goto('/app/credits');
     await page.getByRole('button', { name: /^Payer/ }).click();
-    await expect(page.getByText('Choisissez MTN ou Airtel.')).toBeVisible();
-    await expect(page.getByText(/Numéro invalide/)).toBeVisible();
+    await expect(page.getByText('Indiquez le numéro qui paie.')).toBeVisible();
     await expect(page.getByText(/Invalid input/)).toHaveCount(0);
   });
 

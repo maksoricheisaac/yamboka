@@ -26,9 +26,11 @@ test.describe('Barre du haut — espace client', () => {
     await expect(menu.getByRole('menuitem', { name: 'Se déconnecter' })).toBeVisible();
 
     await menu.getByRole('menuitem', { name: 'Mon profil' }).click();
-    await expect(page).toHaveURL(/\/app\/profil$/);
+    // Le profil est un onglet des paramètres : plus de page séparée.
+    await expect(page).toHaveURL(/\/app\/parametres\?onglet=profil$/);
     await expect(menu).toBeHidden();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Mon profil');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Paramètres');
+    await expect(page.getByRole('link', { name: 'Profil', exact: true })).toHaveAttribute('aria-current', 'page');
   });
 
   test('le menu du compte se pilote au clavier et se ferme avec Échap, le focus revient au déclencheur', async ({ page, request }) => {
@@ -88,8 +90,12 @@ test.describe('Barre latérale — espace client', () => {
   test('affiche le menu, la page active et le fil d’Ariane', async ({ page, request }) => {
     await signUpVerified(page, request, uniqueEmail('side'));
     await openMenuIfHidden(page, menuLink(page, 'Crédits'));
-    for (const name of ['Tableau de bord', 'Crédits', 'Achats']) {
+    for (const name of ['Tableau de bord', 'Créer', 'Mes créations', 'Crédits', 'Historique', 'Paramètres']) {
       await expect(menuLink(page, name)).toBeVisible();
+    }
+    // Entrées supprimées de la navigation : leurs pages sont des onglets, des filtres ou des sections d'une autre page.
+    for (const name of ['Idées', 'Achats', 'Notifications', 'Mon profil']) {
+      await expect(menuLink(page, name)).toHaveCount(0);
     }
     await expect(menuLink(page, 'Tableau de bord')).toHaveAttribute('aria-current', 'page');
   });
@@ -155,7 +161,7 @@ test.describe('Barre latérale — espace client', () => {
 test.describe('Profil', () => {
   test('modifier son prénom depuis le profil est pris en compte', async ({ page, request }) => {
     await signUpVerified(page, request, uniqueEmail('profil'), { firstName: 'Marie' });
-    await page.goto('/app/profil');
+    await page.goto('/app/parametres?onglet=profil');
     await expect(page.getByLabel('Prénom')).toHaveValue('Marie');
     await page.getByLabel('Prénom').fill('Marielle');
     await page.getByRole('button', { name: 'Enregistrer' }).click();
