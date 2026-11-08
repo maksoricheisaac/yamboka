@@ -61,7 +61,7 @@ export default async function ReceiptPage({ params }: PageProps<"/app/credits/re
         </p>
       )}
       <Button asChild variant="outline">
-        <Link href="/app/credits/historique?filtre=achats">Retour à l’historique</Link>
+        <Link href="/app/historique?filtre=achats">Retour à l’historique</Link>
       </Button>
     </article>
   );

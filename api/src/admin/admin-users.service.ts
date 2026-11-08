@@ -13,6 +13,8 @@ import type {
   Page,
   UserStatusActionInput,
 } from '@yamboka/shared';
+import { buildPage, clampPage } from '@yamboka/shared';
+import { orderBy } from '../common/sort';
 import { AuditService } from '../audit/audit.service';
 import { CreditsService } from '../credits/credits.service';
 import { EmailService } from '../email/email.service';
@@ -66,23 +68,35 @@ export class AdminUsersService {
       where.status = q.status;
     if (q.role === 'ADMIN' || q.role === 'USER') where.role = q.role;
 
-    const [total, users] = await Promise.all([
-      this.prisma.user.count({ where }),
-      this.prisma.user.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (q.page - 1) * q.pageSize,
-        take: q.pageSize,
+    const total = await this.prisma.user.count({ where });
+    const page = clampPage(q.page, total, q.pageSize);
+    const users = await this.prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        role: true,
+        status: true,
+        emailVerifiedAt: true,
+        createdAt: true,
+      },
+      orderBy: orderBy(q, ['createdAt', 'email', 'status'], {
+        field: 'createdAt',
+        dir: 'desc',
       }),
-    ]);
+      skip: (page - 1) * q.pageSize,
+      take: q.pageSize,
+    });
     const balances = await this.prisma.creditLedger.groupBy({
       by: ['userId'],
       where: { userId: { in: users.map((u) => u.id) } },
       _sum: { amount: true },
     });
     const byUser = new Map(balances.map((b) => [b.userId, b._sum.amount ?? 0]));
-    return {
-      items: users.map((u) => ({
+    return buildPage(
+      users.map((u) => ({
         id: u.id,
         firstName: u.firstName,
         lastName: u.lastName,
@@ -94,9 +108,9 @@ export class AdminUsersService {
         createdAt: u.createdAt.toISOString(),
       })),
       total,
-      page: q.page,
-      pageSize: q.pageSize,
-    };
+      page,
+      q.pageSize,
+    );
   }
 
   async detail(id: string): Promise<AdminUserDetail> {
@@ -290,18 +304,27 @@ export class AdminUsersService {
       ['NEW', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'].includes(q.status)
     )
       where.status = q.status as 'NEW';
-    const [total, rows] = await Promise.all([
-      this.prisma.report.count({ where }),
-      this.prisma.report.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (q.page - 1) * q.pageSize,
-        take: q.pageSize,
-        include: { reporter: true },
-      }),
-    ]);
-    return {
-      items: rows.map((r) => ({
+    const total = await this.prisma.report.count({ where });
+    const page = clampPage(q.page, total, q.pageSize);
+    const rows = await this.prisma.report.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: (page - 1) * q.pageSize,
+      take: q.pageSize,
+      select: {
+        id: true,
+        generationId: true,
+        reason: true,
+        details: true,
+        status: true,
+        resolution: true,
+        reporterContact: true,
+        createdAt: true,
+        reporter: { select: { email: true } },
+      },
+    });
+    return buildPage(
+      rows.map((r) => ({
         id: r.id,
         generationId: r.generationId,
         reason: r.reason,
@@ -312,9 +335,9 @@ export class AdminUsersService {
         createdAt: r.createdAt.toISOString(),
       })),
       total,
-      page: q.page,
-      pageSize: q.pageSize,
-    };
+      page,
+      q.pageSize,
+    );
   }
 
   async handleReport(

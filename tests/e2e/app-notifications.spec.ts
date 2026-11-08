@@ -155,7 +155,7 @@ test.describe('Paramètres et e-mails', () => {
 test.describe('Historique des crédits', () => {
   test('vide au départ, puis alimenté par le registre réel (+ en vert, − en rouge)', async ({ page, request }) => {
     await account(page, request, false);
-    await page.goto('/app/credits/historique');
+    await page.goto('/app/historique');
     await expect(page.getByRole('heading', { level: 1, name: 'Historique' })).toBeVisible();
     await expect(page.getByText('Aucun mouvement pour le moment.')).toBeVisible();
 

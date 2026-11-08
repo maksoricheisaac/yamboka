@@ -83,7 +83,7 @@ async function Costs() {
             {pricing.countries.map((c) => (
               <li key={c.iso} className="rounded-2xl border bg-card p-4">
                 <p className="font-semibold">{c.name} <span className="text-sm font-normal text-muted-foreground">· {c.currency}</span></p>
-                <p className="text-sm text-muted-foreground">{c.methods.map((m) => m.name).join(" · ")}</p>
+                <p className="text-sm text-muted-foreground">{c.methods.filter((m) => m.status !== "COMING_SOON").map((m) => m.name).join(" · ")}</p>
               </li>
             ))}
           </ul>

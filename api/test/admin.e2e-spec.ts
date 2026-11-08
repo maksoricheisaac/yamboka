@@ -388,7 +388,8 @@ describe('Administration (e2e)', () => {
     });
 
     it('refuse une modification qui rend un pack non rentable, et ne change rien', async () => {
-      const packs = (await admin.get('/api/admin/packs').expect(200)).body as {
+      const packs = (await admin.get('/api/admin/packs').expect(200)).body
+        .items as {
         id: string;
         name: string;
         priceFcfa: number;
@@ -400,7 +401,8 @@ describe('Administration (e2e)', () => {
       });
       expect(res.status).toBe(422);
       expect(res.body.code).toBe('MARGIN_TOO_LOW');
-      const after = (await admin.get('/api/admin/packs').expect(200)).body as {
+      const after = (await admin.get('/api/admin/packs').expect(200)).body
+        .items as {
         name: string;
         priceFcfa: number;
       }[];
@@ -410,7 +412,8 @@ describe('Administration (e2e)', () => {
     });
 
     it('désactiver un pack le retire du catalogue public ; recommander en remplace une autre', async () => {
-      const packs = (await admin.get('/api/admin/packs').expect(200)).body as {
+      const packs = (await admin.get('/api/admin/packs').expect(200)).body
+        .items as {
         id: string;
         name: string;
       }[];
@@ -470,7 +473,8 @@ describe('Administration (e2e)', () => {
     });
 
     it('la modification exige un motif ; un champ inconnu est refusé', async () => {
-      const packs = (await admin.get('/api/admin/packs').expect(200)).body as {
+      const packs = (await admin.get('/api/admin/packs').expect(200)).body
+        .items as {
         id: string;
       }[];
       expect(
@@ -523,7 +527,7 @@ describe('Administration (e2e)', () => {
       ).toBe(600);
     });
 
-    it('retrait OpenPay et synthèse', async () => {
+    it('retrait SasPay et synthèse', async () => {
       await admin
         .post('/api/admin/finance/payouts', {
           amountXaf: 50000,

@@ -869,7 +869,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       const { id } = await started();
       const other = (await verifiedClient(app)).client;
       expect((await other.get(`/api/payments/${id}`)).status).toBe(404);
-      expect((await other.get('/api/payments')).body.payments).toEqual([]);
+      expect((await other.get('/api/payments')).body.items).toEqual([]);
     });
   });
 });

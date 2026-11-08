@@ -1,17 +1,17 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { ActivitySummary, BalanceView, LedgerPage } from '@yamboka/shared';
-import { LEDGER_FILTERS } from '@yamboka/shared';
+import { LEDGER_FILTERS, pageQuerySchema } from '@yamboka/shared';
 import { z } from 'zod';
 import { CurrentUser } from '../common/decorators';
 import type { AuthUser } from '../common/decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { CreditsService } from './credits.service';
 
-const pageQuery = z.object({
-  cursor: z.uuid().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+const pageQuery = pageQuerySchema.extend({
   filter: z.enum(LEDGER_FILTERS).default('all'),
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
 });
 type PageQuery = z.infer<typeof pageQuery>;
 
@@ -48,9 +48,16 @@ export class CreditsController {
     @CurrentUser() user: AuthUser,
     @Query(new ZodPipe(pageQuery)) query: PageQuery,
   ): Promise<LedgerPage> {
-    const page = await this.credits.listLedger(user.id, query);
+    const page = await this.credits.listLedger(user.id, {
+      ...query,
+      from: query.from ? new Date(`${query.from}T00:00:00.000Z`) : undefined,
+      // Bornes incluses : « jusqu'au » couvre toute la journée choisie.
+      to: query.to
+        ? new Date(new Date(`${query.to}T00:00:00.000Z`).getTime() + 86_400_000)
+        : undefined,
+    });
     return {
-      nextCursor: page.nextCursor,
+      ...page,
       items: page.items.map((i) => ({
         ...i,
         type: i.type as LedgerPage['items'][number]['type'],

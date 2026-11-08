@@ -5,11 +5,14 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { buildPage, clampPage } from '@yamboka/shared';
 import type {
   AdminPack,
+  AdminPackPage,
   AdminPreset,
   AdminProduct,
   PackCreateInput,
+  ListQuery,
   PackUpdateInput,
   ProductUpdateInput,
 } from '@yamboka/shared';
@@ -22,7 +25,12 @@ import {
   computeMargin,
   packTotalCredits,
 } from '../catalog/pricing';
-import type { CreditPack, GenerationProduct } from '../generated/prisma/client';
+import { orderBy } from '../common/sort';
+import type {
+  CreditPack,
+  GenerationProduct,
+  Prisma,
+} from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Une offre publique : trois packs au maximum, une seule recommandée. */
@@ -93,13 +101,74 @@ export class AdminOfferService {
     };
   }
 
-  async listPacks(): Promise<AdminPack[]> {
+  /** Noms des packs actifs dont la marge est sous le seuil (alerte du tableau de bord). */
+  async packsBelowMargin(): Promise<string[]> {
     const [packs, products, s] = await Promise.all([
-      this.prisma.creditPack.findMany({ orderBy: { sortOrder: 'asc' } }),
+      this.prisma.creditPack.findMany({ where: { active: true } }),
       this.prisma.generationProduct.findMany(),
       this.catalog.marginSettings(),
     ]);
-    return packs.map((p) => this.view(p, products, s));
+    return packs
+      .filter((p) => this.view(p, products, s).belowThreshold)
+      .map((p) => p.name);
+  }
+
+  /** Packs paginés côté serveur (recherche par nom, filtre actif / inactif) ; la synthèse porte sur tous les packs. */
+  async listPacks(q: ListQuery): Promise<AdminPackPage> {
+    const where: Prisma.CreditPackWhereInput = {};
+    if (q.q) where.name = { contains: q.q, mode: 'insensitive' };
+    if (q.status === 'active') where.active = true;
+    if (q.status === 'inactive') where.active = false;
+    const [products, s, all, total] = await Promise.all([
+      this.prisma.generationProduct.findMany(),
+      this.catalog.marginSettings(),
+      this.prisma.creditPack.findMany(),
+      this.prisma.creditPack.count({ where }),
+    ]);
+    const page = clampPage(q.page, total, q.pageSize);
+    const rows = await this.prisma.creditPack.findMany({
+      where,
+      orderBy: orderBy(q, ['sortOrder', 'name', 'price'], {
+        field: 'sortOrder',
+        dir: 'asc',
+      }),
+      skip: (page - 1) * q.pageSize,
+      take: q.pageSize,
+    });
+    const active = all.filter((p) => p.active);
+    return {
+      ...buildPage(
+        rows.map((p) => this.view(p, products, s)),
+        total,
+        page,
+        q.pageSize,
+      ),
+      summary: {
+        total: all.length,
+        active: active.length,
+        publicVisible: active.filter((p) => p.publicVisible).length,
+        publicPacks: active
+          .filter((p) => p.publicVisible)
+          .map((p) => ({
+            id: p.id,
+            name: p.name,
+            priceFcfa: p.price,
+            featured: p.featured,
+          })),
+        belowMargin: active.filter(
+          (p) =>
+            this.evaluate(
+              {
+                price: p.price,
+                baseCredits: p.credits,
+                bonusPercent: p.bonusPercent,
+              },
+              products,
+              s,
+            ).belowThreshold,
+        ).length,
+      },
+    };
   }
 
   async createPack(

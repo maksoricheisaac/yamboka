@@ -22,6 +22,8 @@ import type {
   VideoResolution,
 } from '@yamboka/shared';
 import {
+  buildPage,
+  clampPage,
   DEFAULT_RESOLUTION,
   MAX_UPLOAD_BYTES,
   VIDEO_RESOLUTIONS,
@@ -387,8 +389,8 @@ export class CreationsService {
   async list(
     userId: string,
     q: {
-      cursor?: string;
-      limit: number;
+      page: number;
+      pageSize: number;
       status?: 'ready' | 'running' | 'failed';
     },
   ): Promise<CreationPage> {
@@ -400,19 +402,23 @@ export class CreationsService {
           : q.status === 'failed'
             ? ['FAILED', 'CANCELLED']
             : undefined;
+    // Toujours borné à l'utilisateur connecté : on ne liste que SES créations.
+    const where: Prisma.GenerationWhereInput = {
+      userId,
+      deletedAt: null,
+      hidden: false,
+      ...(statuses ? { status: { in: statuses as never[] } } : {}),
+    };
+    const total = await this.prisma.generation.count({ where });
+    const pageNumber = clampPage(q.page, total, q.pageSize);
     const rows = await this.prisma.generation.findMany({
-      where: {
-        userId,
-        deletedAt: null,
-        hidden: false,
-        ...(statuses ? { status: { in: statuses as never[] } } : {}),
-      },
+      where,
       include: INCLUDE,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: q.limit + 1,
-      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
+      take: q.pageSize,
+      skip: (pageNumber - 1) * q.pageSize,
     });
-    let page = rows.slice(0, q.limit);
+    let page = rows;
     const running = page.filter((g) =>
       (RUNNING as readonly string[]).includes(g.status),
     );
@@ -429,10 +435,12 @@ export class CreationsService {
       const byId = new Map(fresh.map((g) => [g.id, g]));
       page = page.map((g) => byId.get(g.id) ?? g);
     }
-    return {
-      items: page.map((g) => this.view(g)),
-      nextCursor: rows.length > q.limit ? page[page.length - 1].id : null,
-    };
+    return buildPage(
+      page.map((g) => this.view(g)),
+      total,
+      pageNumber,
+      q.pageSize,
+    );
   }
 
   async get(userId: string, id: string): Promise<CreationView> {
@@ -879,7 +887,7 @@ export class CreationsService {
         type: 'CREDITS_REFUNDED',
         title: 'Crédits restitués',
         body: `${g.creditsCost} ${g.creditsCost > 1 ? 'crédits vous ont été restitués' : 'crédit vous a été restitué'} après l’échec de votre création.`,
-        link: '/app/credits/historique',
+        link: '/app/historique',
         dedupKey: `refund:${g.id}`,
       });
       noteIds.push(failed.id, refund.id);

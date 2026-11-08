@@ -27,7 +27,7 @@ export default async function CreditsPage() {
             <span className="font-bold">{formatNumber(user.credits)} crédits</span>
             <span className="text-muted-foreground">≈ {formatMoney(user.credits * user.creditValueFcfa, "XAF")}</span>
           </p>
-          <Link href="/app/credits/historique" className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-primary outline-none hover:bg-primary/10 focus-visible:ring-3 focus-visible:ring-ring/60">
+          <Link href="/app/historique" className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-primary outline-none hover:bg-primary/10 focus-visible:ring-3 focus-visible:ring-ring/60">
             <History className="size-4" aria-hidden /> Historique
           </Link>
         </div>
@@ -40,6 +40,7 @@ export default async function CreditsPage() {
         ) : (
           <PurchaseFlow
             countries={pricing.countries}
+            upcomingCountries={pricing.upcomingCountries}
             initialCountry={iso}
             countrySource={source}
             balance={user.credits}

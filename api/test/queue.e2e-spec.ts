@@ -23,7 +23,8 @@ describe('File de tâches BullMQ (e2e, Redis requis)', () => {
 
   beforeAll(async () => {
     process.env.QUEUE_ENABLED = 'true';
-    process.env.REDIS_URL = 'redis://localhost:6380/15';
+    process.env.REDIS_URL =
+      process.env.TEST_REDIS_URL ?? 'redis://localhost:6380/15';
     helpers = await import('./helpers.js');
     finance = await import('./finance-helpers.js');
     app = await helpers.createApp();

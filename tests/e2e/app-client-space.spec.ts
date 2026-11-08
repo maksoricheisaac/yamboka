@@ -191,7 +191,7 @@ test.describe('Historique unifié', () => {
     await signUpVerified(page, request, uniqueEmail('hist'));
     const paymentId = await buyStarter(page);
 
-    await page.goto('/app/credits/historique');
+    await page.goto('/app/historique');
     for (const name of ['Toutes les opérations', 'Achats', 'Générations', 'Remboursements', 'Bonus et ajustements']) {
       await expect(filter(page, name)).toBeVisible();
     }
@@ -203,20 +203,20 @@ test.describe('Historique unifié', () => {
     await expect(page).toHaveURL(/filtre=achats$/);
     const purchase = page.getByRole('listitem').filter({ hasText: 'Starter' });
     await expect(purchase.getByText('Réussi')).toBeVisible();
-    await expect(purchase).toContainText('MTN Mobile Money');
+    await expect(purchase).toContainText('MTN MoMo');
     await expect(purchase).toContainText(/5\s?000 FCFA/);
     await purchase.getByRole('link', { name: /Voir le reçu/ }).click();
     await expect(page).toHaveURL(new RegExp(`/app/credits/recu/${paymentId}$`));
     await expect(page.getByRole('heading', { level: 1 })).toContainText('YAM-');
     await expect(page.getByText('République du Congo').or(page.getByText('Congo'))).toBeVisible();
 
-    await page.goto('/app/credits/historique?filtre=bonus');
+    await page.goto('/app/historique?filtre=bonus');
     await expect(page.getByRole('listitem').filter({ hasText: 'Bonus de premier achat' })).toBeVisible();
     await expect(page.getByRole('listitem').filter({ hasText: 'Achat de crédits' })).toHaveCount(0);
 
-    await page.goto('/app/credits/historique?filtre=generations');
+    await page.goto('/app/historique?filtre=generations');
     await expect(page.getByText('Aucune création n’a encore utilisé de crédits.')).toBeVisible();
-    await page.goto('/app/credits/historique?filtre=remboursements');
+    await page.goto('/app/historique?filtre=remboursements');
     await expect(page.getByText(/Aucun remboursement/)).toBeVisible();
   });
 
@@ -246,7 +246,7 @@ test.describe('Achat de crédits : quantité libre et pays', () => {
     await expect(page.getByText(/100 crédits.*à payer : 1\s?000 FCFA/)).toBeVisible();
     await expect(page.getByText(/Solde : 0 → 100 crédits/)).toBeVisible();
 
-    await page.getByLabel('MTN Mobile Money').check();
+    await page.getByLabel('MTN MoMo').check();
     await page.getByLabel('Numéro qui paie').fill('242061234567');
     await payButton(page).click();
     await expect(page).toHaveURL(/\/app\/credits\/paiement\/[0-9a-f-]{36}$/);
@@ -273,7 +273,7 @@ test.describe('Achat de crédits : quantité libre et pays', () => {
     await signUpVerified(page, request, uniqueEmail('cameroun'));
     await page.goto('/app/credits');
     await expect(payButton(page)).toBeEnabled();
-    await expect(page.getByLabel('MTN Mobile Money')).toBeVisible();
+    await expect(page.getByLabel('MTN MoMo')).toBeVisible();
     await expect(page.getByLabel('Airtel Money')).toBeVisible();
 
     await page.getByLabel('Je paie depuis').selectOption('CM');
@@ -293,7 +293,7 @@ test.describe('Achat de crédits : quantité libre et pays', () => {
     await expect(balance(page, 600)).toBeVisible();
 
     // L'historique et le reçu portent le pays et le moyen de paiement réels.
-    await page.goto('/app/credits/historique?filtre=achats');
+    await page.goto('/app/historique?filtre=achats');
     await expect(page.getByRole('listitem').filter({ hasText: 'Starter' })).toContainText('Orange Money');
   });
 });
@@ -305,8 +305,8 @@ test.describe('Responsive : aucun débordement sur les écrans de l’espace cli
     const paths = [
       '/app',
       '/app/credits',
-      '/app/credits/historique',
-      '/app/credits/historique?filtre=achats',
+      '/app/historique',
+      '/app/historique?filtre=achats',
       '/app/parametres?onglet=profil',
       '/app/parametres?onglet=notifications',
       '/app/parametres?onglet=securite',

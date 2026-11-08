@@ -42,7 +42,7 @@ export default async function DashboardPage() {
   const user = await requireUser();
   const [summary, ledger, notifications] = await Promise.all([
     serverGet<ActivitySummary>("/credits/summary"),
-    serverGet<LedgerPage>("/credits/ledger?limit=5"),
+    serverGet<LedgerPage>("/credits/ledger?pageSize=5"),
     serverGet<{ unread: number; items: NotificationItem[] }>("/notifications"),
   ]);
   const steps = [
@@ -99,7 +99,7 @@ export default async function DashboardPage() {
       <section aria-labelledby="tx-title" className="space-y-4">
         <div className="flex items-end justify-between gap-3">
           <h2 id="tx-title" className="text-2xl font-bold">Dernières transactions</h2>
-          <Link href="/app/credits/historique" className="text-sm font-medium text-primary underline-offset-4 hover:underline">Tout l’historique</Link>
+          <Link href="/app/historique" className="text-sm font-medium text-primary underline-offset-4 hover:underline">Tout l’historique</Link>
         </div>
         {ledger.items.length === 0 ? (
           <div className="space-y-3 rounded-2xl border bg-card p-6 text-center">

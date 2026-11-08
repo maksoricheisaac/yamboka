@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Res,
 } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -13,6 +14,7 @@ import { Throttle } from '@nestjs/throttler';
 import type {
   CreatePaymentInput,
   PaymentQuoteView,
+  Page,
   PaymentReceipt,
   PaymentView,
   QuotePaymentInput,
@@ -20,6 +22,7 @@ import type {
 } from '@yamboka/shared';
 import {
   createPaymentSchema,
+  pageQuerySchema,
   quotePaymentSchema,
   simulatePaymentSchema,
 } from '@yamboka/shared';
@@ -72,8 +75,9 @@ export class PaymentsController {
   @ApiOperation({ summary: 'Historique de mes achats (UF-25)' })
   async list(
     @CurrentUser() user: AuthUser,
-  ): Promise<{ payments: PaymentView[] }> {
-    return { payments: await this.payments.list(user.id) };
+    @Query(new ZodPipe(pageQuerySchema)) q: { page: number; pageSize: number },
+  ): Promise<Page<PaymentView>> {
+    return this.payments.list(user.id, q);
   }
 
   @Get(':id')

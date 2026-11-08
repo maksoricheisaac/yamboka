@@ -2,7 +2,6 @@ import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env';
 import { MockPaymentProvider } from './mock-payment.provider';
-import { findCountry } from './payment-countries';
 import { PaymentProvider } from './payment-provider';
 import { SaspayPaymentProvider } from './saspay/saspay.provider';
 
@@ -19,14 +18,8 @@ export class PaymentProviders {
     private readonly config: ConfigService<Env, true>,
   ) {}
 
-  forCountry(country: string): PaymentProvider {
-    // Pays absent de la configuration (payment-countries.ts) : aucun fournisseur, aucun paiement.
-    if (!findCountry(country)) {
-      throw new ServiceUnavailableException({
-        code: 'COUNTRY_NOT_SUPPORTED',
-        message: 'Le paiement n’est pas encore disponible dans votre pays.',
-      });
-    }
+  /** Le pays a déjà été validé (ouvert dans le catalogue) par l’appelant : le fournisseur ne dépend que de PAYMENT_PROVIDER. */
+  forCountry(): PaymentProvider {
     return this.config.get('PAYMENT_PROVIDER', { infer: true }) === 'saspay'
       ? this.saspay
       : this.mock;

@@ -30,12 +30,13 @@ import {
   type TopUpRow,
   CUSTOM_PURCHASE_LABEL,
 } from '@yamboka/shared';
+import { buildPage, clampPage } from '@yamboka/shared';
+import { orderBy } from '../common/sort';
 import { AuditService } from '../audit/audit.service';
 import { CatalogService } from '../catalog/catalog.service';
 import type { Env } from '../config/env';
 import { EmailService } from '../email/email.service';
 import { Prisma } from '../generated/prisma/client';
-import { findCountry } from '../payments/payment-countries';
 import { PaymentsService } from '../payments/payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -62,6 +63,12 @@ export function csvCell(value: string | number | null | undefined): string {
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return `"${s.replace(/"/g, '""')}"`;
 }
+
+/** Relations lues par une ligne de paiement : uniquement ce qui est affiché. */
+const PAYMENT_INCLUDE = {
+  user: { select: { email: true } },
+  pack: { select: { name: true } },
+} as const;
 
 @Injectable()
 export class AdminOpsService {
@@ -321,13 +328,12 @@ export class AdminOpsService {
         href: '/admin/parametres',
       });
     }
-    const packs = await this.offer.listPacks();
-    const bad = packs.filter((p) => p.active && p.belowThreshold);
+    const bad = await this.offer.packsBelowMargin();
     if (bad.length) {
       alerts.push({
         key: 'margin',
         level: 'warning',
-        message: `Marge insuffisante sur : ${bad.map((p) => p.name).join(', ')}.`,
+        message: `Marge insuffisante sur : ${bad.join(', ')}.`,
         href: '/admin/packs',
       });
     }
@@ -363,10 +369,17 @@ export class AdminOpsService {
     )
       where.status = q.status as 'PENDING';
     if (q.provider) where.gateway = q.provider;
+    if (q.country) where.country = q.country;
+    if (q.method) where.OR = [{ methodCode: q.method }, { network: q.method }];
+    if (q.userId) where.userId = q.userId;
     if (q.q) {
-      where.OR = [
-        { user: { email: { contains: q.q, mode: 'insensitive' } } },
-        { externalReference: { contains: q.q, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { user: { email: { contains: q.q, mode: 'insensitive' } } },
+            { externalReference: { contains: q.q, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
     if (q.from || q.to) {
@@ -377,7 +390,7 @@ export class AdminOpsService {
   }
 
   private paymentRow(
-    p: Prisma.PaymentGetPayload<{ include: { user: true; pack: true } }>,
+    p: Prisma.PaymentGetPayload<{ include: typeof PAYMENT_INCLUDE }>,
   ): AdminPaymentRow {
     const last = (p.lastProviderStatus ?? null) as {
       at?: string;
@@ -395,6 +408,12 @@ export class AdminOpsService {
       externalReference: p.externalReference,
       failureReason: p.failureReason,
       createdAt: p.createdAt.toISOString(),
+      confirmedAt: p.creditedAt?.toISOString() ?? null,
+      country: p.country,
+      countryName: p.countryName,
+      currency: p.currency,
+      methodCode: p.methodCode,
+      methodName: p.methodName,
       provider: p.gateway,
       network: p.network,
       sentAmount: p.sentAmount,
@@ -407,29 +426,31 @@ export class AdminOpsService {
 
   async listPayments(q: ListQuery): Promise<Page<AdminPaymentRow>> {
     const where = this.paymentWhere(q);
-    const [total, rows] = await Promise.all([
-      this.prisma.payment.count({ where }),
-      this.prisma.payment.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (q.page - 1) * q.pageSize,
-        take: q.pageSize,
-        include: { user: true, pack: true },
+    const total = await this.prisma.payment.count({ where });
+    const page = clampPage(q.page, total, q.pageSize);
+    const rows = await this.prisma.payment.findMany({
+      where,
+      orderBy: orderBy(q, ['createdAt', 'amount', 'status'], {
+        field: 'createdAt',
+        dir: 'desc',
       }),
-    ]);
-    return {
-      items: rows.map((p) => this.paymentRow(p)),
+      skip: (page - 1) * q.pageSize,
+      take: q.pageSize,
+      include: PAYMENT_INCLUDE,
+    });
+    return buildPage(
+      rows.map((p) => this.paymentRow(p)),
       total,
-      page: q.page,
-      pageSize: q.pageSize,
-    };
+      page,
+      q.pageSize,
+    );
   }
 
   /** Fiche d'un paiement avec sa chronologie (création, notifications reçues, vérifications manuelles, crédit). */
   async getPayment(id: string): Promise<AdminPaymentDetail> {
     const p = await this.prisma.payment.findUnique({
       where: { id },
-      include: { user: true, pack: true },
+      include: PAYMENT_INCLUDE,
     });
     if (!p)
       throw new NotFoundException({
@@ -545,7 +566,7 @@ export class AdminOpsService {
       where: this.paymentWhere(q),
       orderBy: { createdAt: 'asc' },
       take: 20_000,
-      include: { user: true, pack: true },
+      include: PAYMENT_INCLUDE,
     });
     const head = [
       'id',
@@ -725,7 +746,7 @@ export class AdminOpsService {
             amountXaf: input.amountXaf,
             commissionXaf: input.commissionXaf,
           },
-          reason: input.note ?? 'Retrait OpenPay',
+          reason: input.note ?? 'Retrait SasPay',
           ip,
         },
         tx,
@@ -758,18 +779,30 @@ export class AdminOpsService {
       const { from, end } = range(q, 3650);
       where.createdAt = { gte: from, lt: end };
     }
-    const [total, rows] = await Promise.all([
-      this.prisma.generation.count({ where }),
-      this.prisma.generation.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (q.page - 1) * q.pageSize,
-        take: q.pageSize,
-        include: { user: true, product: true, preset: true },
+    const total = await this.prisma.generation.count({ where });
+    const page = clampPage(q.page, total, q.pageSize);
+    const rows = await this.prisma.generation.findMany({
+      where,
+      orderBy: orderBy(q, ['createdAt', 'creditsCost', 'status'], {
+        field: 'createdAt',
+        dir: 'desc',
       }),
-    ]);
-    return {
-      items: rows.map((g) => ({
+      skip: (page - 1) * q.pageSize,
+      take: q.pageSize,
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        creditsCost: true,
+        hidden: true,
+        createdAt: true,
+        user: { select: { email: true } },
+        product: { select: { name: true } },
+        preset: { select: { name: true } },
+      },
+    });
+    return buildPage(
+      rows.map((g) => ({
         id: g.id,
         user: { id: g.userId, email: g.user.email },
         product: g.product.name,
@@ -780,9 +813,9 @@ export class AdminOpsService {
         createdAt: g.createdAt.toISOString(),
       })),
       total,
-      page: q.page,
-      pageSize: q.pageSize,
-    };
+      page,
+      q.pageSize,
+    );
   }
 
   /** Masque (ou ré-affiche) une création. Le fichier n'est pas supprimé ici : la suppression des fichiers dépend du stockage (lot générations). */
@@ -885,20 +918,6 @@ export class AdminOpsService {
           code: 'INVALID_SETTING',
           message: 'loginOtpMode : off, admin ou all.',
         });
-      if (key === 'paymentEnabledCountries') {
-        const codes = (value as string)
-          .split(',')
-          .map((c) => c.trim().toUpperCase())
-          .filter(Boolean);
-        const unknown = codes.filter((c) => !findCountry(c));
-        if (codes.length === 0 || unknown.length > 0)
-          throw new BadRequestException({
-            code: 'INVALID_SETTING',
-            message: codes.length
-              ? `Pays inconnus : ${unknown.join(', ')}.`
-              : 'Indiquez au moins un pays.',
-          });
-      }
       if (key === 'creditValueFcfa' && (value as number) <= 0)
         throw new BadRequestException({
           code: 'INVALID_SETTING',
@@ -1006,18 +1025,28 @@ export class AdminOpsService {
       const { from, end } = range(q, 3650);
       where.createdAt = { gte: from, lt: end };
     }
-    const [total, rows] = await Promise.all([
-      this.prisma.auditLog.count({ where }),
-      this.prisma.auditLog.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (q.page - 1) * q.pageSize,
-        take: q.pageSize,
-        include: { actor: true },
-      }),
-    ]);
-    return {
-      items: rows.map((r) => ({
+    const total = await this.prisma.auditLog.count({ where });
+    const page = clampPage(q.page, total, q.pageSize);
+    const rows = await this.prisma.auditLog.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: (page - 1) * q.pageSize,
+      take: q.pageSize,
+      select: {
+        id: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        before: true,
+        after: true,
+        reason: true,
+        ip: true,
+        createdAt: true,
+        actor: { select: { email: true } },
+      },
+    });
+    return buildPage(
+      rows.map((r) => ({
         id: r.id,
         action: r.action,
         entityType: r.entityType,
@@ -1030,9 +1059,9 @@ export class AdminOpsService {
         createdAt: r.createdAt.toISOString(),
       })),
       total,
-      page: q.page,
-      pageSize: q.pageSize,
-    };
+      page,
+      q.pageSize,
+    );
   }
 
   // ───────────── Comptes administrateurs ─────────────

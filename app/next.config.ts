@@ -46,7 +46,9 @@ const nextConfig: NextConfig = {
       // (e-mails, favoris, notifications) continuent d'arriver au bon endroit.
       { source: "/app/profil", destination: "/app/parametres?onglet=profil", permanent: true },
       { source: "/app/notifications", destination: "/app/parametres?onglet=notifications", permanent: true },
-      { source: "/app/achats", destination: "/app/credits/historique?filtre=achats", permanent: true },
+      { source: "/app/achats", destination: "/app/historique?filtre=achats", permanent: true },
+      // Route canonique de l'historique : l'ancienne adresse (avec ses filtres) redirige définitivement.
+      { source: "/app/credits/historique", destination: "/app/historique", permanent: true },
       { source: "/app/achats/:id", destination: "/app/credits/recu/:id", permanent: true },
       { source: "/app/tendances", destination: "/app/creer", permanent: true },
     ];

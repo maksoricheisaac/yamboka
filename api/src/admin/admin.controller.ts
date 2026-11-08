@@ -16,6 +16,7 @@ import type {
   AdminAccount,
   AdminGenerationRow,
   AdminPack,
+  AdminPackPage,
   AdminPaymentDetail,
   AdminPaymentRow,
   AdminPreset,
@@ -229,8 +230,8 @@ export class AdminController {
   // ───────────── Offre ─────────────
 
   @Get('packs')
-  listPacks(): Promise<AdminPack[]> {
-    return this.offer.listPacks();
+  listPacks(@Query(query) q: ListQuery): Promise<AdminPackPage> {
+    return this.offer.listPacks(q);
   }
 
   @Post('packs')

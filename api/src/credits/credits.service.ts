@@ -12,7 +12,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   LEDGER_FILTER_TYPES,
   type ActivitySummary,
+  buildPage,
+  clampPage,
   type LedgerFilter,
+  type Page,
 } from '@yamboka/shared';
 import { allocateFifo, spendableTotal } from './fifo';
 
@@ -45,6 +48,8 @@ export interface LedgerEntryView {
   createdAt: Date;
   paymentId: string | null;
   generationId: string | null;
+  reference: string | null;
+  methodLabel: string | null;
 }
 
 /**
@@ -531,22 +536,41 @@ export class CreditsService {
 
   // ───────────── Historique ─────────────
 
-  /** Historique des mouvements d'un utilisateur, du plus récent au plus ancien (UF-61), paginé par curseur. */
+  /**
+   * Historique des mouvements d'un utilisateur, du plus récent au plus ancien (UF-61), paginé côté serveur.
+   * Toujours borné à `userId` : un client ne lit jamais les mouvements d'un autre.
+   */
   async listLedger(
     userId: string,
-    opts: { cursor?: string; limit?: number; filter?: LedgerFilter },
-  ): Promise<{ items: LedgerEntryView[]; nextCursor: string | null }> {
-    const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
+    opts: {
+      page?: number;
+      pageSize?: number;
+      filter?: LedgerFilter;
+      from?: Date;
+      to?: Date;
+    },
+  ): Promise<Page<LedgerEntryView>> {
+    const pageSize = Math.min(Math.max(opts.pageSize ?? 20, 1), 100);
     const types =
       opts.filter && opts.filter !== 'all'
         ? LEDGER_FILTER_TYPES[opts.filter]
         : null;
+    const where: Prisma.CreditLedgerWhereInput = {
+      userId,
+      ...(types ? { type: { in: types } } : {}),
+      ...(opts.from || opts.to
+        ? { createdAt: { gte: opts.from, lt: opts.to } }
+        : {}),
+    };
+    const total = await this.prisma.creditLedger.count({ where });
+    const page = clampPage(opts.page ?? 1, total, pageSize);
     const rows = await this.prisma.creditLedger.findMany({
-      where: { userId, ...(types ? { type: { in: types } } : {}) },
+      where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: limit + 1,
-      ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
+      take: pageSize,
+      skip: (page - 1) * pageSize,
       select: {
+        payment: { select: { externalReference: true, methodName: true } },
         id: true,
         type: true,
         amount: true,
@@ -557,9 +581,16 @@ export class CreditsService {
         generationId: true,
       },
     });
-    const hasMore = rows.length > limit;
-    const items = hasMore ? rows.slice(0, limit) : rows;
-    return { items, nextCursor: hasMore ? items[items.length - 1].id : null };
+    return buildPage(
+      rows.map(({ payment, ...r }) => ({
+        ...r,
+        reference: payment?.externalReference ?? null,
+        methodLabel: payment?.methodName ?? null,
+      })),
+      total,
+      page,
+      pageSize,
+    );
   }
 
   // ───────────── Synthèse ─────────────

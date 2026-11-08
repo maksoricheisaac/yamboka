@@ -42,6 +42,11 @@ const choiceClass =
   "cursor-pointer rounded-xl border bg-card transition-colors hover:border-primary/50 has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:ring-2 has-[:checked]:ring-primary/30 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring";
 
 /** Numéro déjà connu, gardé seulement s'il appartient au pays du paiement. */
+/** Premier moyen réellement sélectionnable (les « Bientôt disponible » sont affichés mais jamais choisis). */
+function firstOpen(country: PaymentCountryView): string {
+  return country.methods.find((m) => m.status !== "COMING_SOON")?.code ?? "";
+}
+
 function phoneFor(country: PaymentCountryView, phone: string | null | undefined): string {
   return phone && phoneCountry(phone) === country.iso ? phone : "";
 }
@@ -53,6 +58,7 @@ function phoneFor(country: PaymentCountryView, phone: string | null | undefined)
  */
 export function PurchaseFlow({
   countries,
+  upcomingCountries = [],
   initialCountry,
   countrySource,
   balance,
@@ -61,6 +67,8 @@ export function PurchaseFlow({
   rates,
 }: {
   countries: PaymentCountryView[];
+  /** Pays intégrés mais pas encore ouverts : listés « Bientôt disponible », jamais sélectionnables. */
+  upcomingCountries?: { iso: string; name: string }[];
   initialCountry: string;
   countrySource: CountrySource;
   balance: number;
@@ -79,7 +87,7 @@ export function PurchaseFlow({
   const [mode, setMode] = useState<Mode>(country.packs.length > 0 ? "pack" : "custom");
   const [packId, setPackId] = useState<string | null>(featured(country));
   const [creditsText, setCreditsText] = useState(country.packs.length === 0 && country.custom ? String(country.custom.minCredits) : "");
-  const [network, setNetwork] = useState(country.methods[0]?.code ?? "");
+  const [network, setNetwork] = useState(firstOpen(country));
   const [phone, setPhone] = useState(phoneFor(country, defaultPhone));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,7 +111,7 @@ export function PurchaseFlow({
     setMode(c.packs.length > 0 ? "pack" : "custom");
     setPackId(featured(c));
     setCreditsText(c.packs.length === 0 && c.custom ? String(c.custom.minCredits) : "");
-    setNetwork(c.methods[0]?.code ?? "");
+    setNetwork(firstOpen(c));
     setPhone(phoneFor(c, phone || defaultPhone));
     setError(null);
     setFieldErrors({});
@@ -199,7 +207,7 @@ export function PurchaseFlow({
         </Alert>
       )}
 
-      {countries.length > 1 && (
+      {(countries.length > 1 || upcomingCountries.length > 0) && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border bg-card px-3.5 py-2.5">
           <label htmlFor={`${uid}-country`} className="flex items-center gap-2 text-sm font-medium">
             <Globe2 className="size-4 text-primary" aria-hidden /> Je paie depuis
@@ -216,6 +224,15 @@ export function PurchaseFlow({
                 {c.name} ({c.currency})
               </option>
             ))}
+            {upcomingCountries.length > 0 && (
+              <optgroup label="Bientôt disponible">
+                {upcomingCountries.map((c) => (
+                  <option key={c.iso} value={c.iso} disabled>
+                    {c.name} — bientôt disponible
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
           {countrySource === "ip" && iso === initialCountry && <span className="text-xs text-muted-foreground">Détecté automatiquement</span>}
         </div>
@@ -322,12 +339,24 @@ export function PurchaseFlow({
           <Step n={2}>Moyen de paiement</Step>
         </legend>
         <div className="grid gap-2.5 sm:grid-cols-2">
-          {country.methods.map((m) => (
-            <label key={m.code} className={cn(choiceClass, "flex min-h-12 items-center gap-3 px-4")}>
-              <input type="radio" name={`${uid}-method`} value={m.code} checked={network === m.code} onChange={() => setNetwork(m.code)} className="size-4 accent-[var(--primary)]" />
-              <span className="text-sm font-medium">{m.name}</span>
-            </label>
-          ))}
+          {country.methods.map((m) => {
+            const soon = m.status === "COMING_SOON";
+            return (
+              <label key={m.code} className={cn(choiceClass, "flex min-h-12 items-center gap-3 px-4", soon && "cursor-not-allowed opacity-60")}>
+                <input
+                  type="radio"
+                  name={`${uid}-method`}
+                  value={m.code}
+                  checked={!soon && network === m.code}
+                  disabled={soon}
+                  onChange={() => setNetwork(m.code)}
+                  className="size-4 accent-[var(--primary)]"
+                />
+                <span className="text-sm font-medium">{m.name}</span>
+                {soon && <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Bientôt disponible</span>}
+              </label>
+            );
+          })}
         </div>
       </fieldset>
 

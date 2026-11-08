@@ -4,6 +4,7 @@ import type { PricingView } from '@yamboka/shared';
 import { Client, createApp, prismaOf } from './helpers';
 import { resetDatabase } from './reset-database';
 import { ledgerOf, verifiedClient } from './finance-helpers';
+import { openCountries } from './catalog-helpers';
 
 const PHONE_CG = '+242061234567';
 const PHONE_CM = '+237670123456';
@@ -92,7 +93,7 @@ describe('Achat de crédits sur mesure et paiements multi-pays (e2e)', () => {
     });
 
     it('ne propose ni réseau inactif ni réseau exigeant un code non géré', async () => {
-      await setSetting('paymentEnabledCountries', 'CG,CM,CI,SN');
+      await openCountries(prisma, ['CG', 'CM', 'CI', 'SN']);
       try {
         const body = await pricing();
         const codes = body.countries.flatMap(
@@ -105,7 +106,7 @@ describe('Achat de crédits sur mesure et paiements multi-pays (e2e)', () => {
         expect(codes).not.toContain('orange_ci'); // code à générer avant paiement
         expect(codes).not.toContain('wizall_sn'); // code reçu après le push
       } finally {
-        await setSetting('paymentEnabledCountries', 'CG,CM');
+        await openCountries(prisma, ['CG', 'CM']);
       }
     });
   });
@@ -146,7 +147,7 @@ describe('Achat de crédits sur mesure et paiements multi-pays (e2e)', () => {
         bonusCredits: 0,
         country: 'CG',
         network: 'mtn_cg',
-        methodLabel: 'MTN Mobile Money',
+        methodLabel: 'MTN MoMo',
         operator: 'MTN',
       });
     });
@@ -315,7 +316,7 @@ describe('Achat de crédits sur mesure et paiements multi-pays (e2e)', () => {
     });
 
     it('Bénin (XOF, à parité avec le XAF) une fois ouvert : même prix, devise XOF', async () => {
-      await setSetting('paymentEnabledCountries', 'CG,BJ');
+      await openCountries(prisma, ['CG', 'BJ']);
       try {
         const { client } = await verifiedClient(app);
         const body = await pricing();
@@ -336,19 +337,19 @@ describe('Achat de crédits sur mesure et paiements multi-pays (e2e)', () => {
           amountFcfa: 2000,
         });
       } finally {
-        await setSetting('paymentEnabledCountries', 'CG,CM');
+        await openCountries(prisma, ['CG', 'CM']);
       }
     });
 
     it('une devise sans prix du crédit ni pack n’est jamais proposée (aucun taux de change inventé)', async () => {
-      await setSetting('paymentEnabledCountries', 'CG,KE');
+      await openCountries(prisma, ['CG', 'KE']);
       try {
         const body = await pricing();
         expect(body.countries.map((c: { iso: string }) => c.iso)).toEqual([
           'CG',
         ]);
       } finally {
-        await setSetting('paymentEnabledCountries', 'CG,CM');
+        await openCountries(prisma, ['CG', 'CM']);
       }
     });
   });

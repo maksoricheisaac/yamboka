@@ -1,3 +1,4 @@
+import type { Page } from './admin-views';
 /** Contrats des crédits. Le solde est toujours la somme du registre : aucune valeur n'est modifiable par le client. */
 
 export interface BalanceView {
@@ -27,6 +28,10 @@ export interface LedgerEntryView {
   paymentId: string | null;
   /** Création à l'origine du mouvement. */
   generationId: string | null;
+  /** Référence du fournisseur de paiement (SasPay) quand le mouvement vient d'un achat : traçabilité financière. */
+  reference: string | null;
+  /** Moyen de paiement de l'achat (« MTN MoMo »), figé à la création du paiement. */
+  methodLabel: string | null;
 }
 
 /** Filtres de l'historique : chaque famille d'opérations regroupe des types du registre. */
@@ -48,7 +53,4 @@ export interface ActivitySummary {
   creditsPurchased30d: number;
 }
 
-export interface LedgerPage {
-  items: LedgerEntryView[];
-  nextCursor: string | null;
-}
+export type LedgerPage = Page<LedgerEntryView>;

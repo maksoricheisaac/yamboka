@@ -14,7 +14,7 @@ async function verifiedOnCreditsPage(page: Page, request: APIRequestContext, fir
 async function choosePack(page: Page, pack: string, phone = '242061234567') {
   await expect(page.getByRole('button', { name: /^Payer/ })).toBeEnabled();
   await page.locator('label', { hasText: pack }).first().click();
-  await page.getByLabel('MTN Mobile Money').check();
+  await page.getByLabel('MTN MoMo').check();
   await page.getByLabel('Numéro qui paie').fill(phone);
 }
 
@@ -184,7 +184,7 @@ test.describe('Achat de crédits (paiement simulé)', () => {
   });
 
   test('un visiteur est renvoyé vers la connexion depuis les pages d’achat', async ({ page }) => {
-    for (const path of ['/app/credits', '/app/credits/historique']) {
+    for (const path of ['/app/credits', '/app/historique']) {
       await page.goto(path);
       await expect(page).toHaveURL(/\/connexion/);
     }
@@ -192,7 +192,7 @@ test.describe('Achat de crédits (paiement simulé)', () => {
 
   test('historique des achats vide : message et lien pour acheter', async ({ page, request }) => {
     await verifiedOnCreditsPage(page, request);
-    await page.goto('/app/credits/historique?filtre=achats');
+    await page.goto('/app/historique?filtre=achats');
     await expect(page.getByText('Vous n’avez encore rien acheté.')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Acheter des crédits' })).toBeVisible();
   });
@@ -213,7 +213,7 @@ test.describe('Responsive et accessibilité des écrans de crédits', () => {
 
     await simulate(page, 'Confirmer le paiement').click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Paiement confirmé');
-    await page.goto('/app/credits/historique?filtre=achats');
+    await page.goto('/app/historique?filtre=achats');
     expect(await overflow()).toBeLessThanOrEqual(0);
   });
 

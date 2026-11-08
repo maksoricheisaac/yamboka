@@ -89,6 +89,11 @@ export interface PaymentMethodView {
   code: string;
   /** Nom affiché (« MTN Mobile Money »). */
   name: string;
+  /**
+   * ACTIVE = sélectionnable. COMING_SOON = affiché « Bientôt disponible », jamais sélectionnable.
+   * Absent = ACTIVE (anciennes réponses).
+   */
+  status?: 'ACTIVE' | 'COMING_SOON';
 }
 
 /** Achat de crédits à la quantité, dans la devise d'un pays. */
@@ -121,6 +126,8 @@ export interface PricingView {
   duration: { min: number; max: number; default: number };
   resolutions: { id: VideoResolution; label: string; creditsPerSecond: number }[];
   countries: PaymentCountryView[];
+  /** Pays intégrés mais pas encore ouverts (« Bientôt disponible »), non sélectionnables. */
+  upcomingCountries: { iso: string; name: string }[];
 }
 
 export interface PaymentView {

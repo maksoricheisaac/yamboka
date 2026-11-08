@@ -31,7 +31,7 @@ const imageSoul: ProductPricing = {
 const settings: MarginSettings = {
   usdToXafRate: 575,
   fxFeePercent: 6,
-  openpayCommissionPercent: 5,
+  paymentCommissionPercent: 5,
   regenOverheadPercent: 15,
   minMarginPercent: 15,
 };
