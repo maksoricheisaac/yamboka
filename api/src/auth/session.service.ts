@@ -61,6 +61,15 @@ export class SessionService {
     });
   }
 
+  /** Sessions ouvertes (non révoquées, non expirées), de la plus récente à la plus ancienne. */
+  async listActive(userId: string) {
+    return this.prisma.session.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, userAgent: true, createdAt: true },
+    });
+  }
+
   /** Révoque toutes les sessions d'un utilisateur (changement de mot de passe, suppression de compte). */
   async revokeAll(userId: string, exceptSessionId?: string): Promise<void> {
     await this.prisma.session.updateMany({

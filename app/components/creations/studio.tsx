@@ -354,7 +354,8 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
           {styles.length > 0 && (
             <div className="space-y-1.5">
               <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0" role="group" aria-label="Idées">
-                {styles.slice(0, 8).map((s) => (
+                {/* Les idées mises à la une par l'administrateur passent en tête. */}
+                {[...styles].sort((x, y) => Number(y.featured) - Number(x.featured)).map((s) => (
                   <button
                     key={s.id}
                     type="button"
@@ -365,12 +366,11 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
                       styleId === s.id ? "border-primary bg-primary/10 font-medium text-primary" : "bg-card text-muted-foreground hover:text-foreground",
                     )}
                   >
+                    {s.featured && <span aria-hidden>★ </span>}
                     {s.name}
+                    {s.featured && <span className="sr-only"> (à la une)</span>}
                   </button>
                 ))}
-                <Link href="/app/tendances" className="inline-flex h-9 shrink-0 items-center rounded-full px-3 text-sm font-medium text-primary underline-offset-4 hover:underline">
-                  Toutes les idées
-                </Link>
               </div>
               {idea?.photoHint && <p className="px-1 text-sm text-muted-foreground">Conseil photo : {idea.photoHint}</p>}
             </div>

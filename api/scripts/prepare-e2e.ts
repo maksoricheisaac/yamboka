@@ -16,8 +16,8 @@ const STORAGE_DIR = process.env.LOCAL_STORAGE_DIR ?? './storage';
 const THUMB = join(__dirname, '..', '..', 'web', 'public', 'demos', 'danse-apres.webp');
 
 const STYLES = [
-  { name: 'Pub e2e', category: 'pub', type: 'LOOK', product: 'VIDEO_LIGHT_480' },
-  { name: 'Tendance e2e', category: 'danse', type: 'MOTION', product: 'VIDEO_LIGHT_480' },
+  { name: 'Pub e2e', category: 'pub', type: 'LOOK', product: 'WAN_I2V_480' },
+  { name: 'Tendance e2e', category: 'danse', type: 'MOTION', product: 'WAN_I2V_480' },
 ] as const;
 
 async function seedStyles() {

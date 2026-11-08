@@ -1,8 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { PackView, ProductView, QuoteView } from '@yamboka/shared';
-import { VIDEO_RESOLUTIONS, packEquivalents } from '@yamboka/shared';
-import type { CreditRates } from '@yamboka/shared';
-import { WAN_MODEL } from '../generation/models';
 import { CreditsService } from '../credits/credits.service';
 import type { GenerationProduct } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,9 +9,9 @@ import {
   MarginSettings,
   ProductPricing,
   computeMargin,
-  packTotalCredits,
   quoteCredits,
 } from './pricing';
+import { loadVideoRates, toPackView } from './pack-view';
 
 export function toPricing(p: GenerationProduct): ProductPricing {
   return {
@@ -39,7 +36,7 @@ export class CatalogService {
 
   /** `publicOnly` : catalogue des pages publiques (packs actifs ET publiés, trois au maximum). */
   async listPacks(country = 'CG', publicOnly = false): Promise<PackView[]> {
-    const [packs, products] = await Promise.all([
+    const [packs, rates] = await Promise.all([
       this.prisma.creditPack.findMany({
         where: {
           country,
@@ -49,38 +46,9 @@ export class CatalogService {
         orderBy: { sortOrder: 'asc' },
         ...(publicOnly ? { take: 3 } : {}),
       }),
-      this.prisma.generationProduct.findMany({ where: { active: true } }),
+      loadVideoRates(this.prisma),
     ]);
-    // Tarifs par résolution : lus en base (produits vidéo actifs), jamais en dur.
-    const rates = {} as CreditRates;
-    for (const r of VIDEO_RESOLUTIONS) {
-      rates[r] =
-        products.find(
-          (p) =>
-            p.resolution === r &&
-            p.billingUnit === 'SECOND' &&
-            p.providerModel === WAN_MODEL,
-        )?.creditsPerUnit ?? 0;
-    }
-
-    return packs.map((p) => {
-      const total = packTotalCredits({
-        price: p.price,
-        baseCredits: p.credits,
-        bonusPercent: p.bonusPercent,
-      });
-      return {
-        id: p.id,
-        name: p.name,
-        currency: p.currency,
-        priceFcfa: p.price,
-        baseCredits: p.credits,
-        bonusPercent: p.bonusPercent,
-        totalCredits: total,
-        featured: p.featured,
-        equivalent: packEquivalents(total, rates),
-      };
-    });
+    return packs.map((p) => toPackView(p, rates));
   }
 
   /** État de maintenance, lisible sans connexion (bandeau et blocage des nouvelles créations). */

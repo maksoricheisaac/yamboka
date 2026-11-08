@@ -57,10 +57,17 @@ const GROUPS: { tab: TabId; title: string; fields: Def[] }[] = [
     ],
   },
   {
+    tab: "rentabilite",
+    title: "Paiements",
+    fields: [
+      { key: "creditValueFcfa", label: "Prix d’un crédit (FCFA) : affichage et achat à la quantité", kind: "number", hint: "À tenir aligné sur le pack d’entrée (prix ÷ crédits). Les packs, eux, gardent leur prix propre." },
+      { key: "paymentEnabledCountries", label: "Pays ouverts à l’achat de crédits (codes ISO séparés par des virgules)", kind: "text", hint: "Ex. CG,CM. Les pays en franc CFA (XAF, XOF) utilisent les mêmes prix ; une autre devise exige un prix du crédit et des packs dans cette devise." },
+    ],
+  },
+  {
     tab: "generation",
     title: "Limites de génération et seuils d’alerte",
     fields: [
-      { key: "creditValueFcfa", label: "Valeur d’un crédit affichée aux clients (FCFA)", kind: "number" },
       { key: "generationConfirmCredits", label: "Confirmation avant génération : à partir de (crédits)", kind: "number" },
       { key: "generationConfirmBalancePercent", label: "Confirmation avant génération : à partir de (% du solde)", kind: "number" },
       { key: "maxConcurrentGenerationsPerUser", label: "Générations simultanées par client", kind: "number" },

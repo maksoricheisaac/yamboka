@@ -143,33 +143,10 @@ test.describe('Création : parcours', () => {
   });
 });
 
-test.describe('Tendances, navigation et mise en page', () => {
-  test('une tendance ouvre « Créer » avec le bon onglet et le bon style', async ({ page, request }) => {
-    await accountWithCredits(page, request);
-    await page.goto('/app/tendances');
-    await expect(page.getByRole('heading', { level: 1, name: 'Tendances' })).toBeVisible();
-    // Une seule rangée de filtres, sans filtre de thème.
-    await expect(page.getByRole('group')).toHaveCount(1);
-    await page.getByRole('link', { name: /Tendance e2e/ }).click();
-    await expect(page).toHaveURL(/\/app\/creer\?style=/);
-    await expect(page.getByRole('tab', { name: 'Vidéo fun', selected: true })).toBeVisible();
-    await expect(page.getByRole('radio', { name: /Tendance e2e/ })).toBeChecked();
-  });
-
-  test('un modèle de vidéo pub choisi dans Tendances reste modifiable et retirable', async ({ page, request }) => {
-    await accountWithCredits(page, request);
-    await page.goto('/app/tendances');
-    await page.getByRole('button', { name: 'Vidéos pub' }).click();
-    await page.getByRole('link', { name: /Pub e2e/ }).click();
-    await expect(page.getByRole('tab', { name: 'Vidéo pub', selected: true })).toBeVisible();
-    await expect(page.getByText('Modèle : Pub e2e')).toBeVisible();
-    await page.getByRole('button', { name: 'Retirer le modèle' }).click();
-    await expect(page.getByText('Modèle : Pub e2e')).toHaveCount(0);
-  });
-
+test.describe('Idées, navigation et mise en page', () => {
   test('plus aucune trace de la génération d’images : pas d’onglet ni de filtre « Affiche », ancien lien redirigé vers la vidéo', async ({ page, request }) => {
     await accountWithCredits(page, request);
-    await page.goto('/app/tendances');
+    await page.goto('/app/creer');
     await expect(page.getByRole('button', { name: /^Affiches?$/ })).toHaveCount(0);
     await page.goto('/app/creer?type=affiche');
     await expect(page).toHaveURL(/\/app\/creer\?type=pub$/);
@@ -180,7 +157,7 @@ test.describe('Tendances, navigation et mise en page', () => {
   test('aucun débordement horizontal et navigation adaptée à l’écran', async ({ page, request }) => {
     await accountWithCredits(page, request);
     const mobile = (page.viewportSize()?.width ?? 1280) < 1024;
-    for (const path of ['/app', '/app/creer', '/app/creations', '/app/tendances', '/app/credits', '/app/credits/historique', '/app/notifications', '/app/parametres']) {
+    for (const path of ['/app', '/app/creer', '/app/creations', '/app/credits', '/app/credits/historique', '/app/parametres']) {
       await page.goto(path);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

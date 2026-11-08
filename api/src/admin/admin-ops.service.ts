@@ -28,12 +28,14 @@ import {
   type SettingsView,
   type TopUpInput,
   type TopUpRow,
+  CUSTOM_PURCHASE_LABEL,
 } from '@yamboka/shared';
 import { AuditService } from '../audit/audit.service';
 import { CatalogService } from '../catalog/catalog.service';
 import type { Env } from '../config/env';
 import { EmailService } from '../email/email.service';
 import { Prisma } from '../generated/prisma/client';
+import { findCountry } from '../payments/payment-countries';
 import { PaymentsService } from '../payments/payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -385,7 +387,7 @@ export class AdminOpsService {
     return {
       id: p.id,
       user: { id: p.userId, email: p.user.email },
-      packName: p.pack.name,
+      packName: p.pack?.name ?? CUSTOM_PURCHASE_LABEL,
       amount: p.amount,
       credits: p.credits,
       operator: p.operator,
@@ -566,7 +568,7 @@ export class AdminOpsService {
         p.id,
         p.createdAt.toISOString(),
         p.user.email,
-        p.pack.name,
+        p.pack?.name ?? CUSTOM_PURCHASE_LABEL,
         p.amount,
         p.credits,
         p.operator,
@@ -882,6 +884,25 @@ export class AdminOpsService {
         throw new BadRequestException({
           code: 'INVALID_SETTING',
           message: 'loginOtpMode : off, admin ou all.',
+        });
+      if (key === 'paymentEnabledCountries') {
+        const codes = (value as string)
+          .split(',')
+          .map((c) => c.trim().toUpperCase())
+          .filter(Boolean);
+        const unknown = codes.filter((c) => !findCountry(c));
+        if (codes.length === 0 || unknown.length > 0)
+          throw new BadRequestException({
+            code: 'INVALID_SETTING',
+            message: codes.length
+              ? `Pays inconnus : ${unknown.join(', ')}.`
+              : 'Indiquez au moins un pays.',
+          });
+      }
+      if (key === 'creditValueFcfa' && (value as number) <= 0)
+        throw new BadRequestException({
+          code: 'INVALID_SETTING',
+          message: 'Le prix du crédit doit être supérieur à zéro.',
         });
       if (key === 'maintenanceMessage' && (value as string).trim().length === 0)
         throw new BadRequestException({

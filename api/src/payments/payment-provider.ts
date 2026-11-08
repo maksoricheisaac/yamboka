@@ -13,7 +13,7 @@ export interface InitiatePaymentRequest {
   amount: number;
   currency: string;
   phone: string;
-  operator: 'MTN' | 'AIRTEL';
+  operator: 'MTN' | 'AIRTEL' | 'OTHER';
   /** Identifiant de l'utilisateur côté Yamboka (customer_external_id). */
   customerId: string;
   metadata: Record<string, string>;
@@ -82,11 +82,8 @@ export abstract class PaymentProvider {
   /** Au-delà, un paiement jamais confirmé est déclaré échoué (un succès tardif confirmé reste crédité). */
   readonly pendingTtlMs: number = 24 * 3600 * 1000;
 
-  /** Code du réseau chez le fournisseur pour un opérateur, ou null s'il n'en utilise pas. */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  networkFor(_operator: 'MTN' | 'AIRTEL'): string | null {
-    return null;
-  }
+  /** Vrai quand le fournisseur facture des frais d'encaissement par réseau (le montant envoyé est alors réduit). Faux pour le simulé. */
+  readonly chargesFees: boolean = false;
 
   /** Paliers de frais d'encaissement d'un réseau, ou null quand le fournisseur n'en facture pas (simulé). */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

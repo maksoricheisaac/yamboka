@@ -12,11 +12,17 @@ import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type {
   CreatePaymentInput,
+  PaymentQuoteView,
   PaymentReceipt,
   PaymentView,
+  QuotePaymentInput,
   SimulatePaymentInput,
 } from '@yamboka/shared';
-import { createPaymentSchema, simulatePaymentSchema } from '@yamboka/shared';
+import {
+  createPaymentSchema,
+  quotePaymentSchema,
+  simulatePaymentSchema,
+} from '@yamboka/shared';
 import type { Response } from 'express';
 import { CurrentUser, RequireVerifiedEmail } from '../common/decorators';
 import type { AuthUser } from '../common/decorators';
@@ -47,6 +53,19 @@ export class PaymentsController {
   ): Promise<{ payment: PaymentView }> {
     res.status(201);
     return { payment: await this.payments.create(user.id, body) };
+  }
+
+  @HttpCode(200)
+  @Post('quote')
+  @ApiOperation({
+    summary:
+      'Devis d’un achat (pack ou quantité libre) : montant recalculé par le serveur, rien n’est enregistré',
+  })
+  @ApiBody({ schema: jsonSchema(quotePaymentSchema) })
+  quote(
+    @Body(new ZodPipe(quotePaymentSchema)) body: QuotePaymentInput,
+  ): Promise<PaymentQuoteView> {
+    return this.payments.quote(body);
   }
 
   @Get()

@@ -31,7 +31,7 @@ test.describe('Champ de téléphone international', () => {
     // Le serveur a normalisé le numéro (E.164), l'interface le présente lisiblement.
     const me = await (await page.request.get('/api/auth/me')).json();
     expect(me.user.phone).toBe('+33612345678');
-    await page.goto('/app/profil');
+    await page.goto('/app/parametres?onglet=profil');
     await expect(picker(page)).toHaveAccessibleName('Pays : France, indicatif +33');
     await expect(page.getByLabel('Numéro de téléphone (facultatif)')).toHaveValue('06 12 34 56 78');
   });
@@ -92,7 +92,7 @@ test.describe('Champ de téléphone international', () => {
     await signUp(page, email);
     await verifyWithCode(page, request, email);
     await page.goto('/app/credits');
-    // Pays verrouillé sur le Congo : MTN et Airtel Money ne fonctionnent qu'au Congo.
+    // Pays du paiement = pays choisi pour le moyen de paiement (ici le Congo, par défaut) : le sélecteur d'indicatif est verrouillé.
     const field = page.getByLabel('Numéro qui paie');
     await expect(page.getByRole('button', { name: /^Pays : / })).toHaveCount(0);
     await field.fill('242061234567');

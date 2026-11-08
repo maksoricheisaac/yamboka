@@ -1,6 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { BalanceView, LedgerPage } from '@yamboka/shared';
+import type { ActivitySummary, BalanceView, LedgerPage } from '@yamboka/shared';
+import { LEDGER_FILTERS } from '@yamboka/shared';
 import { z } from 'zod';
 import { CurrentUser } from '../common/decorators';
 import type { AuthUser } from '../common/decorators';
@@ -10,6 +11,7 @@ import { CreditsService } from './credits.service';
 const pageQuery = z.object({
   cursor: z.uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  filter: z.enum(LEDGER_FILTERS).default('all'),
 });
 type PageQuery = z.infer<typeof pageQuery>;
 
@@ -28,10 +30,19 @@ export class CreditsController {
     return { credits, creditValueFcfa, valueFcfa: credits * creditValueFcfa };
   }
 
+  @Get('summary')
+  @ApiOperation({
+    summary:
+      'Activité des 30 derniers jours (créations, crédits dépensés et achetés)',
+  })
+  summary(@CurrentUser() user: AuthUser): Promise<ActivitySummary> {
+    return this.credits.activitySummary(user.id);
+  }
+
   @Get('ledger')
   @ApiOperation({
     summary:
-      'Historique de mes mouvements de crédits, du plus récent au plus ancien',
+      'Historique de mes mouvements de crédits, du plus récent au plus ancien (filtrable par famille d’opérations)',
   })
   async ledger(
     @CurrentUser() user: AuthUser,

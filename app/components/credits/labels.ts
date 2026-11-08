@@ -24,4 +24,3 @@ export function providerLabel(provider: string): string {
   return provider === "saspay" ? "SasPay" : provider === "mock" ? "Simulé" : provider;
 }
 
-export const OPERATOR_LABELS = { MTN: "MTN Mobile Money", AIRTEL: "Airtel Money" } as const;

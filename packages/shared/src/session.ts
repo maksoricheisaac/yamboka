@@ -22,3 +22,13 @@ export interface SessionUser {
 }
 
 export const SESSION_COOKIE = 'yamboka_session';
+
+/** Appareil connecté au compte (liste des sessions actives). */
+export interface SessionInfo {
+  id: string;
+  /** Vrai pour la session qui fait la demande. */
+  current: boolean;
+  /** « Chrome sur Windows » : déduit de l'agent utilisateur, sans autre donnée personnelle. */
+  device: string;
+  createdAt: string;
+}

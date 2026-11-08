@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   HttpException,
   Injectable,
@@ -10,13 +11,17 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type {
   CreatePaymentInput,
+  PaymentQuoteView,
   PaymentReceipt,
   PaymentStatus,
   PaymentView,
+  QuotePaymentInput,
   SimulatePaymentInput,
 } from '@yamboka/shared';
+import { CUSTOM_PURCHASE_LABEL } from '@yamboka/shared';
 import { randomUUID } from 'node:crypto';
 import { firstPurchaseBonusPercent } from '../billing/bonus';
+import { customAmount, isSoldAtLoss } from '../billing/custom-purchase';
 import {
   computeSendAmount,
   FeeComputationError,
@@ -32,6 +37,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JobQueue } from '../queue/job-queue';
 import { SettingsService } from '../settings/settings.service';
 import { MockPaymentProvider } from './mock-payment.provider';
+import {
+  findNetwork,
+  legacyNetworkCode,
+  networkLabel,
+  operatorOf,
+  type CountryConfig,
+  type NetworkConfig,
+} from './payment-countries';
+import { isCfa, PaymentOffersService } from './payment-offers.service';
 import { PaymentProviders } from './payment-providers.service';
 import {
   InitiatePaymentRequest,
@@ -52,7 +66,7 @@ const DEDUPE_WINDOW_MS = 2 * 60 * 1000;
 export const TIMEOUT_REASON = 'Délai de confirmation dépassé';
 
 const OPEN: PaymentStatus[] = ['INITIATED', 'PENDING'];
-type PaymentWithPack = Payment & { pack: CreditPack };
+type PaymentWithPack = Payment & { pack: CreditPack | null };
 
 @Injectable()
 export class PaymentsService {
@@ -61,6 +75,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly providers: PaymentProviders,
+    private readonly offers: PaymentOffersService,
     private readonly mock: MockPaymentProvider,
     private readonly credits: CreditsService,
     private readonly settings: SettingsService,
@@ -72,32 +87,153 @@ export class PaymentsService {
 
   // ───────────── Création ─────────────
 
-  async create(
-    userId: string,
-    input: CreatePaymentInput,
-  ): Promise<PaymentView> {
-    const pack = await this.prisma.creditPack.findFirst({
-      where: { id: input.packId, active: true },
-    });
-    if (!pack) {
-      throw new NotFoundException({
-        code: 'PACK_NOT_FOUND',
-        message: 'Ce pack n’existe pas ou n’est plus proposé.',
+  /**
+   * Résout et valide une commande SANS rien écrire : pays ouvert, moyen de paiement du pays, pack ou quantité,
+   * montant recalculé ici (jamais lu du navigateur), frais d'encaissement et garde « jamais à perte ».
+   * `create` et `quote` passent par cette seule fonction : le devis ne peut donc pas différer du paiement.
+   */
+  private async prepare(
+    input: QuotePaymentInput,
+    opts: { requireNetwork: boolean },
+  ): Promise<Prepared> {
+    const country = (await this.offers.enabledCountries()).find(
+      (c) => c.iso === input.country,
+    );
+    if (!country) {
+      throw new UnprocessableEntityException({
+        code: 'COUNTRY_NOT_SUPPORTED',
+        message: 'Le paiement n’est pas encore disponible dans ce pays.',
       });
     }
-    const provider = this.providers.forCountry(pack.country);
-    const bonusPercent = firstPurchaseBonusPercent(
-      pack.firstPurchaseBonusPercent,
-      {
+    const provider = this.providers.forCountry(country.iso);
+
+    const networkCode =
+      input.network ??
+      (input.operator
+        ? legacyNetworkCode(input.operator, country.iso)
+        : undefined);
+    let network: NetworkConfig | undefined;
+    if (networkCode !== undefined || opts.requireNetwork) {
+      network = networkCode ? findNetwork(country, networkCode) : undefined;
+      if (!network) {
+        throw new UnprocessableEntityException({
+          code: 'PAYMENT_METHOD_UNAVAILABLE',
+          message:
+            'Ce moyen de paiement n’est pas disponible dans le pays choisi.',
+        });
+      }
+    }
+
+    let pack: CreditPack | null = null;
+    let credits: number;
+    let amount: number;
+    let bonusPercent = 0;
+    if (input.packId !== undefined) {
+      pack = await this.offers.findPack(country, input.packId);
+      if (!pack) {
+        throw new NotFoundException({
+          code: 'PACK_NOT_FOUND',
+          message: 'Ce pack n’existe pas ou n’est plus proposé.',
+        });
+      }
+      credits = pack.credits;
+      amount = pack.price;
+      bonusPercent = firstPurchaseBonusPercent(pack.firstPurchaseBonusPercent, {
         enabled: await this.settings.get('firstPurchaseBonusEnabled'),
         defaultPercent: await this.settings.get(
           'firstPurchaseBonusDefaultPercent',
         ),
-      },
-    );
+      });
+    } else {
+      const rules = await this.offers.customRules(country);
+      if (!rules) {
+        throw new UnprocessableEntityException({
+          code: 'CUSTOM_PURCHASE_UNAVAILABLE',
+          message:
+            'L’achat d’une quantité libre de crédits n’est pas disponible dans ce pays. Choisissez un pack.',
+        });
+      }
+      credits = input.credits as number;
+      if (credits < rules.minCredits || credits > rules.maxCredits) {
+        throw new UnprocessableEntityException({
+          code: 'CUSTOM_CREDITS_OUT_OF_RANGE',
+          message: `Choisissez entre ${rules.minCredits} et ${rules.maxCredits} crédits.`,
+        });
+      }
+      // Prix recalculé ici ; aucun bonus (réservé aux packs).
+      amount = customAmount(credits, rules.unitPrice);
+    }
+
     // Montant à envoyer au fournisseur (prix affiché moins les frais absorbés) : calculé AVANT toute écriture,
     // pour qu'une panne de tarification ne laisse aucun paiement en base.
-    const plan = await this.planAmount(provider, pack, input.operator);
+    const plan = network
+      ? await this.planAmount(provider, country.iso, network.code, amount)
+      : null;
+
+    if (pack === null && network && isCfa(country.currency)) {
+      const [circuitLossPercent, fcfaPerCredit] = await Promise.all([
+        this.settings.get('circuitLossPercent'),
+        this.settings.get('hfCostFcfaPerCredit'),
+      ]);
+      if (
+        isSoldAtLoss({
+          displayedPrice: amount,
+          sentAmount: plan?.sentAmount ?? amount,
+          credits,
+          circuitLossPercent,
+          fcfaPerCredit,
+        })
+      ) {
+        // Frais fixes trop lourds sur un petit montant : on ne vend jamais à perte.
+        throw new UnprocessableEntityException({
+          code: 'AMOUNT_TOO_LOW',
+          message:
+            'Ce montant est trop faible pour ce moyen de paiement. Choisissez une quantité plus élevée ou un pack.',
+        });
+      }
+    }
+
+    return {
+      country,
+      provider,
+      network,
+      pack,
+      credits,
+      amount,
+      bonusPercent,
+      plan,
+    };
+  }
+
+  async quote(input: QuotePaymentInput): Promise<PaymentQuoteView> {
+    const p = await this.prepare(input, { requireNetwork: false });
+    return {
+      country: p.country.iso,
+      currency: p.country.currency,
+      amount: p.amount,
+      credits: p.credits,
+      firstPurchaseBonusPercent: p.bonusPercent,
+      custom: p.pack === null,
+      packName: p.pack?.name ?? CUSTOM_PURCHASE_LABEL,
+    };
+  }
+
+  async create(
+    userId: string,
+    input: CreatePaymentInput,
+  ): Promise<PaymentView> {
+    const order = await this.prepare(input, { requireNetwork: true });
+    const { country, provider, pack, credits, amount, bonusPercent, plan } =
+      order;
+    const network = order.network as NetworkConfig;
+    const operator = operatorOf(network.code);
+    // Le numéro payeur doit appartenir au pays du moyen de paiement (même indicatif).
+    if (!input.phone.startsWith(`+${country.dial}`)) {
+      throw new BadRequestException({
+        code: 'PHONE_COUNTRY_MISMATCH',
+        message: `Ce moyen de paiement exige un numéro ${country.name} (+${country.dial}).`,
+      });
+    }
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: { email: true, firstName: true, lastName: true },
@@ -109,8 +245,10 @@ export class PaymentsService {
       const recent = await tx.payment.findFirst({
         where: {
           userId,
-          packId: pack.id,
-          operator: input.operator,
+          packId: pack?.id ?? null,
+          ...(pack ? {} : { credits }),
+          country: country.iso,
+          network: network.code,
           payerPhone: input.phone,
           status: { in: OPEN },
           createdAt: { gte: new Date(Date.now() - DEDUPE_WINDOW_MS) },
@@ -121,50 +259,51 @@ export class PaymentsService {
       if (recent) return { row: recent, created: false };
 
       const id = randomUUID();
+      const label = pack?.name ?? CUSTOM_PURCHASE_LABEL;
       // Requête figée ici et rejouée à l'identique : même clé d'idempotence, même corps (sinon SasPay répond 409).
       const request: InitiatePaymentRequest = {
-        amount: plan?.sentAmount ?? pack.price,
-        currency: pack.currency,
+        amount: plan?.sentAmount ?? amount,
+        currency: country.currency,
         phone: input.phone,
-        operator: input.operator,
+        operator,
         customerId: userId,
-        metadata: { paymentId: id, userId, packId: pack.id },
+        metadata: { paymentId: id, userId, packId: pack?.id ?? 'custom' },
+        network: network.code,
         ...(provider.idempotent
           ? {
-              network: plan?.network ?? undefined,
-              country: pack.country,
+              country: country.iso,
               idempotencyKey: randomUUID(),
               customer: {
                 email: user.email,
                 firstName: user.firstName,
                 lastName: user.lastName,
               },
-              description: `Yamboka — ${pack.name}`,
+              description: `Yamboka — ${label}`,
               returnUrl: `${this.config.get('APP_URL', { infer: true })}/app/credits/paiement/${id}`,
             }
           : {}),
       };
-      // Crédits de base du pack. Le bonus de premier achat n'est pas connu ici : il est jugé à la confirmation
+      // Crédits de base. Le bonus de premier achat n'est pas connu ici : il est jugé à la confirmation
       // (premier paiement RÉUSSI du compte) ; seul son pourcentage promis est figé pour que le client reçoive
-      // ce qui lui a été affiché.
+      // ce qui lui a été affiché. Un achat sur mesure n'en a jamais (0).
       const row = await tx.payment.create({
         data: {
           id,
           userId,
-          packId: pack.id,
-          country: pack.country,
-          currency: pack.currency,
-          amount: pack.price,
+          packId: pack?.id ?? null,
+          country: country.iso,
+          currency: country.currency,
+          amount,
           sentAmount: plan?.sentAmount ?? null,
-          network: plan?.network ?? null,
+          network: network.code,
           feeSnapshot: plan?.feeSnapshot ?? undefined,
           idempotencyKey: request.idempotencyKey ?? null,
           providerRequest: request as unknown as Prisma.InputJsonValue,
-          credits: pack.credits,
+          credits,
           bonusCredits: 0,
           firstPurchaseBonusPercent: bonusPercent,
           gateway: provider.name,
-          operator: input.operator,
+          operator,
           payerPhone: input.phone,
           status: 'INITIATED',
         },
@@ -189,17 +328,17 @@ export class PaymentsService {
    */
   private async planAmount(
     provider: PaymentProvider,
-    pack: CreditPack,
-    operator: 'MTN' | 'AIRTEL',
+    countryIso: string,
+    network: string,
+    price: number,
   ): Promise<{
     sentAmount: number;
     network: string;
     feeSnapshot: Prisma.InputJsonValue;
   } | null> {
-    const network = provider.networkFor(operator);
-    if (!network) return null;
+    if (!provider.chargesFees) return null;
     const override = await this.prisma.feeRateOverride.findFirst({
-      where: { country: pack.country, network, active: true },
+      where: { country: countryIso, network, active: true },
     });
     let tiers: FeeTier[] | null;
     let source: 'override' | 'provider';
@@ -219,10 +358,10 @@ export class PaymentsService {
         ];
       } else {
         source = 'provider';
-        tiers = await provider.getPayinTiers(pack.country, network);
+        tiers = await provider.getPayinTiers(countryIso, network);
       }
       if (!tiers) return null;
-      const computed = computeSendAmount(pack.price, tiers);
+      const computed = computeSendAmount(price, tiers);
       return {
         sentAmount: computed.sentAmount,
         network,
@@ -271,7 +410,11 @@ export class PaymentsService {
       phone: p.payerPhone,
       operator: p.operator,
       customerId: p.userId,
-      metadata: { paymentId: p.id, userId: p.userId, packId: p.packId },
+      metadata: {
+        paymentId: p.id,
+        userId: p.userId,
+        packId: p.packId ?? 'custom',
+      },
     };
   }
 
@@ -794,7 +937,11 @@ export class PaymentsService {
     return {
       id: p.id,
       status: p.status,
-      packName: p.pack.name,
+      packName: p.pack?.name ?? CUSTOM_PURCHASE_LABEL,
+      custom: p.pack === null,
+      country: p.country,
+      network: p.network,
+      methodLabel: methodLabelOf(p),
       amountFcfa: p.amount,
       currency: p.currency,
       // Total crédité : crédits du pack + bonus de premier achat éventuel.
@@ -812,6 +959,37 @@ export class PaymentsService {
       simulated: p.gateway === this.mock.name,
     };
   }
+}
+
+const LEGACY_METHOD_LABELS: Record<string, string> = {
+  MTN: 'MTN Mobile Money',
+  AIRTEL: 'Airtel Money',
+};
+
+/** « Orange Money » pour orange_cm ; les anciens paiements sans réseau gardent le nom de leur opérateur. */
+function methodLabelOf(p: Payment): string {
+  return (
+    networkLabel(p.network, p.country) ??
+    LEGACY_METHOD_LABELS[p.operator] ??
+    p.network ??
+    'Mobile money'
+  );
+}
+
+/** Commande entièrement validée par le serveur, prête à être enregistrée. */
+interface Prepared {
+  country: CountryConfig;
+  provider: PaymentProvider;
+  network: NetworkConfig | undefined;
+  pack: CreditPack | null;
+  credits: number;
+  amount: number;
+  bonusPercent: number;
+  plan: {
+    sentAmount: number;
+    network: string;
+    feeSnapshot: Prisma.InputJsonValue;
+  } | null;
 }
 
 /** Message affiché au client pour un refus définitif du fournisseur : jamais le texte brut du fournisseur. */

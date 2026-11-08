@@ -1,7 +1,7 @@
 "use client";
 
 import type { EmailPrefKey, PreferencesView } from "@yamboka/shared";
-import { BadgeCheck, Loader2, MailWarning } from "lucide-react";
+import { Loader2, MailWarning } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -83,28 +83,6 @@ export function NotificationPrefs({ initial }: { initial: PreferencesView }) {
           </li>
         ))}
       </ul>
-    </section>
-  );
-}
-
-export function AccountSummary({ name, email, emailVerified, phone }: { name: string; email: string; emailVerified: boolean; phone: string | null }) {
-  return (
-    <section aria-labelledby="account-title" className="space-y-3">
-      <div className="flex items-end justify-between gap-3">
-        <h2 id="account-title" className="font-heading text-lg font-bold">Compte</h2>
-        <Link href="/app/profil" className="text-sm font-medium text-primary underline-offset-4 hover:underline">Modifier mon profil et mon mot de passe</Link>
-      </div>
-      <dl className="divide-y rounded-2xl border bg-card px-4 text-sm">
-        <div className="flex items-baseline justify-between gap-4 py-2.5"><dt className="text-muted-foreground">Nom</dt><dd className="font-medium">{name}</dd></div>
-        <div className="flex items-baseline justify-between gap-4 py-2.5">
-          <dt className="text-muted-foreground">Adresse e-mail</dt>
-          <dd className="flex min-w-0 items-center gap-2 font-medium">
-            <span className="truncate">{email}</span>
-            {emailVerified ? <span className="inline-flex shrink-0 items-center gap-1 text-xs text-success"><BadgeCheck className="size-3.5" aria-hidden /> Confirmée</span> : <span className="shrink-0 text-xs text-destructive">Non confirmée</span>}
-          </dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-4 py-2.5"><dt className="text-muted-foreground">Téléphone</dt><dd className="font-medium">{phone ?? "Non renseigné"}</dd></div>
-      </dl>
     </section>
   );
 }

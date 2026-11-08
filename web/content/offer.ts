@@ -7,11 +7,6 @@ import { cacheLife, cacheTag } from 'next/cache';
  * on retombe sur les valeurs du business plan ci-dessous : le site reste utilisable.
  */
 
-/** Tarif de référence provisoire : 10 crédits par seconde, vidéo de 4 secondes (durée fixe des modèles Yamboka). */
-export const VIDEO_CREDITS_PER_SECOND = 10;
-export const VIDEO_SECONDS = 4;
-export const VIDEO_CREDITS = VIDEO_CREDITS_PER_SECOND * VIDEO_SECONDS;
-
 export interface PublicOffer {
   name: string;
   priceFcfa: number;
@@ -51,17 +46,13 @@ function withRoles(offers: Omit<PublicOffer, 'role'>[]): PublicOffer[] {
 
 const totalOf = (base: number, bonusPercent: number) => Math.floor((base * (100 + bonusPercent)) / 100);
 
+/**
+ * Offre de secours (API injoignable) : prix et crédits seulement. Aucun nombre de vidéos : il dépend des tarifs de
+ * création, qui ne sont lus qu'à l'API (jamais recopiés ici, sinon ils finiraient par diverger).
+ */
 function staticOffer(name: string, priceFcfa: number, base: number, bonusPercent: number, featured = false) {
   const total = totalOf(base, bonusPercent);
-  return {
-    name,
-    priceFcfa,
-    totalCredits: total,
-    bonusPercent,
-    example: exampleFor(Math.floor(total / VIDEO_CREDITS)),
-    videos: Math.floor(total / VIDEO_CREDITS),
-    featured,
-  };
+  return { name, priceFcfa, totalCredits: total, bonusPercent, example: '', videos: 0, featured };
 }
 
 /** Valeurs du business plan, utilisées si l'API ne répond pas. */
@@ -125,8 +116,3 @@ export function formatFcfa(value: number): string {
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat('fr-FR').format(value);
 }
-
-/** Consommation des créations disponibles (affichée en clair, sans tableau comparatif). */
-export const UNIT_PRICES = [
-  { label: 'Vidéo', detail: `${VIDEO_SECONDS} secondes`, price: `${VIDEO_CREDITS} crédits la vidéo`, example: `${VIDEO_SECONDS} secondes = ${VIDEO_CREDITS} crédits` },
-];

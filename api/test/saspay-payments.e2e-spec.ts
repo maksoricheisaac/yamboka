@@ -69,9 +69,7 @@ class FakeSaspay extends PaymentProvider {
     this.statuses.clear();
   }
 
-  override networkFor(operator: 'MTN' | 'AIRTEL') {
-    return operator === 'MTN' ? 'mtn_cg' : 'airtel_cg';
-  }
+  override readonly chargesFees = true;
   override getPayinTiers() {
     return Promise.resolve(TIERS);
   }
