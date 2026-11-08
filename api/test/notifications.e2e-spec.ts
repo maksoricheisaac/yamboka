@@ -74,13 +74,18 @@ describe('Notifications, préférences et e-mails (e2e)', () => {
         await a.client.get('/api/notifications?limit=2').expect(200)
       ).body;
       expect(first.unread).toBe(3);
-      expect(first.items.map((n: any) => n.title)).toEqual(['N2', 'N1']);
+      expect(first.items.map((n: { title: string }) => n.title)).toEqual([
+        'N2',
+        'N1',
+      ]);
       const second = (
         await a.client
           .get(`/api/notifications?limit=2&cursor=${first.nextCursor}`)
           .expect(200)
       ).body;
-      expect(second.items.map((n: any) => n.title)).toEqual(['N0']);
+      expect(second.items.map((n: { title: string }) => n.title)).toEqual([
+        'N0',
+      ]);
       expect(second.nextCursor).toBeNull();
 
       // Une notification d'un autre utilisateur est introuvable et reste intacte.

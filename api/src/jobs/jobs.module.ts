@@ -85,7 +85,10 @@ export class JobScheduler implements OnApplicationBootstrap {
     await this.generations.upsertJobScheduler(
       'advance-generations',
       { every: 10_000 },
-      { name: 'advance-generations', opts: { removeOnComplete: true, removeOnFail: { age: 3600 } } },
+      {
+        name: 'advance-generations',
+        opts: { removeOnComplete: true, removeOnFail: { age: 3600 } },
+      },
     );
     // Reprise des e-mails de notification qui n'ont pas pu partir : chaque minute.
     await this.generations.upsertJobScheduler(

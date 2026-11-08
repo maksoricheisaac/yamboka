@@ -37,7 +37,9 @@ import type { AuthUser } from '../common/decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { CreationsService, type UploadedImage } from './creations.service';
 
-const stylesQuery = z.object({ audience: z.enum(SUGGESTION_AUDIENCES).optional() });
+const stylesQuery = z.object({
+  audience: z.enum(SUGGESTION_AUDIENCES).optional(),
+});
 const listQuery = z.object({
   cursor: z.uuid().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(24),
@@ -55,7 +57,8 @@ export class CreationsController {
 
   @Get('styles')
   @ApiOperation({
-    summary: 'Idées proposées (texte et réglages par défaut, modifiables par le client)',
+    summary:
+      'Idées proposées (texte et réglages par défaut, modifiables par le client)',
   })
   async styles(
     @Query(new ZodPipe(stylesQuery)) q: z.infer<typeof stylesQuery>,
@@ -65,7 +68,8 @@ export class CreationsController {
 
   @Get('config')
   @ApiOperation({
-    summary: 'Tarifs par résolution, valeur du crédit et seuil de confirmation (lus en base)',
+    summary:
+      'Tarifs par résolution, valeur du crédit et seuil de confirmation (lus en base)',
   })
   async config(): Promise<CreationConfig> {
     return this.creations.config();
@@ -90,7 +94,9 @@ export class CreationsController {
   })
   @Post()
   @UseInterceptors(
-    FileInterceptor('photo', { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }),
+    FileInterceptor('photo', {
+      limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+    }),
   )
   @ApiOperation({
     summary:
@@ -109,7 +115,9 @@ export class CreationsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Mes créations, de la plus récente à la plus ancienne' })
+  @ApiOperation({
+    summary: 'Mes créations, de la plus récente à la plus ancienne',
+  })
   list(
     @CurrentUser() user: AuthUser,
     @Query(new ZodPipe(listQuery)) q: z.infer<typeof listQuery>,
@@ -127,7 +135,9 @@ export class CreationsController {
   }
 
   @Get(':id/file')
-  @ApiOperation({ summary: 'Résultat (ou aperçu) d’une création, réservé à son propriétaire' })
+  @ApiOperation({
+    summary: 'Résultat (ou aperçu) d’une création, réservé à son propriétaire',
+  })
   async file(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
@@ -135,20 +145,30 @@ export class CreationsController {
     @Req() req: Request,
     @Res() res: Response,
   ): Promise<void> {
-    const { body, mime, filename } = await this.creations.file(user.id, id, q.variant);
+    const { body, mime, filename } = await this.creations.file(
+      user.id,
+      id,
+      q.variant,
+    );
     res.setHeader('Content-Type', mime);
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Accept-Ranges', 'bytes');
     if (q.download) {
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${filename}"`,
+      );
     }
     // Lecture par morceaux : indispensable pour avancer dans une vidéo sur mobile.
     const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
     if (range && (range[1] || range[2])) {
       const size = body.length;
-      const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
-      const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+      const start = range[1]
+        ? Number(range[1])
+        : Math.max(0, size - Number(range[2]));
+      const end =
+        range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
       if (start >= size || start > end) {
         res.status(416).setHeader('Content-Range', `bytes */${size}`).end();
         return;

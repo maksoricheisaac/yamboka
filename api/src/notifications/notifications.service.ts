@@ -151,7 +151,11 @@ export class NotificationsService {
         await this.email.sendNotificationEmail(n.user.email, mail);
         await this.prisma.notification.update({
           where: { id: n.id },
-          data: { emailSentAt: new Date(), emailPending: false, emailError: null },
+          data: {
+            emailSentAt: new Date(),
+            emailPending: false,
+            emailError: null,
+          },
         });
       } catch (e) {
         const message = e instanceof Error ? e.message : 'erreur inconnue';
@@ -187,7 +191,10 @@ export class NotificationsService {
     });
     let sent = 0;
     for (const n of rows) {
-      if (now.getTime() - n.createdAt.getTime() < n.emailAttempts * RETRY_STEP_MS)
+      if (
+        now.getTime() - n.createdAt.getTime() <
+        n.emailAttempts * RETRY_STEP_MS
+      )
         continue;
       await this.dispatchEmail(n.id);
       sent += 1;
@@ -212,7 +219,11 @@ export class NotificationsService {
       case 'GENERATION_READY':
         return generationEmail(n.user.firstName, { ok: true, url });
       case 'GENERATION_FAILED':
-        return generationEmail(n.user.firstName, { ok: false, refunded: true, url });
+        return generationEmail(n.user.firstName, {
+          ok: false,
+          refunded: true,
+          url,
+        });
       case 'CREDITS_REFUNDED':
         return accountNoticeEmail(n.user.firstName, n.title, n.body);
       case 'PAYMENT_SUCCESS': {

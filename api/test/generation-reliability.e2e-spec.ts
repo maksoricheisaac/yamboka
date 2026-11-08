@@ -189,7 +189,9 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       );
       // Paramètres EXACTS du modèle ; le texte du client est complété par le gabarit du serveur.
       expect(provider.submitted[0].input).toEqual({
-        prompt: expect.stringContaining('La caméra tourne autour de mes chaussures'),
+        prompt: expect.stringContaining(
+          'La caméra tourne autour de mes chaussures',
+        ),
         image_url: 'https://files.higgsfield.test/in-1',
         duration: 5,
         resolution: '480p',

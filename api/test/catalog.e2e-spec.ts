@@ -72,19 +72,22 @@ describe('Catalogue et devis (e2e)', () => {
       ['WAN_I2V_1080', 11, 176],
       ['WAN_I2V_480', 2, 8],
       ['WAN_I2V_1080', 30, 480],
-    ])('%s, %i s : %i crédits (1 crédit = 10 FCFA)', async (productCode, durationSeconds, credits) => {
-      const { client } = await verifiedClient(app);
-      const res = await client
-        .post('/api/catalog/quote', { productCode, durationSeconds })
-        .expect(200);
-      expect(res.body).toEqual({
-        productCode,
-        credits,
-        billableSeconds: durationSeconds,
-        creditValueFcfa: 10,
-        valueFcfa: credits * 10,
-      });
-    });
+    ])(
+      '%s, %i s : %i crédits (1 crédit = 10 FCFA)',
+      async (productCode, durationSeconds, credits) => {
+        const { client } = await verifiedClient(app);
+        const res = await client
+          .post('/api/catalog/quote', { productCode, durationSeconds })
+          .expect(200);
+        expect(res.body).toEqual({
+          productCode,
+          credits,
+          billableSeconds: durationSeconds,
+          creditValueFcfa: 10,
+          valueFcfa: credits * 10,
+        });
+      },
+    );
 
     it('produit d’image abandonné : refusé, même s’il existe encore en base', async () => {
       const { client } = await verifiedClient(app);

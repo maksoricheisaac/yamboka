@@ -13,7 +13,6 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   updatePreferencesSchema,
-  type NotificationKind,
   type NotificationPage,
   type PreferencesView,
   type UpdatePreferencesInput,
@@ -37,7 +36,9 @@ export class NotificationsController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Mes notifications, de la plus récente à la plus ancienne' })
+  @ApiOperation({
+    summary: 'Mes notifications, de la plus récente à la plus ancienne',
+  })
   async list(
     @CurrentUser() user: AuthUser,
     @Query(new ZodPipe(listQuery)) q: z.infer<typeof listQuery>,
@@ -59,7 +60,7 @@ export class NotificationsController {
       nextCursor: rows.length > q.limit ? page[page.length - 1].id : null,
       items: page.map((n) => ({
         id: n.id,
-        type: n.type as NotificationKind,
+        type: n.type,
         title: n.title,
         body: n.body,
         link: n.link,
@@ -126,12 +127,18 @@ export class PreferencesController {
   }
 
   @Patch()
-  @ApiOperation({ summary: 'Modifie mes préférences ; renvoie les valeurs réellement enregistrées' })
+  @ApiOperation({
+    summary:
+      'Modifie mes préférences ; renvoie les valeurs réellement enregistrées',
+  })
   async update(
     @CurrentUser() user: AuthUser,
     @Body(new ZodPipe(updatePreferencesSchema)) body: UpdatePreferencesInput,
   ): Promise<PreferencesView> {
-    const merged = { ...(await this.notifications.getPrefs(user.id)), ...body.emailPrefs };
+    const merged = {
+      ...(await this.notifications.getPrefs(user.id)),
+      ...body.emailPrefs,
+    };
     await this.prisma.user.update({
       where: { id: user.id },
       data: { emailPrefs: merged },

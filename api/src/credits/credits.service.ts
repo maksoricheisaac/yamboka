@@ -74,7 +74,7 @@ export class CreditsService {
   }
 
   /** Prix d'un crédit en FCFA (aligné sur le pack d’entrée), réglé dans l'administration : sert à l'affichage et à l'achat à la quantité. */
-  async creditValue(_currency = 'XAF', db: Db = this.prisma): Promise<number> {
+  async creditValue(db: Db = this.prisma): Promise<number> {
     const row = await db.setting.findUnique({
       where: { key: 'creditValueFcfa' },
     });
