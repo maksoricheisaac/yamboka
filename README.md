@@ -90,6 +90,10 @@ docker compose --env-file .env.prod    -f docker/docker-compose.prod.yml    conf
 # Hors serveur Dokploy, `config` des fichiers distants exige le réseau externe : docker network create dokploy-network
 ```
 
+### Qualité du code (hooks Git locaux)
+
+`pnpm install` active des hooks Git (Husky) : lint et TypeScript avant chaque commit, message de commit au format Conventional Commits, et `pnpm check` (lint, formatage, types, tests unitaires, build) avant chaque push. Détails, commandes et procédure en cas de blocage : [docs/development.md](docs/development.md).
+
 Les chemins relatifs des fichiers Compose (`context: ..`, `env_file`, volumes) se résolvent depuis `docker/`, quel que soit le dossier d'exécution ; seul `--env-file` et `-f` sont relatifs au dossier courant (d'où « depuis la racine »).
 
 ## 4. Routage distant (onglet Domains de Dokploy)

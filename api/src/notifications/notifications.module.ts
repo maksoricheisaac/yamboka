@@ -1,5 +1,8 @@
 import { Global, Module } from '@nestjs/common';
-import { NotificationsController, PreferencesController } from './notifications.controller';
+import {
+  NotificationsController,
+  PreferencesController,
+} from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 
 @Global()

@@ -11,3 +11,4 @@ tests/report/
 tests/results/
 
 .next-pwtmp/
+.next-check/

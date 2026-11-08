@@ -69,19 +69,45 @@ const WAN_PRODUCT = {
   active: true,
 } as const;
 const PRODUCTS = [
-  { ...WAN_PRODUCT, code: 'WAN_I2V_480', name: 'Vidéo Wan 3.0 · Standard (480p)', resolution: '480p', creditsPerUnit: 4, providerCostUsdPerUnit: '0.05' },
-  { ...WAN_PRODUCT, code: 'WAN_I2V_720', name: 'Vidéo Wan 3.0 · HD (720p)', resolution: '720p', creditsPerUnit: 8, providerCostUsdPerUnit: '0.10' },
-  { ...WAN_PRODUCT, code: 'WAN_I2V_1080', name: 'Vidéo Wan 3.0 · Full HD (1080p)', resolution: '1080p', creditsPerUnit: 16, providerCostUsdPerUnit: '0.20' },
+  {
+    ...WAN_PRODUCT,
+    code: 'WAN_I2V_480',
+    name: 'Vidéo Wan 3.0 · Standard (480p)',
+    resolution: '480p',
+    creditsPerUnit: 4,
+    providerCostUsdPerUnit: '0.05',
+  },
+  {
+    ...WAN_PRODUCT,
+    code: 'WAN_I2V_720',
+    name: 'Vidéo Wan 3.0 · HD (720p)',
+    resolution: '720p',
+    creditsPerUnit: 8,
+    providerCostUsdPerUnit: '0.10',
+  },
+  {
+    ...WAN_PRODUCT,
+    code: 'WAN_I2V_1080',
+    name: 'Vidéo Wan 3.0 · Full HD (1080p)',
+    resolution: '1080p',
+    creditsPerUnit: 16,
+    providerCostUsdPerUnit: '0.20',
+  },
 ] as const;
 
-const DEFAULTS_BUSINESS = { format: '9:16', resolution: '480p', durationSeconds: 5 };
+const DEFAULTS_BUSINESS = {
+  format: '9:16',
+  resolution: '480p',
+  durationSeconds: 5,
+};
 const IDEAS = [
   {
     name: 'Le produit tourne',
     category: 'produit',
     audience: 'business',
     description: 'La caméra tourne autour de ton produit.',
-    defaultPrompt: 'La caméra tourne lentement autour du produit, éclairage de studio, le produit est mis en valeur.',
+    defaultPrompt:
+      'La caméra tourne lentement autour du produit, éclairage de studio, le produit est mis en valeur.',
     photoHint: 'Photo nette, bien éclairée, produit au centre sur fond simple.',
     defaults: DEFAULTS_BUSINESS,
   },
@@ -90,7 +116,8 @@ const IDEAS = [
     category: 'produit',
     audience: 'business',
     description: 'Un zoom lent qui attire le regard.',
-    defaultPrompt: 'Zoom lent sur le produit, mise au point nette sur les détails.',
+    defaultPrompt:
+      'Zoom lent sur le produit, mise au point nette sur les détails.',
     photoHint: 'Photo nette, produit bien visible et centré.',
     defaults: DEFAULTS_BUSINESS,
   },
@@ -99,7 +126,8 @@ const IDEAS = [
     category: 'promo',
     audience: 'business',
     description: 'Ton produit en vedette pour une promotion.',
-    defaultPrompt: 'Le produit est mis en vedette avec un mouvement de caméra dynamique, ambiance festive de promotion.',
+    defaultPrompt:
+      'Le produit est mis en vedette avec un mouvement de caméra dynamique, ambiance festive de promotion.',
     photoHint: 'Photo du produit seul, bien éclairée.',
     defaults: DEFAULTS_BUSINESS,
   },
@@ -108,7 +136,8 @@ const IDEAS = [
     category: 'nouveauté',
     audience: 'business',
     description: 'Présente ta boutique ou ta nouveauté.',
-    defaultPrompt: 'Révélation du produit nouveau, mouvement de caméra élégant, ambiance chaleureuse.',
+    defaultPrompt:
+      'Révélation du produit nouveau, mouvement de caméra élégant, ambiance chaleureuse.',
     photoHint: 'Photo de la boutique ou du produit, nette et lumineuse.',
     defaults: DEFAULTS_BUSINESS,
   },
@@ -126,7 +155,8 @@ const IDEAS = [
     category: 'fête',
     audience: 'perso',
     description: 'Une vidéo de fête personnalisée.',
-    defaultPrompt: 'La personne sourit, des ballons et des confettis tombent autour d’elle, ambiance de fête.',
+    defaultPrompt:
+      'La personne sourit, des ballons et des confettis tombent autour d’elle, ambiance de fête.',
     photoHint: 'Photo de face, visage bien visible et éclairé.',
     defaults: DEFAULTS_BUSINESS,
   },

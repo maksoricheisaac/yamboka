@@ -10,13 +10,22 @@
     "dev:web": "pnpm --filter web dev",
     "dev:app": "pnpm --filter app dev",
     "build": "pnpm -r build",
+    "build:check": "node scripts/build-check.mjs",
     "lint": "pnpm -r lint",
+    "format:check": "pnpm --filter api format:check",
+    "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build:check",
     "test:e2e": "playwright test -c tests/playwright.config.ts",
+    "prepare": "node scripts/install-hooks.mjs",
     "postinstall": "pnpm --filter @yamboka/shared build",
     "build:shared": "pnpm --filter @yamboka/shared build"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.1"
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@playwright/test": "^1.64.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0"
   }
 }

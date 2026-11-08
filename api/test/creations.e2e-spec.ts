@@ -193,7 +193,7 @@ describe('Créations (e2e)', () => {
       expect(Buffer.compare(file.body as Buffer, PNG)).not.toBe(0);
       expect(file.headers['content-disposition']).toContain('attachment');
       const list = await client.get('/api/creations').expect(200);
-      expect(list.body.items.map((i: any) => i.id)).toContain(id);
+      expect(list.body.items.map((i: { id: string }) => i.id)).toContain(id);
       const notif = await prisma.notification.findFirst({
         where: { userId, type: 'GENERATION_READY' },
       });
@@ -266,10 +266,9 @@ describe('Créations (e2e)', () => {
         400,
       );
       expect(refused.body.details[0].field).toBe('consent');
-      await send(
-        client,
-        body({ personPhoto: 'true', consent: 'true' }),
-      ).expect(201);
+      await send(client, body({ personPhoto: 'true', consent: 'true' })).expect(
+        201,
+      );
     });
 
     it('un style rattaché à un ancien produit Genjutsu n’est ni proposé ni débité', async () => {
@@ -300,7 +299,9 @@ describe('Créations (e2e)', () => {
       });
       try {
         const listed = await client.get('/api/creations/styles').expect(200);
-        expect(listed.body.styles.map((s: any) => s.id)).not.toContain(old.id);
+        expect(
+          listed.body.styles.map((s: { id: string }) => s.id),
+        ).not.toContain(old.id);
         await send(client, body({ styleId: old.id })).expect(400);
       } finally {
         await prisma.preset.delete({ where: { id: old.id } });
@@ -340,10 +341,9 @@ describe('Créations (e2e)', () => {
     it('restitue les crédits une seule fois, même si l’on rejoue le suivi', async () => {
       const { client, userId } = await verifiedClient(app);
       await addLot(app, userId, 60);
-      const res = await send(
-        client,
-        body({ prompt: MOCK_FAIL_MARKER }),
-      ).expect(201);
+      const res = await send(client, body({ prompt: MOCK_FAIL_MARKER })).expect(
+        201,
+      );
       const { id } = res.body.creation;
       expect(res.body.creation).toMatchObject({
         status: 'FAILED',
@@ -368,7 +368,7 @@ describe('Créations (e2e)', () => {
       const failed = await client
         .get('/api/creations?status=failed')
         .expect(200);
-      expect(failed.body.items.map((i: any) => i.id)).toContain(id);
+      expect(failed.body.items.map((i: { id: string }) => i.id)).toContain(id);
     });
 
     it('annule et rembourse une création sans réponse après le délai', async () => {

@@ -23,7 +23,8 @@ export class MockGenerationProvider extends GenerationProvider {
 
   submit(request?: SubmitGenerationRequest): Promise<SubmitGenerationResult> {
     const requestId = `MOCK-${randomUUID()}`;
-    const prompt = String(request?.input?.prompt ?? '');
+    const rawPrompt: unknown = request?.input?.prompt;
+    const prompt = typeof rawPrompt === 'string' ? rawPrompt : '';
     const fail = prompt.includes(MOCK_FAIL_MARKER) ? 1 : 0;
     return Promise.resolve({
       requestId,

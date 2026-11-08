@@ -41,7 +41,6 @@ import { WAN_MODEL, modelSpecOf } from '../generation/models';
 import type {
   GenerationProduct,
   MediaFile,
-  Preset,
   Prisma,
 } from '../generated/prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -138,13 +137,17 @@ export class CreationsService {
   // ───────────── Idées et réglages ─────────────
 
   /** Produits vidéo actifs du modèle unique, un par résolution. */
-  private async videoProducts(): Promise<Map<VideoResolution, GenerationProduct>> {
+  private async videoProducts(): Promise<
+    Map<VideoResolution, GenerationProduct>
+  > {
     const rows = await this.prisma.generationProduct.findMany({
       where: { active: true, providerModel: WAN_MODEL, billingUnit: 'SECOND' },
     });
     const out = new Map<VideoResolution, GenerationProduct>();
     for (const r of rows) {
-      if ((VIDEO_RESOLUTIONS as readonly string[]).includes(r.resolution ?? '')) {
+      if (
+        (VIDEO_RESOLUTIONS as readonly string[]).includes(r.resolution ?? '')
+      ) {
         out.set(r.resolution as VideoResolution, r);
       }
     }
@@ -285,7 +288,11 @@ export class CreationsService {
     for (const r of VIDEO_RESOLUTIONS) {
       rates[r] = products.get(r)?.creditsPerUnit ?? 0;
     }
-    const cost = videoCostCredits(rates, input.resolution, input.durationSeconds);
+    const cost = videoCostCredits(
+      rates,
+      input.resolution,
+      input.durationSeconds,
+    );
 
     const limit = await this.concurrencyLimit();
     const running = await this.prisma.generation.count({

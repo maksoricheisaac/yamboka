@@ -24,7 +24,9 @@ describe('modelSpecOf', () => {
 
   it('envoie toujours la résolution et peut couper le son', () => {
     const spec = modelSpecOf('alibaba/wan-3.0/image-to-video')!;
-    expect(spec.build({ ...ctx, resolution: '1080p', audio: false })).toMatchObject({
+    expect(
+      spec.build({ ...ctx, resolution: '1080p', audio: false }),
+    ).toMatchObject({
       resolution: '1080p',
       generate_audio: false,
     });

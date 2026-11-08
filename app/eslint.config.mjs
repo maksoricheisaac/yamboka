@@ -10,6 +10,7 @@ const eslintConfig = defineConfig([
     // Default ignores of eslint-config-next:
     ".next/**",
     ".next-e2e/**", // build des tests de navigateur (code généré)
+    ".next-check/**", // build de vérification locale (pnpm check, hook pre-push)
     "out/**",
     "build/**",
     "next-env.d.ts",
