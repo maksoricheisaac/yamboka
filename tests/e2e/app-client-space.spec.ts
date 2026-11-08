@@ -40,7 +40,8 @@ test.describe('Navigation de l’espace client', () => {
     const cases: [string, RegExp][] = [
       ['/app/profil', /\/app\/parametres\?onglet=profil$/],
       ['/app/notifications', /\/app\/parametres\?onglet=notifications$/],
-      ['/app/achats', /\/app\/credits\/historique\?filtre=achats$/],
+      ['/app/achats', /\/app\/historique\?filtre=achats$/],
+      ['/app/credits/historique?filtre=bonus', /\/app\/historique\?filtre=bonus$/],
       ['/app/tendances', /\/app\/creer$/],
     ];
     for (const [from, to] of cases) {

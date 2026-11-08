@@ -49,9 +49,9 @@ pnpm dev:app    # http://localhost:3001
 
 ## Mode simulation (phase 1)
 
-Paiement, génération, e-mail et stockage sont **simulés** (`PAYMENT_PROVIDER=mock`, etc.). Aucune clé externe n'est nécessaire,
-aucun argent réel n'est échangé. L'intégration OpenPay n'est pas codée : elle sera ajoutée derrière l'interface
-`PaymentProvider` à réception de sa documentation officielle.
+Paiement, génération, e-mail et stockage peuvent être **simulés** (`PAYMENT_PROVIDER=mock`, etc.) : aucune clé externe n'est
+nécessaire, aucun argent réel n'est échangé. Le paiement réel passe par SasPay (`PAYMENT_PROVIDER=saspay`, voir
+[docs/dev/saspay.md](docs/dev/saspay.md)) ; OpenPay a été supprimé.
 
 ## Premier administrateur (production)
 
@@ -79,7 +79,9 @@ Voir [docs/dev/interface-connectee.md](docs/dev/interface-connectee.md) (barre l
 
 ## Crédits et paiements
 
-Voir [docs/dev/credits-et-paiements.md](docs/dev/credits-et-paiements.md) (registre, paiement simulé, scénarios de test, tâches asynchrones, futur point d'intégration OpenPay).
+Voir [docs/dev/credits-et-paiements.md](docs/dev/credits-et-paiements.md) (registre, paiement simulé, scénarios de test, tâches asynchrones, fournisseur).
+
+SasPay : [docs/dev/saspay.md](docs/dev/saspay.md). Pays et moyens de paiement administrables : [docs/dev/catalogue-international.md](docs/dev/catalogue-international.md). Pagination serveur : [docs/dev/pagination.md](docs/dev/pagination.md).
 
 ## Base de données
 

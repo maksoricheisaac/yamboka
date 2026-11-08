@@ -7,13 +7,12 @@ ce qui ne l'est pas, et comment ouvrir un pays.
 
 | Information | Source unique | Qui la modifie |
 |---|---|---|
-| Pays, devises, indicatifs, réseaux (opérateurs) | `api/src/payments/payment-countries.ts` | Développeur (une entrée par pays ou réseau) |
-| Pays **ouverts à la vente** | Réglage `paymentEnabledCountries` (ex. `CG,CM`) | Administration → Paramètres |
+| Pays, devises, indicatifs, moyens de paiement et leur statut | Tables `Country`, `PaymentMethod`, `CountryPaymentMethod` (amorçage : `api/src/payments/catalog/catalog-data.ts`) | Administration → Pays et paiements |
 | Prix d'un crédit en FCFA (XAF et XOF) | Réglage `creditValueFcfa` | Administration → Paramètres |
-| Prix d'un crédit dans une autre devise | Table `CurrencySetting` (`active`, `creditValue`) | Base de données (pas d'écran) |
+| Prix d'un crédit et bornes d'achat dans une autre devise | Table `CurrencySetting` (`creditValue`, `minAmount`, `maxAmount`, `active`) | Administration → Pays et paiements → fiche du pays |
 | Packs et leurs prix | Table `CreditPack` | Administration → Packs |
 | Tarifs de création (crédits par seconde et par qualité) | Table `GenerationProduct` | Administration → Produits |
-| Bornes d'un paiement par devise | `PAYMENT_LIMITS` dans `payment-countries.ts` | Développeur |
+| Bornes d'un paiement en franc CFA | `PAYMENT_LIMITS` dans `payment-countries.ts` (autres devises : `CurrencySetting`) | Développeur (CFA) / administrateur |
 
 Le site public, la page Crédits, le studio de création et la facturation lisent ces mêmes données. L'endpoint
 `GET /api/catalog/pricing` (public) les expose ; il n'y a plus aucun tarif écrit en dur dans le site (le fichier

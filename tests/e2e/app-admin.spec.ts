@@ -87,7 +87,8 @@ test.describe('Administration — actions réelles', () => {
     await form.getByLabel(/Motif/).fill('Pack de test');
     await form.getByRole('button', { name: 'Créer le pack' }).click();
     // Le tableau est paginé : on retrouve le pack par la recherche plutôt que par sa position.
-    await page.getByRole('searchbox', { name: 'Recherche' }).fill(packName);
+    await page.getByLabel('Nom du pack').fill(packName);
+    await page.getByRole('button', { name: 'Filtrer' }).click();
     const fourth = page.getByRole('row', { name: packName });
     const rowMenu = fourth.getByRole('button', { name: `Actions pour le pack ${packName}` });
     await rowMenu.click();

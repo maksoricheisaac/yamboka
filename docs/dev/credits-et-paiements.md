@@ -1,6 +1,6 @@
-# Crédits et paiements (mode simulation)
+# Crédits et paiements
 
-Aucun appel réel n'est fait vers un opérateur ou un agrégateur : le paiement passe par un **fournisseur simulé**. L'intégration OpenPay n'est pas codée ; son point d'accrochage est décrit en fin de document.
+Les paiements réels passent par **SasPay** ([saspay.md](saspay.md)) ; en développement et en test, un **fournisseur simulé** évite tout appel réel. L'historique d'un achat garde la référence du fournisseur et le moyen de paiement utilisé.
 
 ## Registre de crédits et lots
 
@@ -95,13 +95,12 @@ BullMQ + Redis (`REDIS_URL`). En test (`NODE_ENV=test`) la file est désactivée
 
 Les processeurs tournent dans le processus de l'API pour l'instant ; un processus `worker` séparé est prévu au déploiement.
 
-## Brancher OpenPay plus tard (non fait)
+## Fournisseur de paiement
 
-À réception de la documentation officielle, et seulement alors :
+Il n'existe plus qu'un fournisseur réel : **SasPay** (`PAYMENT_PROVIDER=saspay`), décrit dans [saspay.md](saspay.md). Le fournisseur
+simulé (`mock`) ne sert qu'au développement et aux tests. Il n'y a **aucun repli silencieux** d'un fournisseur vers l'autre : un
+paiement est toujours vérifié chez celui qui l'a reçu (`Payment.gateway`). OpenPay a été supprimé (code, réglages, variables) ; ses
+éventuelles lignes historiques restent lisibles dans le journal des paiements de l'administration (filtre « Fournisseur »).
 
-1. Créer `OpenPayProvider extends PaymentProvider` (`initiate`, `getStatus`) dans `src/payments/`.
-2. L'ajouter dans `PaymentProviders.forCountry('CG')` / `byName` ; la valeur `PAYMENT_PROVIDER` passe à `openpay`.
-3. Adapter `WebhooksController` au format de callback réel. Le principe ne change pas : répondre 200 tout de suite, puis déclencher la vérification du statut.
-4. Points à confirmer auprès d'OpenPay (cf. `docs/04`, §5) : environnement de test, adresses IP sources des callbacks, taux de commission appliqué.
-
-Rien d'autre ne change : registre, paiements, rattrapage et interface utilisent l'interface `PaymentProvider`.
+Rien ne change côté registre, paiements, rattrapage et interface : ils utilisent l'interface `PaymentProvider`.
+Les pays et moyens proposés viennent du catalogue en base : voir [catalogue-international.md](catalogue-international.md).

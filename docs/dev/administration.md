@@ -23,8 +23,9 @@
 | Clients | Réclamations | Liste filtrable et traitement des signalements |
 | Générations et modération | Générations | Liste filtrable (client, statut, preset, dates), masquer / ré-afficher avec motif |
 | Offre | Packs, Produits, Presets | Voir ci-dessous |
-| Finances | Paiements | Journal filtrable, **vérification manuelle** (interroge le fournisseur), export CSV |
-| Finances | Synthèse financière | Période, encaissé, crédits, **saisie des recharges Higgsfield et des retraits OpenPay**, export CSV |
+| Finances | Pays et paiements | Pays et moyens de paiement : statuts, tarification par devise (voir [catalogue-international.md](catalogue-international.md)) |
+| Finances | Paiements | Journal filtrable (statut, fournisseur, pays, moyen, utilisateur, période), **vérification manuelle** (interroge le fournisseur), export CSV |
+| Finances | Synthèse financière | Période, encaissé, crédits, **saisie des recharges Higgsfield et des retraits SasPay**, export CSV |
 | Configuration | Paramètres | Mode maintenance, marges, crédits, limites et seuils, conservation, sécurité de connexion ; test e-mail |
 | Configuration | Textes légaux | Nouvelle version (les anciennes sont conservées), version majeure = nouvelle acceptation |
 | Configuration | Administrateurs | Ajouter / retirer l'accès (jamais soi-même, jamais le dernier) |
