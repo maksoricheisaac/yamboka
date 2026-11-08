@@ -9,8 +9,8 @@ import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { apiGet, apiPost, ApiError } from "@/lib/api-client";
-import { formatFcfa, formatNumber, formatPhone } from "@/lib/format";
-import { OPERATOR_LABELS, providerLabel } from "./labels";
+import { formatMoney, formatNumber, formatPhone } from "@/lib/format";
+import { providerLabel } from "./labels";
 
 /** Motif posé par le serveur quand aucune confirmation n'est arrivée à temps (voir PaymentsService). */
 const TIMEOUT_REASON = "Délai de confirmation dépassé";
@@ -112,7 +112,7 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
             {timedOut ? (
               <p className="text-muted-foreground">
                 Nous n’avons pas encore reçu la confirmation. Si vous avez payé, vos crédits seront ajoutés dès qu’elle arrivera : vous
-                pouvez quitter cette page. Vous pouvez aussi suivre l’achat dans <Link href="/app/achats" className="font-medium text-primary underline">vos achats</Link>.
+                pouvez quitter cette page. Vous pouvez aussi suivre l’achat dans <Link href="/app/credits/historique?filtre=achats" className="font-medium text-primary underline">votre historique</Link>.
               </p>
             ) : sending ? (
               <p className="text-muted-foreground">
@@ -122,7 +122,7 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
             ) : payment.checkoutUrl ? (
               <div className="space-y-3">
                 <p className="text-muted-foreground">
-                  Pour payer <strong className="text-foreground">{formatFcfa(payment.amountFcfa)}</strong>, continuez sur la page de paiement sécurisée.
+                  Pour payer <strong className="text-foreground">{formatMoney(payment.amountFcfa, payment.currency)}</strong>, continuez sur la page de paiement sécurisée.
                   Une fois le paiement validé, revenez ici : cette page se met à jour toute seule.
                 </p>
                 <Button asChild>
@@ -134,8 +134,8 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
             ) : (
               <ol className="list-decimal space-y-1.5 pl-5 text-muted-foreground">
                 <li>
-                  Une demande de paiement de <strong className="text-foreground">{formatFcfa(payment.amountFcfa)}</strong> arrive sur le{" "}
-                  <strong className="text-foreground">{formatPhone(payment.payerPhone)}</strong> ({OPERATOR_LABELS[payment.operator]}).
+                  Une demande de paiement de <strong className="text-foreground">{formatMoney(payment.amountFcfa, payment.currency)}</strong> arrive sur le{" "}
+                  <strong className="text-foreground">{formatPhone(payment.payerPhone)}</strong> ({payment.methodLabel}).
                 </li>
                 <li>Validez-la avec votre code secret.</li>
                 <li>Cette page se met à jour toute seule dès que le paiement est confirmé.</li>
@@ -159,7 +159,7 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
                 <Link href="/app/credits">Retour à mes crédits</Link>
               </Button>
               <Button asChild variant="outline">
-                <Link href={`/app/achats/${payment.id}`}>Voir le reçu</Link>
+                <Link href={`/app/credits/recu/${payment.id}`}>Voir le reçu</Link>
               </Button>
             </div>
           </>
@@ -177,7 +177,7 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
             {payment.failureReason === TIMEOUT_REASON && (
               <p className="rounded-lg border bg-muted/60 p-3 text-sm">
                 Si vous avez malgré tout validé le paiement sur votre téléphone, ne le refaites pas : vos crédits seront ajoutés automatiquement
-                dès que l’opérateur le confirmera. Vous pouvez suivre l’état dans <Link href="/app/achats" className="font-medium text-primary underline">vos achats</Link>.
+                dès que l’opérateur le confirmera. Vous pouvez suivre l’état dans <Link href="/app/credits/historique?filtre=achats" className="font-medium text-primary underline">votre historique</Link>.
               </p>
             )}
             <Button asChild>
@@ -187,10 +187,10 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
         )}
 
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 border-t pt-4 text-sm">
-          <dt className="text-muted-foreground">Pack</dt>
+          <dt className="text-muted-foreground">{payment.custom ? "Achat" : "Pack"}</dt>
           <dd className="font-medium">{payment.packName}</dd>
           <dt className="text-muted-foreground">Montant</dt>
-          <dd className="font-medium">{formatFcfa(payment.amountFcfa)}</dd>
+          <dd className="font-medium">{formatMoney(payment.amountFcfa, payment.currency)}</dd>
           <dt className="text-muted-foreground">Crédits</dt>
           <dd className="font-medium">{formatNumber(payment.credits)}</dd>
           <dt className="text-muted-foreground">Paiement via</dt>

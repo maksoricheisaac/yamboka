@@ -45,7 +45,7 @@ export function ShellHeader({ variant, user, children }: { variant: ShellVariant
       <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
         {children}
         <ThemeToggle />
-        <UserNav user={user} profileHref={variant === "admin" ? "/admin/profil" : "/app/profil"} settingsHref={variant === "admin" ? undefined : "/app/parametres"} />
+        <UserNav user={user} profileHref={variant === "admin" ? "/admin/profil" : "/app/parametres?onglet=profil"} settingsHref={variant === "admin" ? undefined : "/app/parametres"} />
       </div>
     </header>
   );

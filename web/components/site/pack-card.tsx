@@ -32,16 +32,20 @@ export function PackCard({ offer, maxCredits }: { offer: PublicOffer; maxCredits
         <div className="h-full rounded-full bg-primary transition-[width] duration-700" style={{ width: `${share}%` }} />
       </div>
 
-      <ul className="mt-5 space-y-2.5 text-sm">
-        <li className="flex items-center gap-2.5">
-          <Clapperboard className="size-4 shrink-0 text-primary" aria-hidden />
-          <span>
-            <span aria-hidden>≈ </span>
-            <strong className="text-base">{formatNumber(offer.videos)}</strong> vidéos
-          </span>
-        </li>
-      </ul>
-      <p className="sr-only">Par exemple : {offer.example}</p>
+      {offer.videos > 0 && (
+        <>
+          <ul className="mt-5 space-y-2.5 text-sm">
+            <li className="flex items-center gap-2.5">
+              <Clapperboard className="size-4 shrink-0 text-primary" aria-hidden />
+              <span>
+                <span aria-hidden>≈ </span>
+                <strong className="text-base">{formatNumber(offer.videos)}</strong> vidéos
+              </span>
+            </li>
+          </ul>
+          <p className="sr-only">Par exemple : {offer.example}</p>
+        </>
+      )}
 
       <TapScale className="mt-6 w-full">
         <Button asChild size="lg" variant={offer.featured ? "default" : "outline"} className="w-full rounded-full">

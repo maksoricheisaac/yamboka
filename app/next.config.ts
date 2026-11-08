@@ -42,6 +42,13 @@ const nextConfig: NextConfig = {
         destination: "/app/creer",
         permanent: true,
       },
+      // Refonte de l'espace client : ces pages sont devenues des onglets ou des filtres. Les anciens liens
+      // (e-mails, favoris, notifications) continuent d'arriver au bon endroit.
+      { source: "/app/profil", destination: "/app/parametres?onglet=profil", permanent: true },
+      { source: "/app/notifications", destination: "/app/parametres?onglet=notifications", permanent: true },
+      { source: "/app/achats", destination: "/app/credits/historique?filtre=achats", permanent: true },
+      { source: "/app/achats/:id", destination: "/app/credits/recu/:id", permanent: true },
+      { source: "/app/tendances", destination: "/app/creer", permanent: true },
     ];
   },
   // Le navigateur parle uniquement à cette origine : /api/* est relayé vers l'API.

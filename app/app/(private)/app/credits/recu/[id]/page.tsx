@@ -2,15 +2,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { PaymentReceipt, PaymentView } from "@yamboka/shared";
-import { OPERATOR_LABELS, providerLabel } from "@/components/credits/labels";
+import { providerLabel } from "@/components/credits/labels";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth";
-import { formatDateTime, formatFcfa, formatNumber, formatPhone } from "@/lib/format";
+import { formatDateTime, formatMoney, formatNumber, formatPhone } from "@/lib/format";
 import { serverGetOrNull } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "Reçu" };
 
-export default async function ReceiptPage({ params }: PageProps<"/app/achats/[id]">) {
+const regionNames = new Intl.DisplayNames(["fr"], { type: "region" });
+
+export default async function ReceiptPage({ params }: PageProps<"/app/credits/recu/[id]">) {
   const user = await requireUser();
   const { id } = await params;
   const payment = await serverGetOrNull<{ payment: PaymentView }>(`/payments/${id}`);
@@ -33,7 +35,7 @@ export default async function ReceiptPage({ params }: PageProps<"/app/achats/[id
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3">
         <dt className="text-muted-foreground">Client</dt>
         <dd className="font-medium">{user.firstName} {user.lastName}</dd>
-        <dt className="text-muted-foreground">Pack</dt>
+        <dt className="text-muted-foreground">{r.custom ? "Achat" : "Pack"}</dt>
         <dd className="font-medium">{r.packName}</dd>
         <dt className="text-muted-foreground">Crédits</dt>
         <dd className="font-medium">
@@ -41,11 +43,13 @@ export default async function ReceiptPage({ params }: PageProps<"/app/achats/[id
           {r.bonusCredits > 0 && <span className="text-muted-foreground"> (dont {r.bonusCredits} offerts)</span>}
         </dd>
         <dt className="text-muted-foreground">Montant payé</dt>
-        <dd className="font-heading text-xl font-bold">{formatFcfa(r.amountFcfa)}</dd>
+        <dd className="font-heading text-xl font-bold">{formatMoney(r.amountFcfa, r.currency)}</dd>
         <dt className="text-muted-foreground">Paiement</dt>
         <dd className="font-medium">
-          {OPERATOR_LABELS[r.operator]} — {formatPhone(r.payerPhone)}
+          {r.methodLabel} — {formatPhone(r.payerPhone)}
         </dd>
+        <dt className="text-muted-foreground">Pays</dt>
+        <dd className="font-medium">{regionNames.of(r.country) ?? r.country}</dd>
         <dt className="text-muted-foreground">Fournisseur</dt>
         <dd className="font-medium">{providerLabel(r.provider)}</dd>
         <dt className="text-muted-foreground">Référence</dt>
@@ -57,7 +61,7 @@ export default async function ReceiptPage({ params }: PageProps<"/app/achats/[id
         </p>
       )}
       <Button asChild variant="outline">
-        <Link href="/app/achats">Retour à mes achats</Link>
+        <Link href="/app/credits/historique?filtre=achats">Retour à l’historique</Link>
       </Button>
     </article>
   );

@@ -116,7 +116,7 @@ export function NotificationBell() {
         </div>
         <div className="border-t p-1.5">
           <Button asChild variant="ghost" size="sm" className="w-full">
-            <Link href="/app/notifications" onClick={() => setOpen(false)}>Voir toutes les notifications</Link>
+            <Link href="/app/parametres?onglet=notifications" onClick={() => setOpen(false)}>Voir toutes les notifications</Link>
           </Button>
         </div>
       </PopoverContent>

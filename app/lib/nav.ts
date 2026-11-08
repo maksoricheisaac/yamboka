@@ -2,23 +2,19 @@ import {
   Activity,
   Boxes,
   Clapperboard,
-  Bell,
   Coins,
   History,
   GalleryVertical,
-  TrendingUp,
   CreditCard,
   FileText,
   LifeBuoy,
   LayoutDashboard,
   LineChart,
-  Receipt,
   ShieldCheck,
   ScrollText,
   Settings,
   Sparkles,
   Tags,
-  UserRound,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -55,24 +51,24 @@ export const USER_NAV: NavGroup[] = [
       { title: "Tableau de bord", href: "/app", icon: LayoutDashboard, exact: true },
       { title: "Créer", href: "/app/creer", icon: Sparkles },
       { title: "Mes créations", href: "/app/creations", icon: GalleryVertical },
-      { title: "Idées", href: "/app/tendances", icon: TrendingUp },
     ],
   },
   {
-    label: "Crédits et achats",
+    label: "Crédits et transactions",
     items: [
-      { title: "Crédits", href: "/app/credits", icon: Coins, except: ["/app/credits/historique"] },
+      {
+        title: "Crédits",
+        href: "/app/credits",
+        icon: Coins,
+        // L'historique et les reçus ont leur propre entrée de menu.
+        except: ["/app/credits/historique", "/app/credits/recu"],
+      },
       { title: "Historique", href: "/app/credits/historique", icon: History },
-      { title: "Achats", href: "/app/achats", icon: Receipt },
     ],
   },
   {
     label: "Compte",
-    items: [
-      { title: "Notifications", href: "/app/notifications", icon: Bell },
-      { title: "Mon profil", href: "/app/profil", icon: UserRound },
-      { title: "Paramètres", href: "/app/parametres", icon: Settings },
-    ],
+    items: [{ title: "Paramètres", href: "/app/parametres", icon: Settings }],
   },
 ];
 
@@ -127,8 +123,8 @@ export const USER_TABS: { title: string; href: string; icon: LucideIcon; exact?:
   { title: "Accueil", href: "/app", icon: LayoutDashboard, exact: true },
   { title: "Créer", href: "/app/creer", icon: Sparkles },
   { title: "Créations", href: "/app/creations", icon: GalleryVertical },
-  { title: "Idées", href: "/app/tendances", icon: TrendingUp },
   { title: "Crédits", href: "/app/credits", icon: Coins },
+  { title: "Compte", href: "/app/parametres", icon: Settings },
 ];
 
 export const NAV_BY_VARIANT: Record<ShellVariant, NavGroup[]> = { user: USER_NAV, admin: ADMIN_NAV };
@@ -146,16 +142,16 @@ export interface Crumb {
 /** Pages secondaires dont l'URL contient un identifiant : parent navigable + libellé de la page. */
 const DETAIL_PAGES: { pattern: RegExp; parent: { label: string; href: string }; label: string; variant?: ShellVariant }[] = [
   { pattern: /^\/admin\/utilisateurs\/[^/]+$/, parent: { label: "Utilisateurs", href: "/admin/utilisateurs" }, label: "Fiche client", variant: "admin" },
-  { pattern: /^\/app\/credits\/paiement\/[^/]+$/, parent: { label: "Crédits et achats", href: "/app/credits" }, label: "Paiement" },
+  { pattern: /^\/app\/credits\/paiement\/[^/]+$/, parent: { label: "Crédits", href: "/app/credits" }, label: "Paiement" },
   { pattern: /^\/app\/creations\/[^/]+$/, parent: { label: "Mes créations", href: "/app/creations" }, label: "Création" },
-  { pattern: /^\/app\/achats\/[^/]+$/, parent: { label: "Achats", href: "/app/achats" }, label: "Reçu" },
+  { pattern: /^\/app\/credits\/recu\/[^/]+$/, parent: { label: "Historique", href: "/app/credits/historique" }, label: "Reçu" },
 ];
 
 /** Fil d'Ariane d'une page : [rubrique ›] page, ou parent › détail pour les pages à identifiant. */
 export function crumbsFor(variant: ShellVariant, pathname: string): Crumb[] {
   const detail = DETAIL_PAGES.find((d) => d.pattern.test(pathname));
   if (detail && (detail.variant ?? "user") === variant) return [detail.parent, { label: detail.label }];
-  if (pathname === "/app/profil" || pathname === "/admin/profil") return [{ label: "Mon profil" }];
+  if (pathname === "/admin/profil") return [{ label: "Mon profil" }];
 
   const groups = NAV_BY_VARIANT[variant];
   for (const group of groups) {

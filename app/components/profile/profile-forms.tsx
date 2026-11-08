@@ -20,7 +20,7 @@ interface IdentityValues {
   phone?: string;
 }
 
-function IdentityForm({ user }: { user: SessionUser }) {
+export function IdentityForm({ user }: { user: SessionUser }) {
   const router = useRouter();
   const hydrated = useHydrated();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -81,7 +81,7 @@ function IdentityForm({ user }: { user: SessionUser }) {
   );
 }
 
-function PasswordForm() {
+export function PasswordForm() {
   const hydrated = useHydrated();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const {
