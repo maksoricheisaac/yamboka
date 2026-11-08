@@ -50,6 +50,10 @@ Prettier (introduire Prettier y reformaterait tout le code existant : décision 
 | `pnpm test:e2e` | Tests de navigateur Playwright (longs, hors hooks) |
 | `pnpm --filter api test:e2e` | Tests d'intégration API (base PostgreSQL de test requise, hors hooks) |
 
+Le build du site public (`web`) télécharge ses polices depuis Google Fonts (`next/font/google`) : **une connexion
+Internet est nécessaire** pour que `pnpm check` et le `pre-push` aboutissent. Hors ligne, le push est bloqué
+(erreur « Failed to fetch … from Google Fonts ») : reconnectez-vous et relancez.
+
 Lancez `pnpm check` avant un push important : vous voyez les erreurs sans attendre le hook.
 
 ## Convention de commit
