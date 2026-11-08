@@ -135,6 +135,7 @@ const IDEAS = [
 const SETTINGS: Record<string, unknown> = {
   usdToXafRate: 620,
   creditValueFcfa: 10,
+  paymentEnabledCountries: 'CG,CM',
   generationConfirmCredits: 100,
   generationConfirmBalancePercent: 50,
   fxFeePercent: 0,

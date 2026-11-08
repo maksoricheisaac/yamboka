@@ -4,6 +4,7 @@ import {
   EMAIL_PREF_KEYS,
   type EmailPrefKey,
   type EmailPrefs,
+  CUSTOM_PURCHASE_LABEL,
 } from '@yamboka/shared';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env';
@@ -226,7 +227,7 @@ export class NotificationsService {
         return purchaseEmail(
           n.user.firstName,
           {
-            packName: p.pack.name,
+            packName: p.pack?.name ?? CUSTOM_PURCHASE_LABEL,
             credits: p.credits + p.bonusCredits,
             amountFcfa: p.amount,
             reference: p.id.slice(0, 8).toUpperCase(),

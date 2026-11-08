@@ -9,6 +9,11 @@ import { firstPurchaseBonusCredits } from '../billing/bonus';
 import { lockUserRow } from '../common/locks';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  LEDGER_FILTER_TYPES,
+  type ActivitySummary,
+  type LedgerFilter,
+} from '@yamboka/shared';
 import { allocateFifo, spendableTotal } from './fifo';
 
 type Db = PrismaService | Prisma.TransactionClient;
@@ -38,6 +43,8 @@ export interface LedgerEntryView {
   note: string | null;
   expiresAt: Date | null;
   createdAt: Date;
+  paymentId: string | null;
+  generationId: string | null;
 }
 
 /**
@@ -66,7 +73,7 @@ export class CreditsService {
     return _sum.amount ?? 0;
   }
 
-  /** Valeur d'un crédit en FCFA (1 crédit = 10 FCFA au tarif Starter), paramétrable dans l'administration. */
+  /** Prix d'un crédit en FCFA (aligné sur le pack d’entrée), réglé dans l'administration : sert à l'affichage et à l'achat à la quantité. */
   async creditValue(_currency = 'XAF', db: Db = this.prisma): Promise<number> {
     const row = await db.setting.findUnique({
       where: { key: 'creditValueFcfa' },
@@ -527,11 +534,15 @@ export class CreditsService {
   /** Historique des mouvements d'un utilisateur, du plus récent au plus ancien (UF-61), paginé par curseur. */
   async listLedger(
     userId: string,
-    opts: { cursor?: string; limit?: number },
+    opts: { cursor?: string; limit?: number; filter?: LedgerFilter },
   ): Promise<{ items: LedgerEntryView[]; nextCursor: string | null }> {
     const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100);
+    const types =
+      opts.filter && opts.filter !== 'all'
+        ? LEDGER_FILTER_TYPES[opts.filter]
+        : null;
     const rows = await this.prisma.creditLedger.findMany({
-      where: { userId },
+      where: { userId, ...(types ? { type: { in: types } } : {}) },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
@@ -542,10 +553,47 @@ export class CreditsService {
         note: true,
         expiresAt: true,
         createdAt: true,
+        paymentId: true,
+        generationId: true,
       },
     });
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
     return { items, nextCursor: hasMore ? items[items.length - 1].id : null };
+  }
+
+  // ───────────── Synthèse ─────────────
+
+  /** Activité des 30 derniers jours pour le tableau de bord : lue dans le journal et les générations, rien n'est stocké. */
+  async activitySummary(userId: string): Promise<ActivitySummary> {
+    const since = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    const sumOf = async (types: string[]) =>
+      (
+        await this.prisma.creditLedger.aggregate({
+          where: {
+            userId,
+            type: { in: types as never },
+            createdAt: { gte: since },
+          },
+          _sum: { amount: true },
+        })
+      )._sum.amount ?? 0;
+    const [generationsTotal, generations30d, reserved, released, purchased] =
+      await Promise.all([
+        this.prisma.generation.count({ where: { userId, status: 'COMPLETED' } }),
+        this.prisma.generation.count({
+          where: { userId, status: 'COMPLETED', createdAt: { gte: since } },
+        }),
+        sumOf(['RESERVE']),
+        sumOf(['RELEASE']),
+        sumOf(['PURCHASE']),
+      ]);
+    return {
+      generationsTotal,
+      generations30d,
+      // Réservé (négatif) moins ce qui a été restitué : la dépense réelle.
+      creditsSpent30d: Math.max(0, -(reserved + released)),
+      creditsPurchased30d: purchased,
+    };
   }
 }

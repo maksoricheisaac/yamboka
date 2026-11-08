@@ -80,9 +80,7 @@ export class SaspayPaymentProvider extends PaymentProvider {
     this.timeoutMs = config.get('SASPAY_TIMEOUT_MS', { infer: true });
   }
 
-  override networkFor(operator: 'MTN' | 'AIRTEL'): string {
-    return SASPAY_NETWORK_BY_OPERATOR[operator];
-  }
+  override readonly chargesFees = true;
 
   /**
    * Tarif d'encaissement d'un réseau pour CE compte (GET /pricing/my-rates/), gardé 1 h en mémoire.
@@ -143,7 +141,16 @@ export class SaspayPaymentProvider extends PaymentProvider {
       );
     }
     const network =
-      request.network ?? SASPAY_NETWORK_BY_OPERATOR[request.operator];
+      request.network ??
+      (request.operator === 'OTHER'
+        ? undefined
+        : SASPAY_NETWORK_BY_OPERATOR[request.operator]);
+    if (!network) {
+      throw new ProviderRejectedError(
+        'invalid_method',
+        'Réseau de paiement non précisé.',
+      );
+    }
     const body = {
       amount: formatAmount(request.amount),
       currency: request.currency,

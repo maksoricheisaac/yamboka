@@ -1,0 +1,3 @@
+-- Retour arrière manuel (non exécuté par Prisma). Échoue s'il existe des paiements sur mesure : à traiter avant.
+-- ALTER TABLE "Payment" ALTER COLUMN "packId" SET NOT NULL;
+-- Les valeurs d'enum PostgreSQL ne se retirent pas ; OTHER peut rester sans effet.

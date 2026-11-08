@@ -17,8 +17,13 @@ export const SETTING_DEFAULTS = {
   firstPurchaseBonusEnabled: true,
   /** Bonus de premier achat par défaut (%), remplacé par CreditPack.firstPurchaseBonusPercent quand il est défini. */
   firstPurchaseBonusDefaultPercent: 20,
-  /** Valeur d'un crédit en FCFA au tarif Starter (1 crédit = 10 FCFA) : sert à afficher « ≈ 1 760 FCFA ». */
+  /**
+   * Prix d'un crédit en FCFA (XAF et XOF, à parité) : sert à afficher « ≈ 1 760 FCFA » ET à facturer l'achat de crédits
+   * à la quantité. À tenir aligné sur le pack d'entrée (prix ÷ crédits) : 10 avec le Starter du seed (5 000 ÷ 500).
+   */
   creditValueFcfa: 10,
+  /** Pays ouverts à l'achat de crédits (codes ISO séparés par des virgules, parmi ceux de payment-countries.ts). */
+  paymentEnabledCountries: 'CG,CM',
   /** Garde-fou de génération : au-delà de ce coût (crédits) OU de cette part du solde (%), une confirmation est demandée. */
   generationConfirmCredits: 100,
   generationConfirmBalancePercent: 50,

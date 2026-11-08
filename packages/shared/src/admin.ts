@@ -67,6 +67,7 @@ export const EDITABLE_SETTINGS = {
   minMarginPercent: 'number',
   usdToXafRate: 'number',
   creditValueFcfa: 'number',
+  paymentEnabledCountries: 'string',
   generationConfirmCredits: 'number',
   generationConfirmBalancePercent: 'number',
   fxFeePercent: 'number',
