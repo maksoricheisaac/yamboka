@@ -1,5 +1,6 @@
 import './isolate-purchase-db';
 import { INestApplication } from '@nestjs/common';
+import type { PricingView } from '@yamboka/shared';
 import { Client, createApp, prismaOf } from './helpers';
 import { resetDatabase } from './reset-database';
 import { ledgerOf, verifiedClient } from './finance-helpers';
@@ -28,8 +29,9 @@ describe('Achat de crédits sur mesure et paiements multi-pays (e2e)', () => {
       create: { key, value },
     });
 
-  const pricing = async () =>
-    (await new Client(app).get('/api/catalog/pricing').expect(200)).body;
+  const pricing = async (): Promise<PricingView> =>
+    (await new Client(app).get('/api/catalog/pricing').expect(200))
+      .body as PricingView;
 
   const simulate = (client: Client, id: string, outcome: string) =>
     client.post(`/api/payments/${id}/simulate`, { outcome, callbacks: 1 });
@@ -38,16 +40,16 @@ describe('Achat de crédits sur mesure et paiements multi-pays (e2e)', () => {
     it('est lisible sans connexion et décrit pays, moyens de paiement, packs et prix du crédit', async () => {
       const body = await pricing();
       const cg = body.countries.find((c: { iso: string }) => c.iso === 'CG');
-      expect(cg).toMatchObject({
+      expect(cg!).toMatchObject({
         currency: 'XAF',
         dialCode: '+242',
         custom: { unitPrice: 10 },
       });
-      expect(cg.methods.map((m: { code: string }) => m.code)).toEqual([
+      expect(cg!.methods.map((m: { code: string }) => m.code)).toEqual([
         'mtn_cg',
         'airtel_cg',
       ]);
-      expect(cg.packs.length).toBeGreaterThanOrEqual(3);
+      expect(cg!.packs.length).toBeGreaterThanOrEqual(3);
     });
 
     it('les prix des packs sont ceux du catalogue, et les tarifs vidéo ceux du studio de création', async () => {
@@ -57,7 +59,7 @@ describe('Achat de crédits sur mesure et paiements multi-pays (e2e)', () => {
         await new Client(app).get('/api/catalog/packs').expect(200)
       ).body;
       expect(
-        cg.packs.map((p: { name: string; priceFcfa: number }) => [
+        cg!.packs.map((p: { name: string; priceFcfa: number }) => [
           p.name,
           p.priceFcfa,
         ]),
@@ -74,11 +76,11 @@ describe('Achat de crédits sur mesure et paiements multi-pays (e2e)', () => {
     });
 
     it('une modification faite dans l’administration est répercutée immédiatement', async () => {
-      const before = (await pricing()).countries[0].custom.unitPrice;
+      const before = (await pricing()).countries[0].custom!.unitPrice;
       await setSetting('creditValueFcfa', 12);
       try {
         const body = await pricing();
-        expect(body.countries[0].custom.unitPrice).toBe(12);
+        expect(body.countries[0].custom!.unitPrice).toBe(12);
         const { client } = await verifiedClient(app);
         const quote = await client
           .post('/api/payments/quote', { credits: 100, network: 'mtn_cg' })
@@ -203,7 +205,7 @@ describe('Achat de crédits sur mesure et paiements multi-pays (e2e)', () => {
     });
 
     it('refuse de vendre à perte (prix du crédit inférieur au coût fournisseur)', async () => {
-      const before = (await pricing()).countries[0].custom.unitPrice;
+      const before = (await pricing()).countries[0].custom!.unitPrice;
       await setSetting('creditValueFcfa', 2); // coût fournisseur : 2,5 FCFA le crédit
       try {
         const { client, userId } = await verifiedClient(app);
@@ -318,8 +320,8 @@ describe('Achat de crédits sur mesure et paiements multi-pays (e2e)', () => {
         const { client } = await verifiedClient(app);
         const body = await pricing();
         const bj = body.countries.find((c: { iso: string }) => c.iso === 'BJ');
-        expect(bj).toMatchObject({ currency: 'XOF', dialCode: '+229' });
-        expect(bj.packs[0].currency).toBe('XOF');
+        expect(bj!).toMatchObject({ currency: 'XOF', dialCode: '+229' });
+        expect(bj!.packs[0].currency).toBe('XOF');
         const res = await client
           .post('/api/payments', {
             credits: 200,

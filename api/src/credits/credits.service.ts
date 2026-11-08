@@ -580,7 +580,9 @@ export class CreditsService {
       )._sum.amount ?? 0;
     const [generationsTotal, generations30d, reserved, released, purchased] =
       await Promise.all([
-        this.prisma.generation.count({ where: { userId, status: 'COMPLETED' } }),
+        this.prisma.generation.count({
+          where: { userId, status: 'COMPLETED' },
+        }),
         this.prisma.generation.count({
           where: { userId, status: 'COMPLETED', createdAt: { gte: since } },
         }),

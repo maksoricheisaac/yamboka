@@ -175,3 +175,14 @@ export const simulatePaymentSchema = z.object({
   callbacks: z.number().int().min(1).max(5).default(1),
 });
 export type SimulatePaymentInput = z.infer<typeof simulatePaymentSchema>;
+
+/**
+ * Montant d'un achat à la quantité : ⌈ crédits × prix du crédit ⌉, calculé en centièmes entiers (pas de flottants).
+ * Une SEULE formule pour l'affichage en direct (navigateur) et pour la facturation (serveur, qui la rejoue).
+ */
+export function customPurchaseAmount(credits: number, unitPrice: number): number {
+  if (!Number.isInteger(credits) || credits < 1) throw new RangeError('Quantité de crédits invalide.');
+  const hundredths = Math.round(unitPrice * 100);
+  if (!(hundredths > 0)) throw new RangeError('Prix du crédit invalide.');
+  return Math.ceil((credits * hundredths) / 100);
+}

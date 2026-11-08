@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   Patch,
   Post,
@@ -12,6 +13,7 @@ import { Throttle } from '@nestjs/throttler';
 import type {
   ChangePasswordInput,
   DeleteAccountInput,
+  SessionInfo,
   SessionUser,
   UpdateProfileInput,
 } from '@yamboka/shared';
@@ -27,6 +29,35 @@ import type { AuthUser } from '../common/decorators';
 import { jsonSchema } from '../common/json-schema';
 import { ZodPipe } from '../common/zod.pipe';
 import { UsersService } from './users.service';
+
+/** « Chrome sur Windows » à partir de l'agent utilisateur ; « Appareil inconnu » si rien d'exploitable. */
+export function describeDevice(userAgent: string | null): string {
+  if (!userAgent) return 'Appareil inconnu';
+  const browser = /Edg\//.test(userAgent)
+    ? 'Edge'
+    : /OPR\/|Opera/.test(userAgent)
+      ? 'Opera'
+      : /Firefox\//.test(userAgent)
+        ? 'Firefox'
+        : /Chrome\//.test(userAgent)
+          ? 'Chrome'
+          : /Safari\//.test(userAgent)
+            ? 'Safari'
+            : null;
+  const os = /Windows/.test(userAgent)
+    ? 'Windows'
+    : /Android/.test(userAgent)
+      ? 'Android'
+      : /iPhone|iPad|iOS/.test(userAgent)
+        ? 'iOS'
+        : /Mac OS X|Macintosh/.test(userAgent)
+          ? 'macOS'
+          : /Linux/.test(userAgent)
+            ? 'Linux'
+            : null;
+  if (browser && os) return `${browser} sur ${os}`;
+  return browser ?? os ?? 'Appareil inconnu';
+}
 
 @ApiTags('users')
 @Controller('me')
@@ -64,6 +95,35 @@ export class UsersController {
   ): Promise<{ message: string }> {
     await this.users.changePassword(user.id, user.sessionId, body);
     return { message: 'Votre mot de passe a été modifié.' };
+  }
+
+  @Get('sessions')
+  @ApiOperation({ summary: 'Appareils actuellement connectés à mon compte' })
+  async listSessions(
+    @CurrentUser() user: AuthUser,
+  ): Promise<{ sessions: SessionInfo[] }> {
+    const rows = await this.sessions.listActive(user.id);
+    return {
+      sessions: rows.map((s) => ({
+        id: s.id,
+        current: s.id === user.sessionId,
+        device: describeDevice(s.userAgent),
+        createdAt: s.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  @HttpCode(200)
+  @Post('sessions/revoke-others')
+  @ApiOperation({
+    summary:
+      'Déconnecte tous mes autres appareils (la session courante reste ouverte)',
+  })
+  async revokeOtherSessions(
+    @CurrentUser() user: AuthUser,
+  ): Promise<{ message: string }> {
+    await this.sessions.revokeAll(user.id, user.sessionId);
+    return { message: 'Vos autres appareils ont été déconnectés.' };
   }
 
   @HttpCode(200)

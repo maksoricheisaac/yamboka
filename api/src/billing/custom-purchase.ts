@@ -1,3 +1,4 @@
+import { customPurchaseAmount } from '@yamboka/shared';
 import { computePackMargin } from './margin';
 
 /**
@@ -11,14 +12,11 @@ function toHundredths(unitPrice: number): number {
   return Math.round(unitPrice * 100);
 }
 
-/** Montant à payer pour une quantité de crédits (entier, arrondi au supérieur : jamais en dessous du prix). */
-export function customAmount(credits: number, unitPrice: number): number {
-  if (!Number.isInteger(credits) || credits < 1)
-    throw new RangeError('Quantité de crédits invalide.');
-  const cents = toHundredths(unitPrice);
-  if (!(cents > 0)) throw new RangeError('Prix du crédit invalide.');
-  return Math.ceil((credits * cents) / 100);
-}
+/**
+ * Montant à payer pour une quantité de crédits (entier, arrondi au supérieur : jamais en dessous du prix).
+ * Même formule que l'affichage en direct du navigateur (@yamboka/shared).
+ */
+export const customAmount = customPurchaseAmount;
 
 export interface PaymentLimits {
   min: number;

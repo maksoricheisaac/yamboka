@@ -1,10 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import type {
-  ActivitySummary,
-  BalanceView,
-  LedgerPage,
-} from '@yamboka/shared';
+import type { ActivitySummary, BalanceView, LedgerPage } from '@yamboka/shared';
 import { LEDGER_FILTERS } from '@yamboka/shared';
 import { z } from 'zod';
 import { CurrentUser } from '../common/decorators';
@@ -36,7 +32,8 @@ export class CreditsController {
 
   @Get('summary')
   @ApiOperation({
-    summary: 'Activité des 30 derniers jours (créations, crédits dépensés et achetés)',
+    summary:
+      'Activité des 30 derniers jours (créations, crédits dépensés et achetés)',
   })
   summary(@CurrentUser() user: AuthUser): Promise<ActivitySummary> {
     return this.credits.activitySummary(user.id);

@@ -352,6 +352,37 @@ describe('Authentification (e2e)', () => {
       expect(replay.status).toBe(401);
     });
 
+    it('liste les appareils connectés et déconnecte les autres sans fermer la session courante', async () => {
+      const { email } = await verified();
+      const first = new Client(app);
+      await first
+        .post('/api/auth/login', { email, password: PASSWORD })
+        .expect(200);
+      const second = new Client(app);
+      await second
+        .post('/api/auth/login', { email, password: PASSWORD })
+        .expect(200);
+
+      const before = (await first.get('/api/me/sessions').expect(200)).body as {
+        sessions: { id: string; current: boolean; device: string }[];
+      };
+      expect(before.sessions.length).toBeGreaterThanOrEqual(2);
+      expect(before.sessions.filter((x) => x.current)).toHaveLength(1);
+
+      await first.post('/api/me/sessions/revoke-others').expect(200);
+      await first.get('/api/auth/me').expect(200);
+      await second.get('/api/auth/me').expect(401);
+      const after = (await first.get('/api/me/sessions').expect(200)).body as {
+        sessions: unknown[];
+      };
+      expect(after.sessions).toHaveLength(1);
+    });
+
+    it('exige une session pour gérer les appareils', async () => {
+      await new Client(app).get('/api/me/sessions').expect(401);
+      await new Client(app).post('/api/me/sessions/revoke-others').expect(401);
+    });
+
     it('une session expirée est refusée', async () => {
       const { client, email } = await verified();
       await prisma.session.updateMany({
