@@ -1,20 +1,22 @@
 import type { Metadata } from "next";
-import type { AdminPack } from "@yamboka/shared";
+import type { AdminPackPage } from "@yamboka/shared";
 import { ActionDialog } from "@/components/admin/action-dialog";
 import { PacksTable } from "@/components/admin/packs-table";
-import { PageHeader, Pill, StatCard, StatGrid } from "@/components/admin/ui";
+import { Empty, FilterBar, FilterField, FilterSelect, PageHeader, Pager, Pill, StatCard, StatGrid, flat, listQuery } from "@/components/admin/ui";
 import { requireUser } from "@/lib/auth";
 import { formatFcfa } from "@/lib/format";
 import { serverGet } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "Packs de crédits — Administration" };
 
-export default async function PacksPage() {
+export default async function PacksPage({ searchParams }: PageProps<"/admin/packs">) {
   await requireUser({ role: "ADMIN" });
-  const packs = await serverGet<AdminPack[]>("/admin/packs");
-  const active = packs.filter((p) => p.active);
-  const publicPacks = active.filter((p) => p.publicVisible);
-  const underMargin = active.filter((p) => p.belowThreshold).length;
+  const sp = flat(await searchParams);
+  const data = await serverGet<AdminPackPage>(`/admin/packs${listQuery(sp)}`);
+  const packs = data.items;
+  const { summary } = data;
+  const publicPacks = summary.publicPacks;
+  const underMargin = summary.belowMargin;
 
   return (
     <div className="space-y-6">
@@ -40,14 +42,14 @@ export default async function PacksPage() {
       />
 
       <StatGrid>
-        <StatCard label="Packs" value={packs.length} hint={`${packs.length - active.length} inactif${packs.length - active.length > 1 ? "s" : ""}`} />
-        <StatCard label="Packs actifs (vendus)" value={active.length} hint={underMargin > 0 ? `${underMargin} sous la marge minimale` : "Tous au-dessus de la marge minimale"} />
-        <StatCard label="Offres publiques" value={`${publicPacks.length} / 3`} hint="Affichées sur la page Tarifs" />
+        <StatCard label="Packs" value={summary.total} hint={`${summary.total - summary.active} inactif${summary.total - summary.active > 1 ? "s" : ""}`} />
+        <StatCard label="Packs actifs (vendus)" value={summary.active} hint={underMargin > 0 ? `${underMargin} sous la marge minimale` : "Tous au-dessus de la marge minimale"} />
+        <StatCard label="Offres publiques" value={`${summary.publicVisible} / 3`} hint="Affichées sur la page Tarifs" />
       </StatGrid>
 
       <section aria-labelledby="public" className="space-y-2 rounded-2xl border bg-card p-4">
-        <h2 id="public" className="font-semibold">Offre affichée sur les pages publiques ({publicPacks.length}/3)</h2>
-        {publicPacks.length === 0 ? (
+        <h2 id="public" className="font-semibold">Offre affichée sur les pages publiques ({summary.publicVisible}/3)</h2>
+        {summary.publicVisible === 0 ? (
           <p className="text-sm text-muted-foreground">Aucun pack public : la page Tarifs n’affiche aucune offre.</p>
         ) : (
           <ul className="flex flex-wrap gap-2 text-sm">
@@ -60,7 +62,12 @@ export default async function PacksPage() {
         )}
       </section>
 
-      <PacksTable packs={packs} />
+      <FilterBar reset="/admin/packs">
+        <FilterField label="Nom du pack" name="q" defaultValue={sp.q} />
+        <FilterSelect label="Statut" name="status" value={sp.status} options={[{ value: "active", label: "Actifs" }, { value: "inactive", label: "Inactifs" }]} />
+      </FilterBar>
+      {packs.length === 0 ? <Empty title="Aucun pack">Aucun pack ne correspond à ces critères.</Empty> : <PacksTable packs={packs} />}
+      <Pager page={data.page} total={data.total} pageSize={data.pageSize} path="/admin/packs" params={sp} />
       <p className="text-xs text-muted-foreground">
         Marge = (crédits × valeur perçue du crédit − coût fournisseur − commission) ÷ revenu, calculée sur le produit actif le moins rentable (10 s de vidéo, ou 1 image). Seuil, taux de change et frais : « Paramètres ».
       </p>

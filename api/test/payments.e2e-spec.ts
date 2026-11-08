@@ -598,7 +598,7 @@ describe('Paiements simulés (e2e)', () => {
       ).toBe(404);
       expect((await simulate(intruder.client, id, 'failed')).status).toBe(404);
       expect(
-        (await intruder.client.get('/api/payments')).body.payments,
+        (await intruder.client.get('/api/payments')).body.items,
       ).toHaveLength(0);
     });
 
@@ -615,8 +615,7 @@ describe('Paiements simulés (e2e)', () => {
       await buy(client, 'Starter');
       await new Promise((r) => setTimeout(r, 20));
       await buy(client, 'Business');
-      const list = (await client.get('/api/payments').expect(200)).body
-        .payments;
+      const list = (await client.get('/api/payments').expect(200)).body.items;
       expect(list.map((p: { packName: string }) => p.packName)).toEqual([
         'Business',
         'Starter',
@@ -663,24 +662,38 @@ describe('Paiements simulés (e2e)', () => {
         ['FIRST_PURCHASE_BONUS', 100],
         ['PURCHASE', 500],
       ]);
-      expect(ledger.nextCursor).toBeNull();
+      expect(ledger).toMatchObject({
+        total: 2,
+        totalPages: 1,
+        hasNextPage: false,
+      });
       expect((await ledgerOf(app, userId)).length).toBe(2);
     });
 
-    it('l’historique est paginé et refuse un curseur ou une taille invalides', async () => {
+    it('l’historique est paginé côté serveur et refuse une taille invalide', async () => {
       const { client } = await verifiedClient(app);
       const { body } = await buy(client, 'Starter');
       await simulate(client, body.payment.id, 'success'); // achat + bonus : deux mouvements
-      const page = (await client.get('/api/credits/ledger?limit=1').expect(200))
-        .body;
+      const page = (
+        await client.get('/api/credits/ledger?pageSize=1').expect(200)
+      ).body;
       expect(page.items).toHaveLength(1);
-      expect(page.nextCursor).not.toBeNull();
-      expect((await client.get('/api/credits/ledger?limit=0')).status).toBe(
+      expect(page).toMatchObject({
+        total: 2,
+        totalPages: 2,
+        hasNextPage: true,
+      });
+      const second = (
+        await client.get('/api/credits/ledger?pageSize=1&page=2').expect(200)
+      ).body;
+      expect(second.items[0].id).not.toBe(page.items[0].id);
+      expect((await client.get('/api/credits/ledger?pageSize=0')).status).toBe(
         400,
       );
       expect(
-        (await client.get('/api/credits/ledger?cursor=nimporte')).status,
+        (await client.get('/api/credits/ledger?pageSize=101')).status,
       ).toBe(400);
+      expect((await client.get('/api/credits/ledger?page=0')).status).toBe(400);
     });
 
     it('exige d’être connecté', async () => {

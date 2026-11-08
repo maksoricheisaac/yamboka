@@ -1,6 +1,6 @@
 import { Download } from "lucide-react";
 import type { Metadata } from "next";
-import type { AdminPaymentRow, Page } from "@yamboka/shared";
+import type { AdminCountryRow, AdminMethodRow, AdminPaymentRow, Page } from "@yamboka/shared";
 import { PaymentsTable } from "@/components/admin/payments-table";
 import { Empty, FilterBar, FilterDateRange, FilterField, FilterSelect, PageHeader, Pager, STATUS_OPTIONS, flat, listQuery } from "@/components/admin/ui";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,9 @@ export const metadata: Metadata = { title: "Paiements — Administration" };
 export default async function PaymentsPage({ searchParams }: PageProps<"/admin/paiements">) {
   await requireUser({ role: "ADMIN" });
   const sp = flat(await searchParams);
-  const data = await serverGet<Page<AdminPaymentRow>>(`/admin/payments${listQuery(sp, ["provider"])}`);
+  const data = await serverGet<Page<AdminPaymentRow>>(`/admin/payments${listQuery(sp, ["provider", "country", "method", "userId"])}`);
+  const countries = await serverGet<Page<AdminCountryRow>>("/admin/countries?pageSize=100");
+  const methods = await serverGet<Page<AdminMethodRow>>("/admin/payment-methods?pageSize=100");
 
   return (
     <div className="space-y-6">
@@ -21,7 +23,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/admin/p
         description="Journal des paiements. La vérification manuelle interroge le fournisseur (SasPay) : elle ne crédite que si celui-ci confirme le succès, jamais sur simple décision d’un administrateur."
         actions={
           <Button asChild variant="outline">
-            <a href={`/api/admin/finance/export.csv${listQuery(sp, ["provider"])}`}>
+            <a href={`/api/admin/finance/export.csv${listQuery(sp, ["provider", "country", "method", "userId"])}`}>
               <Download aria-hidden /> Exporter en CSV
             </a>
           </Button>
@@ -39,6 +41,9 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/admin/p
             { value: "mock", label: "Simulé" },
           ]}
         />
+        <FilterSelect label="Pays" name="country" value={sp.country} options={countries.items.map((c) => ({ value: c.iso, label: `${c.name} (${c.iso})` }))} />
+        <FilterSelect label="Moyen de paiement" name="method" value={sp.method} options={methods.items.map((m) => ({ value: m.code, label: m.name }))} />
+        <FilterField label="Identifiant utilisateur" name="userId" defaultValue={sp.userId} placeholder="UUID du client" />
         <FilterDateRange from={sp.from} to={sp.to} />
       </FilterBar>
       {data.items.length === 0 ? (

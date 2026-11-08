@@ -1,3 +1,4 @@
+import type { Page } from './admin-views';
 import { z } from 'zod';
 import { VIDEO_DURATION, VIDEO_RESOLUTIONS, type VideoResolution } from './pricing';
 
@@ -78,10 +79,7 @@ export interface CreationView {
   downloadUrl: string | null;
 }
 
-export interface CreationPage {
-  items: CreationView[];
-  nextCursor: string | null;
-}
+export type CreationPage = Page<CreationView>;
 
 /** Réglages de la page de création, lus côté serveur : tarifs, bornes, garde-fou, valeur du crédit. */
 export interface CreationConfig {

@@ -27,6 +27,7 @@ import type {
 import {
   SUGGESTION_AUDIENCES,
   MAX_UPLOAD_BYTES,
+  pageQuerySchema,
   createCreationSchema,
   reportCreationSchema,
 } from '@yamboka/shared';
@@ -40,9 +41,7 @@ import { CreationsService, type UploadedImage } from './creations.service';
 const stylesQuery = z.object({
   audience: z.enum(SUGGESTION_AUDIENCES).optional(),
 });
-const listQuery = z.object({
-  cursor: z.uuid().optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(24),
+const listQuery = pageQuerySchema.extend({
   status: z.enum(['ready', 'running', 'failed']).optional(),
 });
 const fileQuery = z.object({

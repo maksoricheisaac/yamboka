@@ -87,7 +87,8 @@ test.describe('Administration — actions réelles', () => {
     await form.getByLabel(/Motif/).fill('Pack de test');
     await form.getByRole('button', { name: 'Créer le pack' }).click();
     // Le tableau est paginé : on retrouve le pack par la recherche plutôt que par sa position.
-    await page.getByRole('searchbox', { name: 'Recherche' }).fill(packName);
+    await page.getByLabel('Nom du pack').fill(packName);
+    await page.getByRole('button', { name: 'Filtrer' }).click();
     const fourth = page.getByRole('row', { name: packName });
     const rowMenu = fourth.getByRole('button', { name: `Actions pour le pack ${packName}` });
     await rowMenu.click();
@@ -147,7 +148,7 @@ test.describe('Administration — paiements', () => {
     await customer.page.goto('/app/credits');
     await expect(customer.page.getByRole('button', { name: /^Payer/ })).toBeEnabled();
     await customer.page.locator('label', { hasText: 'Starter' }).first().click();
-    await customer.page.getByLabel('MTN Mobile Money').check();
+    await customer.page.getByLabel('MTN MoMo').check();
     await customer.page.getByLabel('Numéro qui paie').fill('242061234567');
     await customer.page.getByRole('button', { name: /^Payer/ }).click();
     await expect(customer.page).toHaveURL(/\/app\/credits\/paiement\/[0-9a-f-]{36}$/);

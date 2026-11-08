@@ -67,11 +67,10 @@ export const EDITABLE_SETTINGS = {
   minMarginPercent: 'number',
   usdToXafRate: 'number',
   creditValueFcfa: 'number',
-  paymentEnabledCountries: 'string',
   generationConfirmCredits: 'number',
   generationConfirmBalancePercent: 'number',
   fxFeePercent: 'number',
-  openpayCommissionPercent: 'number',
+  paymentCommissionPercent: 'number',
   regenOverheadPercent: 'number',
   maxConcurrentGenerationsPerUser: 'number',
   maxConcurrentGenerationsGlobal: 'number',
@@ -127,7 +126,15 @@ export const listQuerySchema = z.object({
   /** Fournisseur de paiement (« saspay », « mock ») : filtre du journal des paiements. */
   provider: z.string().trim().max(30).optional(),
   page: z.coerce.number().int().min(1).default(1),
+  /** 10, 20, 50 ou 100 dans l'interface ; 100 au maximum côté serveur. */
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  /** Colonne de tri (liste blanche propre à chaque liste, sinon ignorée) et sens. Un identifiant départage toujours les égalités. */
+  sort: z.string().trim().max(30).optional(),
+  dir: z.enum(['asc', 'desc']).optional(),
+  /** Filtres du journal des paiements. */
+  country: z.string().trim().length(2).toUpperCase().optional(),
+  method: z.string().trim().max(40).optional(),
+  userId: z.uuid().optional(),
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
 });

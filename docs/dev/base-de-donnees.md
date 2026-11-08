@@ -49,3 +49,13 @@ docker exec -i yamboka-dev-postgres-1 pg_restore -U yamboka -d yamboka_dev --cle
 
 En production : `pg_dump` quotidien vers un stockage distinct du VPS, conservé 30 jours, avec un test de restauration régulier
 (détaillé au lot 8).
+
+## Migrations du catalogue international (novembre 2026)
+
+- `20261108134418_international_payment_catalog` : tables `Country`, `PaymentMethod`, `CountryPaymentMethod`, colonnes `CurrencySetting.minAmount/maxAmount`,
+  instantané `Payment.countryName/methodCode/methodName`, index de pagination, et renommage du réglage `openpayCommissionPercent` en `paymentCommissionPercent`
+  (valeur conservée). Aucune ligne de paiement n'est modifiée ni supprimée.
+- `20261108141821_generation_created_at_index` : index `Generation(createdAt, id)`.
+
+Après `pnpm --filter api db:deploy`, lancer `pnpm --filter api db:seed` : le catalogue est créé sans toucher aux statuts existants (voir
+[catalogue-international.md](catalogue-international.md)).

@@ -70,7 +70,7 @@ export function quoteCredits(
 export interface MarginSettings {
   usdToXafRate: number;
   fxFeePercent: number;
-  openpayCommissionPercent: number;
+  paymentCommissionPercent: number;
   regenOverheadPercent: number;
   minMarginPercent: number;
 }
@@ -117,7 +117,7 @@ export function computeMargin(
     s.usdToXafRate *
     (1 + s.fxFeePercent / 100) *
     (1 + s.regenOverheadPercent / 100);
-  const commissionFcfa = (revenueFcfa * s.openpayCommissionPercent) / 100;
+  const commissionFcfa = (revenueFcfa * s.paymentCommissionPercent) / 100;
   const marginFcfa = revenueFcfa - providerCostFcfa - commissionFcfa;
   const marginPercent = revenueFcfa > 0 ? (marginFcfa / revenueFcfa) * 100 : 0;
 

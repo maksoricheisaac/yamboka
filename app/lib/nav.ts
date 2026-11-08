@@ -7,6 +7,7 @@ import {
   GalleryVertical,
   CreditCard,
   FileText,
+  Globe,
   LifeBuoy,
   LayoutDashboard,
   LineChart,
@@ -61,9 +62,9 @@ export const USER_NAV: NavGroup[] = [
         href: "/app/credits",
         icon: Coins,
         // L'historique et les reçus ont leur propre entrée de menu.
-        except: ["/app/credits/historique", "/app/credits/recu"],
+        except: ["/app/credits/recu"],
       },
-      { title: "Historique", href: "/app/credits/historique", icon: History },
+      { title: "Historique", href: "/app/historique", icon: History },
     ],
   },
   {
@@ -101,6 +102,7 @@ export const ADMIN_NAV: NavGroup[] = [
     label: "Finances",
     items: [
       { title: "Paiements", href: "/admin/paiements", icon: CreditCard },
+      { title: "Pays et paiements", href: "/admin/pays", icon: Globe },
       { title: "Synthèse financière", href: "/admin/finances", icon: LineChart },
     ],
   },
@@ -141,10 +143,11 @@ export interface Crumb {
 
 /** Pages secondaires dont l'URL contient un identifiant : parent navigable + libellé de la page. */
 const DETAIL_PAGES: { pattern: RegExp; parent: { label: string; href: string }; label: string; variant?: ShellVariant }[] = [
+  { pattern: /^\/admin\/pays\/[^/]+$/, parent: { label: "Pays et paiements", href: "/admin/pays" }, label: "Fiche pays", variant: "admin" },
   { pattern: /^\/admin\/utilisateurs\/[^/]+$/, parent: { label: "Utilisateurs", href: "/admin/utilisateurs" }, label: "Fiche client", variant: "admin" },
   { pattern: /^\/app\/credits\/paiement\/[^/]+$/, parent: { label: "Crédits", href: "/app/credits" }, label: "Paiement" },
   { pattern: /^\/app\/creations\/[^/]+$/, parent: { label: "Mes créations", href: "/app/creations" }, label: "Création" },
-  { pattern: /^\/app\/credits\/recu\/[^/]+$/, parent: { label: "Historique", href: "/app/credits/historique" }, label: "Reçu" },
+  { pattern: /^\/app\/credits\/recu\/[^/]+$/, parent: { label: "Historique", href: "/app/historique" }, label: "Reçu" },
 ];
 
 /** Fil d'Ariane d'une page : [rubrique ›] page, ou parent › détail pour les pages à identifiant. */

@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '../generated/prisma/client';
+import { seedCountryCatalog } from '../payments/catalog/catalog-seed';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -165,11 +166,10 @@ const IDEAS = [
 const SETTINGS: Record<string, unknown> = {
   usdToXafRate: 620,
   creditValueFcfa: 10,
-  paymentEnabledCountries: 'CG,CM',
   generationConfirmCredits: 100,
   generationConfirmBalancePercent: 50,
   fxFeePercent: 0,
-  openpayCommissionPercent: 5,
+  paymentCommissionPercent: 5,
   regenOverheadPercent: 0,
   minMarginPercent: 15,
   circuitLossPercent: 9,
@@ -259,6 +259,9 @@ export async function seedBaseData(db: Db): Promise<{
       create: { key, value: value as never },
     });
   }
+
+  // Catalogue des pays et moyens de paiement : idempotent, ne touche jamais aux statuts choisis par l'administrateur.
+  await seedCountryCatalog(db);
 
   for (const doc of LEGAL) {
     await db.legalDocument.upsert({

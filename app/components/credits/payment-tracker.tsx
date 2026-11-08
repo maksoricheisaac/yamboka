@@ -112,7 +112,7 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
             {timedOut ? (
               <p className="text-muted-foreground">
                 Nous n’avons pas encore reçu la confirmation. Si vous avez payé, vos crédits seront ajoutés dès qu’elle arrivera : vous
-                pouvez quitter cette page. Vous pouvez aussi suivre l’achat dans <Link href="/app/credits/historique?filtre=achats" className="font-medium text-primary underline">votre historique</Link>.
+                pouvez quitter cette page. Vous pouvez aussi suivre l’achat dans <Link href="/app/historique?filtre=achats" className="font-medium text-primary underline">votre historique</Link>.
               </p>
             ) : sending ? (
               <p className="text-muted-foreground">
@@ -177,7 +177,7 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
             {payment.failureReason === TIMEOUT_REASON && (
               <p className="rounded-lg border bg-muted/60 p-3 text-sm">
                 Si vous avez malgré tout validé le paiement sur votre téléphone, ne le refaites pas : vos crédits seront ajoutés automatiquement
-                dès que l’opérateur le confirmera. Vous pouvez suivre l’état dans <Link href="/app/credits/historique?filtre=achats" className="font-medium text-primary underline">votre historique</Link>.
+                dès que l’opérateur le confirmera. Vous pouvez suivre l’état dans <Link href="/app/historique?filtre=achats" className="font-medium text-primary underline">votre historique</Link>.
               </p>
             )}
             <Button asChild>

@@ -151,29 +151,8 @@ export function PacksTable({ packs }: { packs: AdminPack[] }) {
       columns={columns}
       data={packs}
       minWidth="48rem"
-      searchText={(p) => p.name}
-      searchPlaceholder="Rechercher un pack…"
+      paginate={false}
       columnLabels={{ price: "Prix", credits: "Crédits", margin: "Marge minimale", status: "Statut" }}
-      filters={[
-        {
-          key: "status",
-          label: "Statut",
-          get: (p) => (p.active ? "active" : "inactive"),
-          options: [
-            { value: "active", label: "Actifs" },
-            { value: "inactive", label: "Inactifs" },
-          ],
-        },
-        {
-          key: "public",
-          label: "Visibilité",
-          get: (p) => (p.publicVisible ? "public" : "private"),
-          options: [
-            { value: "public", label: "Publics" },
-            { value: "private", label: "Espace client seulement" },
-          ],
-        },
-      ]}
       emptyMessage="Aucun pack."
     />
   );

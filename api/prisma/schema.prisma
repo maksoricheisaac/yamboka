@@ -285,6 +285,10 @@ model CurrencySetting {
   currency    String  @id // ISO 4217, "XAF" au lancement
   creditValue Int // valeur d'un crédit dans cette devise (XAF = 25)
   active      Boolean @default(true)
+  /// Bornes d'un achat à la quantité dans cette devise (montant payé). Les deux requis pour ouvrir l'achat libre ;
+  /// absentes, seuls les packs de cette devise sont vendables. XAF et XOF gardent leurs bornes par défaut.
+  minAmount   Int?
+  maxAmount   Int?
 }
 
 model CreditPack {
@@ -361,6 +365,78 @@ model Preset {
   @@index([visible, sortOrder])
 }
 
+// ───────────── Catalogue international des paiements ─────────────
+
+enum CatalogStatus {
+  ACTIVE // ouvert aux paiements
+  COMING_SOON // intégré, affiché « Bientôt disponible », non sélectionnable
+  DISABLED // désactivé volontairement : jamais proposé
+}
+
+enum PaymentMethodType {
+  MOBILE_MONEY
+  CARD
+  BANK_TRANSFER
+}
+
+/// Pays (ou zone « International », iso XX) où Yamboka peut encaisser. Seul `status` est piloté par l'administrateur.
+model Country {
+  iso                  String        @id // ISO 3166-1 alpha-2 ; « XX » = International
+  name                 String
+  dialCode             String // sans « + » ; vide pour International
+  currency             String // ISO 4217
+  status               CatalogStatus @default(DISABLED)
+  /// Frais indicatifs affichés par SasPay (information, jamais ajoutés au prix du client).
+  indicativeFeePercent Decimal?      @db.Decimal(6, 3)
+  indicativeFeeNote    String? // « Dès 2,5 % », « Non indiqué »
+  sortOrder            Int           @default(0)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  methods CountryPaymentMethod[]
+
+  @@index([status, sortOrder])
+}
+
+/// Moyen de paiement générique (MTN MoMo, Wave, Carte bancaire…) partageable entre pays.
+model PaymentMethod {
+  code      String            @id // MTN_MOMO, WAVE, CARD…
+  name      String
+  type      PaymentMethodType
+  config    Json?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  countries CountryPaymentMethod[]
+}
+
+/// Association pays ↔ moyen de paiement, avec son propre statut.
+model CountryPaymentMethod {
+  id                   String        @id @default(uuid()) @db.Uuid
+  countryIso           String
+  methodCode           String
+  status               CatalogStatus @default(DISABLED)
+  /// Code du réseau chez SasPay (ex. mtn_rw) ; null = non pris en charge par SasPay d'après sa documentation.
+  saspayNetwork        String?
+  /// Raison pour laquelle le moyen ne peut pas être activé (technique, pas administrable) : NOT_IN_SASPAY,
+  /// OTP_BEFORE, OTP_AFTER, INACTIVE_AT_SASPAY, CARD_FLOW_NOT_INTEGRATED. null = activable.
+  limitation           String?
+  indicativeFeePercent Decimal?      @db.Decimal(6, 3)
+  indicativeFeeNote    String?
+  note                 String? // précision humaine (ex. correspondance de marque à confirmer)
+  config               Json?
+  sortOrder            Int           @default(0)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  country Country       @relation(fields: [countryIso], references: [iso], onDelete: Restrict)
+  method  PaymentMethod @relation(fields: [methodCode], references: [code], onDelete: Restrict)
+
+  @@unique([countryIso, methodCode])
+  @@index([methodCode])
+  @@index([status])
+}
+
 // ───────────── Paiements et crédits ─────────────
 
 model Payment {
@@ -373,7 +449,7 @@ model Payment {
   amount                    Int
   credits                   Int // crédits totaux (bonus inclus) fixés à la création
   bonusCredits              Int            @default(0) // part « bonus » des crédits totaux (mouvement BONUS)
-  gateway                   String // "mock" en phase 1 ; "openpay" ultérieurement
+  gateway                   String // « saspay » ou « mock » (développement) ; une éventuelle ancienne valeur « openpay » reste lisible, jamais réécrite
   operator                  MobileOperator
   payerPhone                String
   externalReference         String?        @unique // référence fournisseur, connue après l'appel au fournisseur (unicité = RG-05)
@@ -381,6 +457,10 @@ model Payment {
   sentAmount                Int?
   /// Code du réseau chez le fournisseur (ex. SasPay /networks/). `operator` reste utilisé par le fournisseur simulé.
   network                   String?
+  /// Instantané du catalogue au moment du paiement : l'historique ne change plus si le catalogue évolue.
+  countryName               String?
+  methodCode                String?
+  methodName                String?
   /// Tarif appliqué au calcul du montant envoyé : palier, source (my-rates ou surcharge), date.
   feeSnapshot               Json?
   /// Clé d'idempotence du fournisseur : unique par intention de paiement, réutilisée à chaque nouvelle tentative réseau.
@@ -408,6 +488,10 @@ model Payment {
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
+  @@index([createdAt, id])
+  @@index([gateway, createdAt])
+  @@index([country, createdAt])
+  @@index([methodCode])
 }
 
 /// Notification de paiement reçue d'un fournisseur, signature VÉRIFIÉE. Sert à dédupliquer les rejeux et à tracer ce qui
@@ -596,6 +680,8 @@ model Generation {
   @@index([userId, createdAt])
   @@index([status, createdAt])
   @@index([outputExpiresAt])
+  // Liste d'administration : tri global par date, départagé par l'identifiant.
+  @@index([createdAt, id])
 }
 
 model MediaFile {
@@ -709,20 +795,20 @@ model Setting {
 }
 
 model Notification {
-  id        String           @id @default(uuid()) @db.Uuid
-  userId    String           @db.Uuid
-  type      NotificationType
-  title     String
-  body      String
-  link      String?
-  readAt    DateTime?
-  createdAt DateTime         @default(now())
+  id            String           @id @default(uuid()) @db.Uuid
+  userId        String           @db.Uuid
+  type          NotificationType
+  title         String
+  body          String
+  link          String?
+  readAt        DateTime?
+  createdAt     DateTime         @default(now())
   /// Clé d'idempotence de l'événement (« gen-ready:<id> ») : un événement rejoué ne crée qu'une notification.
-  dedupKey  String?          @unique
+  dedupKey      String?          @unique
   /// E-mail à envoyer (préférence activée et adresse vérifiée à la création), pas encore parti.
-  emailPending  Boolean      @default(false)
+  emailPending  Boolean          @default(false)
   emailSentAt   DateTime?
-  emailAttempts Int          @default(0)
+  emailAttempts Int              @default(0)
   emailError    String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -1,10 +1,27 @@
 /** Formes des réponses de l'API d'administration, partagées avec l'interface. */
 
+/**
+ * Réponse paginée côté serveur (convention du projet : `items` + méta). `page` est la page RÉELLEMENT servie
+ * (ramenée à la dernière page valide si la demandée dépasse le total).
+ */
 export interface Page<T> {
   items: T[];
   total: number;
   page: number;
   pageSize: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+/** Page valide la plus proche : au moins 1, au plus la dernière (une liste vide a une seule page). */
+export function clampPage(page: number, total: number, pageSize: number): number {
+  return Math.min(Math.max(page, 1), Math.max(Math.ceil(total / pageSize), 1));
+}
+
+export function buildPage<T>(items: T[], total: number, page: number, pageSize: number): Page<T> {
+  const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+  return { items, total, page, pageSize, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
 }
 
 export interface AdminAlert {
@@ -91,6 +108,18 @@ export interface AdminPack {
   belowThreshold: boolean;
 }
 
+/** Page de packs + synthèse calculée sur TOUS les packs (la page affichée n'en montre qu'une partie). */
+export type AdminPackPage = Page<AdminPack> & {
+  summary: {
+    total: number;
+    active: number;
+    publicVisible: number;
+    belowMargin: number;
+    /** Les packs affichés sur les pages publiques (3 au plus), quelle que soit la page consultée. */
+    publicPacks: { id: string; name: string; priceFcfa: number; featured: boolean }[];
+  };
+};
+
 export interface AdminProduct {
   id: string;
   code: string;
@@ -124,6 +153,14 @@ export interface AdminPaymentRow {
   externalReference: string | null;
   failureReason: string | null;
   createdAt: string;
+  /** Date de confirmation (crédit des crédits), null tant que le paiement n'a pas abouti. */
+  confirmedAt: string | null;
+  /** Instantané pris à la création : pays, devise et moyen de paiement, figés pour l'historique. */
+  country: string;
+  countryName: string | null;
+  currency: string;
+  methodCode: string | null;
+  methodName: string | null;
   /** Fournisseur de paiement (Payment.gateway). */
   provider: string;
   /** Réseau chez le fournisseur (ex. « mtn_cg »). */

@@ -157,7 +157,7 @@ test.describe('Idées, navigation et mise en page', () => {
   test('aucun débordement horizontal et navigation adaptée à l’écran', async ({ page, request }) => {
     await accountWithCredits(page, request);
     const mobile = (page.viewportSize()?.width ?? 1280) < 1024;
-    for (const path of ['/app', '/app/creer', '/app/creations', '/app/credits', '/app/credits/historique', '/app/parametres']) {
+    for (const path of ['/app', '/app/creer', '/app/creations', '/app/credits', '/app/historique', '/app/parametres']) {
       await page.goto(path);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

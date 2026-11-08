@@ -1,12 +1,6 @@
-"use client";
-
-import { useInfiniteQuery } from "@tanstack/react-query";
 import type { LedgerFilter, LedgerPage } from "@yamboka/shared";
 import { ArrowDownLeft, ArrowUpRight, Minus, Receipt } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { apiGet } from "@/lib/api-client";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { LEDGER_LABELS } from "./labels";
 
@@ -21,36 +15,10 @@ export const EMPTY_LEDGER: Record<LedgerFilter, string> = {
 /**
  * Mouvements du registre de crédits (UF-61), du plus récent au plus ancien : ajouts en vert, consommations en rouge.
  * Une liste de cartes (et non un tableau) : lisible sur un téléphone de 360 px comme sur un grand écran.
+ * La page est celle que le serveur a renvoyée (pagination serveur, voir Pager).
  */
-export function LedgerList({ filter = "all" }: { filter?: LedgerFilter }) {
-  const query = useInfiniteQuery({
-    queryKey: ["ledger", filter],
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) => apiGet<LedgerPage>(`/credits/ledger?limit=10&filter=${filter}${pageParam ? `&cursor=${pageParam}` : ""}`),
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
-  });
-
-  if (query.isPending) {
-    return (
-      <div role="status" aria-label="Chargement de l’historique" className="space-y-2">
-        {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-16 w-full rounded-2xl" />
-        ))}
-      </div>
-    );
-  }
-  if (query.isError) {
-    return (
-      <div role="alert" className="space-y-3 rounded-xl border border-destructive/40 p-4">
-        <p className="font-medium text-destructive">Impossible de charger l’historique.</p>
-        <Button variant="outline" onClick={() => void query.refetch()}>
-          Réessayer
-        </Button>
-      </div>
-    );
-  }
-
-  const items = query.data.pages.flatMap((p) => p.items);
+export function LedgerList({ page, filter = "all" }: { page: LedgerPage; filter?: LedgerFilter }) {
+  const items = page.items;
   if (items.length === 0) {
     return <p className="rounded-2xl border bg-card p-6 text-center text-muted-foreground">{EMPTY_LEDGER[filter]}</p>;
   }
@@ -78,6 +46,12 @@ export function LedgerList({ filter = "all" }: { filter?: LedgerFilter }) {
                   {e.expiresAt && <> · valables jusqu’au {new Date(e.expiresAt).toLocaleDateString("fr-FR", { timeZone: "Africa/Brazzaville" })}</>}
                 </p>
                 {e.note && e.note !== LEDGER_LABELS[e.type] && <p className="truncate text-xs text-muted-foreground">{e.note}</p>}
+                {e.reference && (
+                  <p className="break-all font-mono text-xs text-muted-foreground">
+                    Réf. {e.reference}
+                    {e.methodLabel && <span className="font-sans"> · {e.methodLabel}</span>}
+                  </p>
+                )}
                 {link && (
                   <Link href={link.href} className="text-xs font-medium text-primary underline-offset-4 hover:underline">
                     {link.text}
@@ -92,13 +66,6 @@ export function LedgerList({ filter = "all" }: { filter?: LedgerFilter }) {
           );
         })}
       </ul>
-      {query.hasNextPage && (
-        <div className="flex justify-center">
-          <Button variant="outline" onClick={() => void query.fetchNextPage()} disabled={query.isFetchingNextPage}>
-            {query.isFetchingNextPage ? "Chargement…" : "Voir plus"}
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

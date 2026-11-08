@@ -11,6 +11,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type {
   CreatePaymentInput,
+  Page,
   PaymentQuoteView,
   PaymentReceipt,
   PaymentStatus,
@@ -18,7 +19,7 @@ import type {
   QuotePaymentInput,
   SimulatePaymentInput,
 } from '@yamboka/shared';
-import { CUSTOM_PURCHASE_LABEL } from '@yamboka/shared';
+import { CUSTOM_PURCHASE_LABEL, buildPage, clampPage } from '@yamboka/shared';
 import { randomUUID } from 'node:crypto';
 import { firstPurchaseBonusPercent } from '../billing/bonus';
 import { customAmount, isSoldAtLoss } from '../billing/custom-purchase';
@@ -36,11 +37,10 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { JobQueue } from '../queue/job-queue';
 import { SettingsService } from '../settings/settings.service';
+import { CountryCatalogService } from './catalog/country-catalog.service';
 import { MockPaymentProvider } from './mock-payment.provider';
 import {
-  findNetwork,
   legacyNetworkCode,
-  networkLabel,
   operatorOf,
   type CountryConfig,
   type NetworkConfig,
@@ -76,6 +76,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly providers: PaymentProviders,
     private readonly offers: PaymentOffersService,
+    private readonly catalog: CountryCatalogService,
     private readonly mock: MockPaymentProvider,
     private readonly credits: CreditsService,
     private readonly settings: SettingsService,
@@ -105,7 +106,7 @@ export class PaymentsService {
         message: 'Le paiement n’est pas encore disponible dans ce pays.',
       });
     }
-    const provider = this.providers.forCountry(country.iso);
+    const provider = this.providers.forCountry();
 
     const networkCode =
       input.network ??
@@ -114,7 +115,9 @@ export class PaymentsService {
         : undefined);
     let network: NetworkConfig | undefined;
     if (networkCode !== undefined || opts.requireNetwork) {
-      network = networkCode ? findNetwork(country, networkCode) : undefined;
+      network = networkCode
+        ? this.catalog.findNetwork(country, networkCode)
+        : undefined;
       if (!network) {
         throw new UnprocessableEntityException({
           code: 'PAYMENT_METHOD_UNAVAILABLE',
@@ -296,6 +299,9 @@ export class PaymentsService {
           amount,
           sentAmount: plan?.sentAmount ?? null,
           network: network.code,
+          countryName: country.name,
+          methodCode: network.methodCode,
+          methodName: network.name,
           feeSnapshot: plan?.feeSnapshot ?? undefined,
           idempotencyKey: request.idempotencyKey ?? null,
           providerRequest: request as unknown as Prisma.InputJsonValue,
@@ -554,14 +560,27 @@ export class PaymentsService {
     return this.toView(await this.owned(userId, id));
   }
 
-  async list(userId: string, limit = 50): Promise<PaymentView[]> {
+  /** Achats de l'utilisateur connecté (et seulement les siens), paginés côté serveur. */
+  async list(
+    userId: string,
+    q: { page: number; pageSize: number },
+  ): Promise<Page<PaymentView>> {
+    const where = { userId };
+    const total = await this.prisma.payment.count({ where });
+    const page = clampPage(q.page, total, q.pageSize);
     const rows = await this.prisma.payment.findMany({
-      where: { userId },
+      where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: Math.min(Math.max(limit, 1), 100),
+      take: q.pageSize,
+      skip: (page - 1) * q.pageSize,
       include: { pack: true },
     });
-    return rows.map((r) => this.toView(r));
+    return buildPage(
+      rows.map((r) => this.toView(r)),
+      total,
+      page,
+      q.pageSize,
+    );
   }
 
   async receipt(userId: string, id: string): Promise<PaymentReceipt> {
@@ -969,7 +988,7 @@ const LEGACY_METHOD_LABELS: Record<string, string> = {
 /** « Orange Money » pour orange_cm ; les anciens paiements sans réseau gardent le nom de leur opérateur. */
 function methodLabelOf(p: Payment): string {
   return (
-    networkLabel(p.network, p.country) ??
+    p.methodName ??
     LEGACY_METHOD_LABELS[p.operator] ??
     p.network ??
     'Mobile money'

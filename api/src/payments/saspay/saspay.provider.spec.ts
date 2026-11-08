@@ -32,6 +32,7 @@ const request = {
   customerId: 'user-1',
   metadata: { paymentId: 'pay-1' },
   idempotencyKey: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+  country: 'CG',
   customer: { email: 'awa@example.com', firstName: 'Awa', lastName: 'Sossou' },
   description: 'Pack Starter',
   returnUrl: 'https://app.yamboka.test/app/achats/pay-1',
@@ -160,6 +161,12 @@ describe('SaspayPaymentProvider', () => {
         provider().initiate({ ...request, customer: undefined }),
       ).rejects.toBeInstanceOf(ProviderRejectedError);
       expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('refuse une requête sans pays : aucun pays n’est présumé', async () => {
+      await expect(
+        provider().initiate({ ...request, country: undefined }),
+      ).rejects.toMatchObject({ code: 'invalid_country' });
     });
 
     it('traite un refus 422 comme définitif et ne garde que le code', async () => {

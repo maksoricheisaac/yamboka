@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DateRangePicker } from "@/components/admin/date-range-picker";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import type { Params } from "@/lib/pagination";
 
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
   return (
@@ -127,39 +128,8 @@ export const LEDGER_LABELS: Record<string, string> = {
   EXPIRE: "Expiration",
 };
 
-type Params = Record<string, string | undefined>;
-
-export function withParams(path: string, params: Params, overrides: Params = {}): string {
-  const merged = { ...params, ...overrides };
-  const qs = new URLSearchParams();
-  for (const [k, v] of Object.entries(merged)) if (v) qs.set(k, v);
-  const s = qs.toString();
-  return s ? `${path}?${s}` : path;
-}
-
-export function Pager({ page, total, pageSize, path, params }: { page: number; total: number; pageSize: number; path: string; params: Params }) {
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  if (pages <= 1) return <p className="text-sm text-muted-foreground">{total} résultat{total > 1 ? "s" : ""}</p>;
-  return (
-    <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-3 text-sm">
-      <p className="text-muted-foreground">
-        Page {page} sur {pages} · {total} résultats
-      </p>
-      <div className="flex gap-2">
-        {page > 1 ? (
-          <Button asChild variant="outline">
-            <Link href={withParams(path, params, { page: String(page - 1) })}>Précédent</Link>
-          </Button>
-        ) : null}
-        {page < pages ? (
-          <Button asChild variant="outline">
-            <Link href={withParams(path, params, { page: String(page + 1) })}>Suivant</Link>
-          </Button>
-        ) : null}
-      </div>
-    </nav>
-  );
-}
+export { withParams } from "@/lib/pagination";
+export { Pager } from "@/components/pager";
 
 /** Filtres en méthode GET : fonctionnent sans JavaScript et se partagent par URL. */
 export function FilterBar({ children, reset }: { children: ReactNode; reset: string }) {
@@ -215,7 +185,7 @@ export function flat(sp: Record<string, string | string[] | undefined>): Params 
 
 export function listQuery(params: Params, extra: string[] = []): string {
   const qs = new URLSearchParams();
-  for (const key of ["q", "status", "page", "from", "to", ...extra]) if (params[key]) qs.set(key, params[key]!);
+  for (const key of ["q", "status", "page", "pageSize", "sort", "dir", "from", "to", ...extra]) if (params[key]) qs.set(key, params[key]!);
   const s = qs.toString();
   return s ? `?${s}` : "";
 }

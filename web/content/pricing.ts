@@ -17,7 +17,7 @@ export interface PricingCountry {
   name: string;
   currency: string;
   dialCode: string;
-  methods: { code: string; name: string }[];
+  methods: { code: string; name: string; status?: "ACTIVE" | "COMING_SOON" }[];
   custom: { unitPrice: number; minCredits: number; maxCredits: number } | null;
 }
 

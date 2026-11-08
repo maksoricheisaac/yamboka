@@ -111,20 +111,20 @@ export class CatalogService {
     const [
       usdToXafRate,
       fxFeePercent,
-      openpayCommissionPercent,
+      paymentCommissionPercent,
       regenOverheadPercent,
       minMarginPercent,
     ] = await Promise.all([
       this.settings.get('usdToXafRate'),
       this.settings.get('fxFeePercent'),
-      this.settings.get('openpayCommissionPercent'),
+      this.settings.get('paymentCommissionPercent'),
       this.settings.get('regenOverheadPercent'),
       this.settings.get('minMarginPercent'),
     ]);
     return {
       usdToXafRate,
       fxFeePercent,
-      openpayCommissionPercent,
+      paymentCommissionPercent,
       regenOverheadPercent,
       minMarginPercent,
     };

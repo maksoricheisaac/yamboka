@@ -45,7 +45,7 @@ const GROUPS: { tab: TabId; title: string; fields: Def[] }[] = [
       { key: "minMarginPercent", label: "Marge minimale (%)", kind: "number" },
       { key: "usdToXafRate", label: "Taux USD → FCFA", kind: "number" },
       { key: "fxFeePercent", label: "Frais de change (%)", kind: "number" },
-      { key: "openpayCommissionPercent", label: "Commission OpenPay (%)", kind: "number" },
+      { key: "paymentCommissionPercent", label: "Commission de paiement (%)", kind: "number" },
       { key: "regenOverheadPercent", label: "Surcoût de regénération (%)", kind: "number" },
     ],
   },
@@ -61,7 +61,6 @@ const GROUPS: { tab: TabId; title: string; fields: Def[] }[] = [
     title: "Paiements",
     fields: [
       { key: "creditValueFcfa", label: "Prix d’un crédit (FCFA) : affichage et achat à la quantité", kind: "number", hint: "À tenir aligné sur le pack d’entrée (prix ÷ crédits). Les packs, eux, gardent leur prix propre." },
-      { key: "paymentEnabledCountries", label: "Pays ouverts à l’achat de crédits (codes ISO séparés par des virgules)", kind: "text", hint: "Ex. CG,CM. Les pays en franc CFA (XAF, XOF) utilisent les mêmes prix ; une autre devise exige un prix du crédit et des packs dans cette devise." },
     ],
   },
   {
@@ -155,7 +154,7 @@ export function SettingsForm({ initial, emailProvider }: { initial: Record<strin
               <section aria-labelledby="fournisseurs" className="space-y-3">
                 <h2 id="fournisseurs" className="text-lg font-bold">Fournisseurs</h2>
                 <EmailTestPanel provider={emailProvider} />
-                <p className="text-sm text-muted-foreground">Paiement (OpenPay) et génération (Higgsfield) : simulés en phase 1 ; les clés se configurent dans les variables d’environnement du serveur, jamais ici.</p>
+                <p className="text-sm text-muted-foreground">Paiement (SasPay) et génération (Higgsfield) : les clés se configurent dans les variables d’environnement du serveur, jamais ici.</p>
               </section>
             )}
             {GROUPS.filter((g) => g.tab === t.id).map((g) => (

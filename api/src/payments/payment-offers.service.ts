@@ -14,13 +14,8 @@ import { loadVideoRates, toPackView } from '../catalog/pack-view';
 import type { CreditPack } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
-import {
-  PAYMENT_COUNTRIES,
-  PAYMENT_LIMITS,
-  findCountry,
-  offeredNetworks,
-  type CountryConfig,
-} from './payment-countries';
+import { CountryCatalogService } from './catalog/country-catalog.service';
+import { PAYMENT_LIMITS, type CountryConfig } from './payment-countries';
 
 /**
  * Devises vendues au même prix que leur devise de référence : le franc CFA d'Afrique de l'Ouest (XOF) est à
@@ -47,21 +42,12 @@ export class PaymentOffersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
+    private readonly catalog: CountryCatalogService,
   ) {}
 
-  /** Pays ouverts à l'achat, dans l'ordre des réglages. */
+  /** Pays ouverts à l'achat (statut ACTIVE en base, avec au moins un moyen ACTIVE utilisable). */
   async enabledCountries(): Promise<CountryConfig[]> {
-    const raw = await this.settings.get('paymentEnabledCountries');
-    const isos = raw
-      .split(',')
-      .map((c) => c.trim().toUpperCase())
-      .filter(Boolean);
-    const out: CountryConfig[] = [];
-    for (const iso of isos) {
-      const c = findCountry(iso);
-      if (c && !out.includes(c)) out.push(c);
-    }
-    return out;
+    return this.catalog.openCountries();
   }
 
   /** Prix d'un crédit dans la devise du pays, ou null si la devise n'est pas ouverte à la vente. */
@@ -73,16 +59,46 @@ export class PaymentOffersService {
     return row?.active && row.creditValue > 0 ? row.creditValue : null;
   }
 
+  /** Bornes d'un paiement dans une devise : table par défaut (franc CFA), sinon bornes saisies dans l'administration. */
+  async limitsFor(
+    currency: string,
+  ): Promise<{ min: number; max: number } | null> {
+    const fixed = PAYMENT_LIMITS[currency];
+    if (fixed) return fixed;
+    const row = await this.prisma.currencySetting.findUnique({
+      where: { currency },
+    });
+    return row?.active && row.minAmount && row.maxAmount
+      ? { min: row.minAmount, max: row.maxAmount }
+      : null;
+  }
+
   /** Règles de l'achat à la quantité pour un pays, ou null s'il n'est pas disponible. */
   async customRules(
     country: CountryConfig,
   ): Promise<CustomPurchaseRules | null> {
-    const limits = PAYMENT_LIMITS[country.currency];
+    const limits = await this.limitsFor(country.currency);
     const unit = await this.unitPrice(country.currency);
     if (!limits || !unit || unit <= 0) return null;
     const { minCredits, maxCredits } = customBounds(unit, limits);
     if (maxCredits < minCredits) return null;
     return { unitPrice: unit, minCredits, maxCredits };
+  }
+
+  /**
+   * Une devise est vendable si l'on peut y facturer sans inventer de taux de change : au moins un pack actif dans
+   * sa liste de prix, ou un achat libre complet (prix du crédit + bornes). Sinon le pays reste fermé à l'achat.
+   */
+  async isSellable(currency: string): Promise<boolean> {
+    const packs = await this.prisma.creditPack.count({
+      where: { active: true, currency: priceListCurrency(currency) },
+    });
+    if (packs > 0) return true;
+    const [limits, unit] = await Promise.all([
+      this.limitsFor(currency),
+      this.unitPrice(currency),
+    ]);
+    return !!limits && !!unit && unit > 0;
   }
 
   /**
@@ -103,17 +119,25 @@ export class PaymentOffersService {
   }
 
   async countries(): Promise<PaymentCountryView[]> {
-    const [enabled, rates] = await Promise.all([
+    const [enabled, rates, soon] = await Promise.all([
       this.enabledCountries(),
       loadVideoRates(this.prisma),
+      this.catalog.comingSoon(),
     ]);
     const out: PaymentCountryView[] = [];
     for (const c of enabled) {
-      const methods = offeredNetworks(c).map((n) => ({
-        code: n.code,
-        name: n.name,
-      }));
-      if (methods.length === 0) continue;
+      const methods = [
+        ...c.networks.map((n) => ({
+          code: n.code,
+          name: n.name,
+          status: 'ACTIVE' as const,
+        })),
+        ...(soon.methodsByCountry.get(c.iso) ?? []).map((m) => ({
+          ...m,
+          status: 'COMING_SOON' as const,
+        })),
+      ];
+      if (c.networks.length === 0) continue;
       const priceCurrency = priceListCurrency(c.currency);
       const packs = await this.packsFor(c, priceCurrency);
       const custom = await this.customRules(c);
@@ -142,18 +166,17 @@ export class PaymentOffersService {
     });
     const own = all.filter((p) => p.country === country.iso);
     if (own.length > 0) return own;
-    for (const c of PAYMENT_COUNTRIES) {
-      const group = all.filter((p) => p.country === c.iso);
-      if (group.length > 0) return group;
-    }
-    return [];
+    // Sinon, la liste de prix de la première série de packs vendue dans cette devise.
+    const first = all[0];
+    return first ? all.filter((p) => p.country === first.country) : [];
   }
 
   /** Tarification publique complète. */
   async pricing(): Promise<PricingView> {
-    const [rates, countries] = await Promise.all([
+    const [rates, countries, soon] = await Promise.all([
       loadVideoRates(this.prisma),
       this.countries(),
+      this.catalog.comingSoon(),
     ]);
     return {
       rates,
@@ -164,6 +187,7 @@ export class PaymentOffersService {
         creditsPerSecond: rates[id],
       })),
       countries,
+      upcomingCountries: soon.countries,
     };
   }
 }

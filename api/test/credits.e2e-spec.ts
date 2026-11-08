@@ -456,23 +456,34 @@ describe('Registre de crédits (e2e)', () => {
   });
 
   describe('Historique', () => {
-    it('liste les mouvements du plus récent au plus ancien, paginés par curseur', async () => {
+    it('liste les mouvements du plus récent au plus ancien, sans doublon ni oubli d’une page à l’autre', async () => {
       const user = await userWithBalance(app);
       for (let i = 1; i <= 5; i++) await addLot(app, user.id, i);
-      const first = await credits.listLedger(user.id, { limit: 2 });
+      const first = await credits.listLedger(user.id, { page: 1, pageSize: 2 });
       expect(first.items).toHaveLength(2);
-      expect(first.nextCursor).not.toBeNull();
+      expect(first).toMatchObject({
+        total: 5,
+        totalPages: 3,
+        page: 1,
+        hasNextPage: true,
+        hasPreviousPage: false,
+      });
       const second = await credits.listLedger(user.id, {
-        limit: 2,
-        cursor: first.nextCursor!,
+        page: 2,
+        pageSize: 2,
       });
-      const third = await credits.listLedger(user.id, {
-        limit: 2,
-        cursor: second.nextCursor!,
-      });
+      const third = await credits.listLedger(user.id, { page: 3, pageSize: 2 });
       const all = [...first.items, ...second.items, ...third.items];
       expect(all.map((i) => i.amount)).toEqual([5, 4, 3, 2, 1]);
-      expect(third.nextCursor).toBeNull();
+      expect(new Set(all.map((i) => i.id)).size).toBe(5);
+      expect(third.hasNextPage).toBe(false);
+      // Une page trop grande est ramenée à la dernière page valide.
+      const beyond = await credits.listLedger(user.id, {
+        page: 99,
+        pageSize: 2,
+      });
+      expect(beyond.page).toBe(3);
+      expect(beyond.items).toHaveLength(1);
     });
   });
 });

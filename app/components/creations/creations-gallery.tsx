@@ -1,14 +1,16 @@
 "use client";
 
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { CreationPage } from "@yamboka/shared";
-import { Loader2, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Pager } from "@/components/pager";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiGet } from "@/lib/api-client";
+import { readPage, readPageSize, withParams } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 import { CreationCard } from "./creation-card";
 
@@ -29,48 +31,52 @@ const EMPTY: Record<Filter, string> = {
 };
 
 /**
- * Galerie des créations : filtre par statut, chargement par pages (« Voir plus ») et actualisation automatique
- * tant qu'une création est en cours. `compact` : les dernières créations seulement, sans filtre (tableau de bord).
+ * Galerie des créations : filtre par statut, PAGINATION SERVEUR (page, taille et filtre dans l'adresse : lien
+ * partageable, bouton Retour fidèle) et actualisation automatique tant qu'une création est en cours.
+ * `compact` : les dernières créations seulement, sans filtre ni pager (tableau de bord).
  */
 export function CreationsGallery({ compact = false }: { compact?: boolean }) {
-  const [filter, setFilter] = useState<Filter>("all");
-  const limit = compact ? 4 : 12;
+  const pathname = usePathname();
+  const sp = useSearchParams();
+  const statusParam = sp.get("statut");
+  const filter: Filter = FILTERS.some((f) => f.value === statusParam) ? (statusParam as Filter) : "all";
+  const page = readPage(sp.get("page") ?? undefined);
+  const pageSize = compact ? 4 : readPageSize(sp.get("pageSize") ?? undefined);
 
-  const query = useInfiniteQuery({
-    queryKey: ["creations", compact ? "latest" : filter],
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ limit: String(limit) });
+  const query = useQuery({
+    queryKey: ["creations", compact ? "latest" : { filter, page, pageSize }],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: compact ? "1" : String(page), pageSize: String(pageSize) });
       if (!compact && filter !== "all") params.set("status", filter);
-      if (pageParam) params.set("cursor", pageParam);
       return apiGet<CreationPage>(`/creations?${params}`);
     },
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    // Pas de page blanche entre deux pages : l'ancienne reste affichée jusqu'à l'arrivée de la nouvelle.
+    placeholderData: keepPreviousData,
     refetchInterval: (q) => {
-      const running = q.state.data?.pages.some((p) => p.items.some((i) => i.status === "PENDING" || i.status === "PROCESSING"));
+      const running = q.state.data?.items.some((i) => i.status === "PENDING" || i.status === "PROCESSING");
       return running ? 4000 : false;
     },
   });
 
-  const items = query.data?.pages.flatMap((p) => p.items) ?? [];
+  const items = query.data?.items ?? [];
+  const params = { statut: filter === "all" ? undefined : filter, pageSize: pageSize === 20 ? undefined : String(pageSize) };
 
   return (
     <div className="space-y-5">
       {!compact && (
         <div role="group" aria-label="Filtrer les créations" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
           {FILTERS.map((f) => (
-            <button
+            <Link
               key={f.value}
-              type="button"
-              aria-pressed={filter === f.value}
-              onClick={() => setFilter(f.value)}
+              href={withParams(pathname, params, { statut: f.value === "all" ? undefined : f.value, page: undefined })}
+              aria-current={filter === f.value ? "true" : undefined}
               className={cn(
-                "h-10 shrink-0 rounded-full border px-4 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/60",
+                "inline-flex h-10 shrink-0 items-center rounded-full border px-4 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/60",
                 filter === f.value ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted",
               )}
             >
               {f.label}
-            </button>
+            </Link>
           ))}
         </div>
       )}
@@ -118,13 +124,8 @@ export function CreationsGallery({ compact = false }: { compact?: boolean }) {
         </ul>
       )}
 
-      {!compact && query.hasNextPage && (
-        <div className="flex justify-center">
-          <Button variant="outline" size="lg" onClick={() => void query.fetchNextPage()} disabled={query.isFetchingNextPage}>
-            {query.isFetchingNextPage ? <Loader2 className="animate-spin" aria-hidden /> : null}
-            Voir plus
-          </Button>
-        </div>
+      {!compact && query.data && (
+        <Pager page={query.data.page} total={query.data.total} pageSize={query.data.pageSize} path={pathname} params={params} />
       )}
     </div>
   );

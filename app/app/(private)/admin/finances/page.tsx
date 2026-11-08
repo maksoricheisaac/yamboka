@@ -29,14 +29,14 @@ export default async function FinancesPage({ searchParams }: PageProps<"/admin/f
     ["Crédits vendus", formatNumber(s.creditsSold)],
     ["Crédits consommés (net)", formatNumber(s.creditsConsumed)],
     ["Recharges Higgsfield", `${formatNumber(s.topUpsUsd)} $ · ${formatFcfa(s.topUpsXaf)}`],
-    ["Retraits OpenPay", `${formatFcfa(s.payoutsXaf)} · commission ${formatFcfa(s.payoutCommissionXaf)}`],
+    ["Retraits SasPay", `${formatFcfa(s.payoutsXaf)} · commission ${formatFcfa(s.payoutCommissionXaf)}`],
   ];
 
   return (
     <div className="space-y-8">
       <PageHeader
         title="Synthèse financière"
-        description={`Période du ${formatDay(s.from)} au ${formatDay(s.to)}. Saisissez ici les recharges Higgsfield et les retraits OpenPay : ils alimentent l’estimation du solde fournisseur.`}
+        description={`Période du ${formatDay(s.from)} au ${formatDay(s.to)}. Saisissez ici les recharges Higgsfield et les retraits SasPay : ils alimentent l’estimation du solde fournisseur.`}
         actions={
           <Button asChild variant="outline">
             <a href={`/api/admin/finance/export.csv${query}`}><Download aria-hidden /> Exporter les paiements (CSV)</a>
@@ -89,11 +89,11 @@ export default async function FinancesPage({ searchParams }: PageProps<"/admin/f
 
       <section aria-labelledby="retraits" className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 id="retraits" className="text-xl font-bold">Retraits OpenPay</h2>
+          <h2 id="retraits" className="text-xl font-bold">Retraits SasPay</h2>
           <ActionDialog
             trigger="Saisir un retrait"
             triggerVariant="default"
-            title="Retrait OpenPay"
+            title="Retrait SasPay"
             withReason={false}
             endpoint="/admin/finance/payouts"
             fields={[
@@ -106,7 +106,7 @@ export default async function FinancesPage({ searchParams }: PageProps<"/admin/f
           />
         </div>
         {payouts.length === 0 ? <Empty title="Aucun retrait saisi" /> : (
-          <DataTable caption="Retraits OpenPay" minWidth="28rem">
+          <DataTable caption="Retraits SasPay" minWidth="28rem">
             <thead><tr><Th>Date</Th><Th>Montant</Th><Th>Commission</Th><Th>Note</Th></tr></thead>
             <tbody>
               {payouts.map((p) => (

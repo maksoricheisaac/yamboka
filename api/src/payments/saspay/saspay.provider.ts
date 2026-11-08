@@ -151,10 +151,17 @@ export class SaspayPaymentProvider extends PaymentProvider {
         'Réseau de paiement non précisé.',
       );
     }
+    if (!request.country) {
+      // Aucun pays par défaut : le pays vient toujours du catalogue validé par le serveur.
+      throw new ProviderRejectedError(
+        'invalid_country',
+        'Pays du paiement non précisé.',
+      );
+    }
     const body = {
       amount: formatAmount(request.amount),
       currency: request.currency,
-      country: request.country ?? 'CG',
+      country: request.country,
       network,
       customer: {
         email: request.customer.email,
