@@ -51,8 +51,8 @@ const ratesSchema = z.array(
 );
 
 /**
- * SasPay (PAYMENT_PROVIDER=saspay), API https://docs.saspay.me. Les paiements sont RÉELS : aucun bac à sable
- * n'existe sur ce compte. La clé n'est utilisée que dans l'en-tête Authorization, jamais écrite dans un message.
+ * SasPay (PAYMENT_PROVIDER=saspay), API https://docs.saspay.me. Avec une clé sk_live_ les paiements sont RÉELS.
+ * Une clé sk_test_ (sandbox) existerait d'après la documentation, non vérifiée sur ce compte. La clé n'est utilisée que dans l'en-tête Authorization, jamais écrite dans un message.
  *
  * Un timeout ne prouve pas l'échec : il lève ProviderUnavailableError et l'appelant doit rejouer la MÊME
  * Idempotency-Key (SasPay renvoie alors la réponse du premier appel), puis vérifier le statut.

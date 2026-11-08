@@ -5,8 +5,11 @@ code, de réglage ni de variable d'environnement, et **aucun repli silencieux** 
 enregistrés ne sont jamais supprimés : leur fournisseur reste lisible dans `Payment.gateway` et dans le journal des paiements.
 
 Référence : `docs/SASPAY_INTEGRATION_GUIDE.md` (photo de la documentation officielle du 1er novembre 2026) et https://docs.saspay.me.
-**Aucun bac à sable n'existe sur ce compte** : la clé `sk_live_…` déclenche de vrais paiements. Les tests automatiques utilisent un
-faux fournisseur fidèle à la documentation ; ils ne prouvent pas qu'un paiement réel aboutit.
+**Clés de test (`sk_test_…`)** : d'après `docs/SKILL_SASPAY.md`, SasPay propose une clé de test (sandbox) en plus de la clé `sk_live_…`. Cette
+information n'a **pas encore été vérifiée** sur notre compte : la clé actuellement configurée est une `sk_live_…`, qui déclenche de vrais paiements.
+Où la trouver : tableau de bord `app.saspay.me`, section Développeur (génération d'une clé de test). Tant qu'elle n'est pas obtenue, les tests
+automatiques utilisent un faux fournisseur fidèle à la documentation ; ils ne prouvent pas qu'un paiement réel aboutit. Avec une clé `sk_test_…`,
+mettre `SASPAY_API_KEY=sk_test_…` en développement (le format est déjà accepté) puis rejouer : paiement réussi, échoué, webhook `webhook.test`.
 
 ## Architecture
 
