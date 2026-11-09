@@ -43,6 +43,7 @@ describe('Créations (e2e)', () => {
     format: '9:16',
     resolution: '480p',
     durationSeconds: '5',
+    consent: 'true',
     ...extra,
   });
   const balance = async (client: Client) =>
@@ -259,16 +260,21 @@ describe('Créations (e2e)', () => {
       expect(await balance(client)).toBe(40);
     });
 
-    it('une photo de personne exige la confirmation du droit de l’utiliser', async () => {
+    it('le consentement est obligatoire (RG-31) et horodaté', async () => {
       const { client, userId } = await verifiedClient(app);
       await addLot(app, userId, 40);
-      const refused = await send(client, body({ personPhoto: 'true' })).expect(
+      const refused = await send(client, body({ consent: 'false' })).expect(
         400,
       );
       expect(refused.body.details[0].field).toBe('consent');
-      await send(client, body({ personPhoto: 'true', consent: 'true' })).expect(
-        201,
-      );
+      expect(await balance(client)).toBe(40);
+      const ok = await send(client, body()).expect(201);
+      const row = await prisma.generation.findFirst({
+        where: { userId },
+        select: { consentAt: true },
+      });
+      expect(row?.consentAt).toBeInstanceOf(Date);
+      expect(ok.body.creation.id).toBeTruthy();
     });
 
     it('un style rattaché à un ancien produit Genjutsu n’est ni proposé ni débité', async () => {

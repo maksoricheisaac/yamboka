@@ -24,6 +24,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ApiError, apiGet, apiUpload } from "@/lib/api-client";
@@ -45,7 +46,7 @@ interface StudioProps {
   initialPrompt: string;
 }
 
-type FieldErrors = Partial<Record<"photo" | "prompt" | "consent" | "duration" | "confirm", string>>;
+type FieldErrors = Partial<Record<"photo" | "prompt" | "consent" | "duration", string>>;
 
 /** Un pictogramme à la proportion exacte du format : on comprend sans lire. */
 function RatioGlyph({ format }: { format: CreationFormat }) {
@@ -84,16 +85,15 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
   const queryClient = useQueryClient();
 
   const initialStyle = styles.find((s) => s.id === initialStyleId) ?? null;
-  const [styleId, setStyleId] = useState<string | null>(initialStyle?.id ?? null);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(initialPrompt || initialStyle?.prompt || "");
   const [format, setFormat] = useState<CreationFormat>(initialStyle?.format ?? DEFAULT_FORMAT);
   const [resolution, setResolution] = useState<VideoResolution>(initialStyle?.resolution ?? DEFAULT_RESOLUTION);
   const [duration, setDuration] = useState<number>(initialStyle?.durationSeconds ?? VIDEO_DURATION.default);
+  // Consentement unique (RG-31), demandé à l'étape de confirmation et enregistré avec son horodatage par le serveur.
+  const [confirming, setConfirming] = useState(false);
   const [consent, setConsent] = useState(false);
-  const [personPhoto, setPersonPhoto] = useState(false);
-  const [confirmCost, setConfirmCost] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -129,19 +129,8 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  /** Choisir une idée remplit le texte et les réglages proposés ; le client peut tout modifier ensuite. */
-  function pickIdea(id: string) {
-    const idea = styles.find((x) => x.id === id);
-    if (!idea) return;
-    setStyleId(id);
-    if (idea.prompt) setPrompt(idea.prompt);
-    if (idea.format) setFormat(idea.format);
-    if (idea.resolution) setResolution(idea.resolution);
-    if (idea.durationSeconds) setDuration(idea.durationSeconds);
-    setErrors((e) => ({ ...e, prompt: undefined }));
-  }
-
-  const idea = styles.find((x) => x.id === styleId) ?? null;
+  // L'idée éventuelle vient de « Idées » ou « Refaire » (adresse) : elle préremplit le formulaire, sans liste de suggestions ici.
+  const idea = initialStyle;
   const durationOk = isValidDuration(duration);
   // Le serveur recalcule ce coût : l'affichage et le débit utilisent la même fonction.
   const cost = durationOk ? videoCostCredits(config.rates, resolution, duration) : 0;
@@ -171,16 +160,22 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
     if (!photo) e.photo = "Ajoutez votre photo.";
     if (!prompt.trim()) e.prompt = "Décrivez votre vidéo en quelques mots.";
     if (!durationOk) e.duration = `La durée doit être comprise entre ${VIDEO_DURATION.min} et ${VIDEO_DURATION.max} secondes.`;
-    if (!consent) e.consent = "Confirmez que vous avez le droit d’utiliser cette photo.";
-    if (mustConfirm && !confirmCost) e.confirm = `Confirmez la dépense de ${credits(cost)}.`;
     return e;
   }
 
-  async function submit() {
+  /** Étape 1 : vérifier le formulaire, puis demander la confirmation (coût et consentement). */
+  function review() {
     setFormError(null);
     const e = validate();
     setErrors(e);
-    if (Object.keys(e).length > 0 || !photo) return;
+    if (Object.keys(e).length > 0) return;
+    setConsent(false);
+    setConfirming(true);
+  }
+
+  /** Étape 2 : le client a confirmé ; la création est envoyée. */
+  async function submit() {
+    if (!photo || !consent) return;
     setSending(true);
     try {
       const form = new FormData();
@@ -190,18 +185,17 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
       form.set("resolution", resolution);
       form.set("durationSeconds", String(duration));
       form.set("consent", "true");
-      form.set("personPhoto", String(personPhoto));
       form.set("prompt", prompt.trim());
       const { creation: created } = await apiUpload<{ creation: CreationView }>("/creations", form);
       queryClient.setQueryData(["creation", created.id], created);
       setCreationId(created.id);
       router.refresh(); // le solde de l'en-tête reflète tout de suite la réservation
     } catch (err) {
+      setConfirming(false);
       if (err instanceof ApiError && err.details.length > 0) {
         const next: FieldErrors = {};
         for (const d of err.details) {
           if (d.field === "prompt") next.prompt = d.message;
-          else if (d.field === "consent") next.consent = d.message;
           else if (d.field === "durationSeconds") next.duration = d.message;
         }
         setErrors(next);
@@ -211,6 +205,7 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
       }
     } finally {
       setSending(false);
+      setConfirming(false);
     }
   }
 
@@ -222,7 +217,7 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
   const canSubmit = emailVerified && !sending && durationOk && enough;
   const formatLabel = FORMATS.find((f) => f.value === format)?.label ?? format;
   const showPreview = tracking;
-  const anyError = errors.photo ?? errors.prompt ?? errors.duration ?? errors.consent ?? errors.confirm ?? formError;
+  const anyError = errors.photo ?? errors.prompt ?? errors.duration ?? formError;
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5">
@@ -231,7 +226,7 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void submit();
+            review();
           }}
           className="space-y-3"
         >
@@ -267,7 +262,7 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
-                  void submit();
+                  review();
                 }
               }}
               className="max-h-64 min-h-20 w-full resize-none bg-transparent px-2 py-1.5 text-base leading-relaxed outline-none placeholder:text-muted-foreground"
@@ -324,8 +319,7 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
                   value={duration}
                   onChange={(e) => {
                     setDuration(Number(e.target.value));
-                    setErrors((x) => ({ ...x, duration: undefined, confirm: undefined }));
-                    setConfirmCost(false);
+                    setErrors((x) => ({ ...x, duration: undefined }));
                   }}
                   className="h-6 w-full cursor-pointer accent-primary"
                 />
@@ -350,54 +344,10 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
             </div>
           </div>
 
-          {/* Idées : un clic remplit le texte et les réglages. */}
-          {styles.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0" role="group" aria-label="Idées">
-                {/* Les idées mises à la une par l'administrateur passent en tête. */}
-                {[...styles].sort((x, y) => Number(y.featured) - Number(x.featured)).map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    aria-pressed={styleId === s.id}
-                    onClick={() => pickIdea(s.id)}
-                    className={cn(
-                      "h-9 shrink-0 rounded-full border px-3.5 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/60",
-                      styleId === s.id ? "border-primary bg-primary/10 font-medium text-primary" : "bg-card text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {s.featured && <span aria-hidden>★ </span>}
-                    {s.name}
-                    {s.featured && <span className="sr-only"> (à la une)</span>}
-                  </button>
-                ))}
-              </div>
-              {idea?.photoHint && <p className="px-1 text-sm text-muted-foreground">Conseil photo : {idea.photoHint}</p>}
-            </div>
-          )}
+          {idea?.photoHint && <p className="px-1 text-sm text-muted-foreground">Conseil photo : {idea.photoHint}</p>}
 
           {/* Confirmations et messages, discrets */}
           <div className="space-y-2 px-1">
-            <div className="flex items-start gap-2.5">
-              <Checkbox id="creation-consent" checked={consent} onCheckedChange={(v) => { setConsent(v === true); setErrors((e) => ({ ...e, consent: undefined })); }} aria-invalid={!!errors.consent} className="mt-0.5 size-5" />
-              <Label htmlFor="creation-consent" className="cursor-pointer text-[0.8rem] font-normal leading-snug text-muted-foreground">
-                J’ai le droit d’utiliser cette photo et son contenu respecte la charte d’utilisation de Yamboka.
-              </Label>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <Checkbox id="creation-person" checked={personPhoto} onCheckedChange={(v) => setPersonPhoto(v === true)} className="mt-0.5 size-5" />
-              <Label htmlFor="creation-person" className="cursor-pointer text-[0.8rem] font-normal leading-snug text-muted-foreground">
-                Cette photo montre une personne.
-              </Label>
-            </div>
-            {mustConfirm && enough && (
-              <div className="flex items-start gap-2.5 rounded-xl bg-accent/15 p-2.5">
-                <Checkbox id="creation-confirm" checked={confirmCost} onCheckedChange={(v) => { setConfirmCost(v === true); setErrors((e) => ({ ...e, confirm: undefined })); }} aria-invalid={!!errors.confirm} className="mt-0.5 size-5" />
-                <Label htmlFor="creation-confirm" className="cursor-pointer text-[0.8rem] font-medium leading-snug">
-                  Cette vidéo coûte {credits(cost)}, soit une part importante de votre solde. Je confirme.
-                </Label>
-              </div>
-            )}
             {!emailVerified && (
               <Alert className="border-accent bg-accent/15" role="status">
                 <AlertDescription>
@@ -416,9 +366,34 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
               <p role="alert" className="text-sm font-medium text-destructive">{anyError}</p>
             )}
             <p className="text-xs text-muted-foreground">
-              Solde : {formatNumber(balance)} {balance > 1 ? "crédits" : "crédit"} · Si la création échoue, vos crédits sont restitués. Ctrl + Entrée pour lancer.
+              Solde : {formatNumber(balance)} {balance > 1 ? "crédits" : "crédit"} · Crédits restitués si la création échoue.
             </p>
           </div>
+
+          <Dialog open={confirming} onOpenChange={(o) => { if (!sending) setConfirming(o); }}>
+            <DialogContent className="max-w-md">
+              <DialogTitle>Lancer la création ?</DialogTitle>
+              <DialogDescription>
+                Cette vidéo coûte <strong className="text-foreground">{credits(cost)}</strong>. Il vous restera {credits(Math.max(after, 0))}.
+                {mustConfirm && " C’est une part importante de votre solde."}
+              </DialogDescription>
+              <div className="flex items-start gap-2.5">
+                <Checkbox id="creation-consent" checked={consent} onCheckedChange={(v) => setConsent(v === true)} className="mt-0.5 size-5" />
+                <Label htmlFor="creation-consent" className="cursor-pointer text-sm font-normal leading-snug">
+                  Je confirme avoir le droit d’utiliser cette photo et que son contenu respecte la charte d’utilisation de Yamboka.
+                </Label>
+              </div>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <DialogClose asChild>
+                  <Button type="button" variant="outline" disabled={sending}>Modifier</Button>
+                </DialogClose>
+                <Button type="button" disabled={!consent || sending} onClick={() => void submit()}>
+                  {sending && <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden />}
+                  Lancer · {credits(cost)}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </form>
       )}
 

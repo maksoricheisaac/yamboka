@@ -1,6 +1,10 @@
-import type { Page } from './admin-views';
-import { z } from 'zod';
-import { VIDEO_DURATION, VIDEO_RESOLUTIONS, type VideoResolution } from './pricing';
+import type { Page } from "./admin-views";
+import { z } from "zod";
+import {
+  VIDEO_DURATION,
+  VIDEO_RESOLUTIONS,
+  type VideoResolution,
+} from "./pricing";
 
 /**
  * Contrats du parcours de création : idées (presets) proposées, demande de création, création suivie.
@@ -9,15 +13,19 @@ import { VIDEO_DURATION, VIDEO_RESOLUTIONS, type VideoResolution } from './prici
  */
 
 /** Formats proposés, avec leur usage en clair. Tous sont acceptés nativement par le modèle. */
-export const CREATION_FORMATS = ['9:16', '3:4', '1:1', '4:3', '16:9'] as const;
+export const CREATION_FORMATS = ["9:16", "3:4", "1:1", "4:3", "16:9"] as const;
 export type CreationFormat = (typeof CREATION_FORMATS)[number];
-export const DEFAULT_FORMAT: CreationFormat = '9:16';
+export const DEFAULT_FORMAT: CreationFormat = "9:16";
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-export const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export const ACCEPTED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+] as const;
 
 /** Public visé par une idée : sert à les classer à l'écran. */
-export const SUGGESTION_AUDIENCES = ['business', 'perso'] as const;
+export const SUGGESTION_AUDIENCES = ["business", "perso"] as const;
 export type SuggestionAudience = (typeof SUGGESTION_AUDIENCES)[number];
 
 /** Une idée en un clic : un texte par défaut et des réglages par défaut, tous modifiables par le client. */
@@ -40,7 +48,7 @@ export interface StyleView {
   thumbnailUrl: string | null;
 }
 
-export type CreationStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+export type CreationStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
 
 export interface CreationOptions {
   /** Description saisie par le client. */
@@ -92,43 +100,45 @@ export const MAX_PROMPT_LENGTH = 600;
 
 /**
  * Demande de création (la photo part dans la même requête multipart). Le coût N'EST PAS envoyé : le serveur le
- * recalcule. `personPhoto` : la photo montre une personne, le client a coché « j'ai le droit d'utiliser cette photo ».
+ * recalcule. `consent` : confirmation unique, obligatoire (RG-31), horodatée côté serveur.
  */
 export const createCreationSchema = z.object({
-  styleId: z.uuid('Choisis une idée valide.').optional(),
-  format: z.enum(CREATION_FORMATS).default('9:16'),
-  resolution: z.enum(VIDEO_RESOLUTIONS).default('480p'),
+  styleId: z.uuid("Choisis une idée valide.").optional(),
+  format: z.enum(CREATION_FORMATS).default("9:16"),
+  resolution: z.enum(VIDEO_RESOLUTIONS).default("480p"),
   durationSeconds: z.coerce
     .number()
-    .int('La durée doit être un nombre entier de secondes.')
-    .min(VIDEO_DURATION.min, `La durée minimale est de ${VIDEO_DURATION.min} secondes.`)
-    .max(VIDEO_DURATION.max, `La durée maximale est de ${VIDEO_DURATION.max} secondes.`)
+    .int("La durée doit être un nombre entier de secondes.")
+    .min(
+      VIDEO_DURATION.min,
+      `La durée minimale est de ${VIDEO_DURATION.min} secondes.`,
+    )
+    .max(
+      VIDEO_DURATION.max,
+      `La durée maximale est de ${VIDEO_DURATION.max} secondes.`,
+    )
     .default(VIDEO_DURATION.default),
   prompt: z
     .string()
     .trim()
-    .min(1, 'Décris ta vidéo en quelques mots.')
+    .min(1, "Décris ta vidéo en quelques mots.")
     .max(MAX_PROMPT_LENGTH, `${MAX_PROMPT_LENGTH} caractères au maximum.`),
-  personPhoto: z
-    .union([z.boolean(), z.enum(['true', 'false'])])
-    .default(false)
-    .transform((v) => v === true || v === 'true'),
   consent: z
-    .union([z.boolean(), z.enum(['true', 'false'])])
+    .union([z.boolean(), z.enum(["true", "false"])])
     .default(false)
-    .transform((v) => v === true || v === 'true'),
+    .transform((v) => v === true || v === "true"),
 });
 export type CreateCreationInput = z.infer<typeof createCreationSchema>;
 
 export const REPORT_REASONS = [
-  'Contenu inapproprié',
-  'Usurpation d’identité',
-  'Arnaque ou tromperie',
-  'Autre',
+  "Contenu inapproprié",
+  "Usurpation d’identité",
+  "Arnaque ou tromperie",
+  "Autre",
 ] as const;
 
 export const reportCreationSchema = z.object({
-  reason: z.enum(REPORT_REASONS, { error: 'Choisis un motif.' }),
+  reason: z.enum(REPORT_REASONS, { error: "Choisis un motif." }),
   details: z.string().trim().max(500).optional(),
 });
 export type ReportCreationInput = z.infer<typeof reportCreationSchema>;
