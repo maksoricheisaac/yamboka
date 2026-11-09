@@ -64,6 +64,7 @@ describe('Catalogue international des pays et moyens de paiement (e2e)', () => {
       ]);
       const intl = countries.find((c) => c.iso === 'XX')!;
       expect(intl.methods.map((m) => m.methodCode).sort()).toEqual([
+        'CARD',
         'MASTERCARD',
         'SWIFT',
         'VISA',
@@ -364,6 +365,22 @@ describe('Catalogue international des pays et moyens de paiement (e2e)', () => {
       expect(totalPages).toBe(3);
       expect(seen).toHaveLength(22);
       expect(new Set(seen).size).toBe(22);
+    });
+
+    it('les compteurs couvrent tout le catalogue et chaque ligne nomme ses moyens', async () => {
+      const summary = (await admin.get('/api/admin/countries/summary')).body;
+      expect(summary.total).toBe(22);
+      expect(summary.active + summary.comingSoon + summary.disabled).toBe(22);
+      const xx = (await admin.get('/api/admin/countries?q=XX')).body.items[0];
+      expect(xx.methodNames).toEqual(
+        expect.arrayContaining([
+          'Visa',
+          'Mastercard',
+          'Virement SWIFT',
+          'Carte bancaire',
+        ]),
+      );
+      expect(xx.methodCount).toBe(4);
     });
 
     it('recherche et filtre de statut côté serveur, page invalide ramenée à la dernière', async () => {

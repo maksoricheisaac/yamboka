@@ -6,6 +6,7 @@ import {
 import type {
   AdminCountryDetail,
   AdminCountryRow,
+  AdminCountrySummary,
   AdminMethodRow,
   CatalogStatus,
   CountryListQuery,
@@ -56,7 +57,13 @@ export class AdminCountriesService {
       take: q.pageSize,
       include: {
         methods: {
-          select: { status: true, saspayNetwork: true, limitation: true },
+          select: {
+            status: true,
+            saspayNetwork: true,
+            limitation: true,
+            sortOrder: true,
+            method: { select: { name: true } },
+          },
         },
       },
     });
@@ -72,12 +79,30 @@ export class AdminCountriesService {
         methodCount: r.methods.length,
         activeMethodCount: r.methods.filter((m) => m.status === 'ACTIVE')
           .length,
+        methodNames: [...r.methods]
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((m) => m.method.name),
         sellable: sellable.get(r.currency) ?? false,
       })),
       total,
       page,
       q.pageSize,
     );
+  }
+
+  async summary(): Promise<AdminCountrySummary> {
+    const groups = await this.prisma.country.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+    });
+    const n = (s: CatalogStatus) =>
+      groups.find((g) => g.status === s)?._count._all ?? 0;
+    return {
+      total: groups.reduce((t, g) => t + g._count._all, 0),
+      active: n('ACTIVE'),
+      comingSoon: n('COMING_SOON'),
+      disabled: n('DISABLED'),
+    };
   }
 
   async getCountry(iso: string): Promise<AdminCountryDetail> {
@@ -308,6 +333,7 @@ export class AdminCountriesService {
       methodCount: row.methods.length,
       activeMethodCount: row.methods.filter((m) => m.status === 'ACTIVE')
         .length,
+      methodNames: row.methods.map((m) => m.method.name),
       sellable,
       methods: row.methods.map((m) => ({
         id: m.id,

@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import type { AdminCountryRow, Page } from "@yamboka/shared";
+import type { AdminCountryRow, AdminCountrySummary, Page } from "@yamboka/shared";
 import { CATALOG_STATUS_LABELS } from "@yamboka/shared";
 import Link from "next/link";
 import { CountryStatusPill } from "@/components/admin/country-status";
 import { ActionDialog } from "@/components/admin/action-dialog";
-import { Empty, FilterBar, FilterField, FilterSelect, PageHeader, Pager, flat, listQuery } from "@/components/admin/ui";
+import { Empty, FilterBar, StatCard, StatGrid, FilterField, FilterSelect, PageHeader, Pager, flat, listQuery } from "@/components/admin/ui";
 import { requireUser } from "@/lib/auth";
 import { flagOf } from "@/lib/flags";
 import { serverGet } from "@/lib/server-api";
@@ -16,7 +16,10 @@ const STATUS_OPTIONS = (["ACTIVE", "COMING_SOON", "DISABLED"] as const).map((s) 
 export default async function CountriesPage({ searchParams }: PageProps<"/admin/pays">) {
   await requireUser({ role: "ADMIN" });
   const sp = flat(await searchParams);
-  const data = await serverGet<Page<AdminCountryRow>>(`/admin/countries${listQuery(sp)}`);
+  const [data, summary] = await Promise.all([
+    serverGet<Page<AdminCountryRow>>(`/admin/countries${listQuery(sp)}`),
+    serverGet<AdminCountrySummary>("/admin/countries/summary"),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -24,6 +27,11 @@ export default async function CountriesPage({ searchParams }: PageProps<"/admin/
         title="Pays et paiements"
         description="Ouvrez Yamboka pays par pays et opérateur par opérateur. Un pays « Bientôt disponible » est visible mais non sélectionnable ; un pays désactivé n’est jamais proposé. Le serveur refuse tout paiement hors d’un pays et d’un moyen actifs."
       />
+      <StatGrid>
+        <StatCard label="Pays actifs" value={summary.active} hint={`sur ${summary.total} (dont la zone International)`} />
+        <StatCard label="Bientôt disponibles" value={summary.comingSoon} />
+        <StatCard label="Désactivés" value={summary.disabled} />
+      </StatGrid>
       <FilterBar reset="/admin/pays">
         <FilterField label="Nom, code ISO ou devise" name="q" defaultValue={sp.q} placeholder="Rwanda, RW, RWF…" />
         <FilterSelect label="Statut" name="status" value={sp.status} options={STATUS_OPTIONS} />
@@ -58,6 +66,7 @@ export default async function CountriesPage({ searchParams }: PageProps<"/admin/
                   <td>{c.currency}</td>
                   <td className="tabular-nums">
                     {c.activeMethodCount} actif{c.activeMethodCount > 1 ? "s" : ""} / {c.methodCount}
+                    <span className="block text-xs font-normal text-muted-foreground">{c.methodNames.join(", ")}</span>
                   </td>
                   <td>
                     <CountryStatusPill status={c.status} />

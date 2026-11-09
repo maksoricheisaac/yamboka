@@ -11,6 +11,7 @@ import { ApiTags } from '@nestjs/swagger';
 import type {
   AdminCountryDetail,
   AdminCountryRow,
+  AdminCountrySummary,
   AdminMethodRow,
   CatalogStatusBody,
   CountryListQuery,
@@ -46,6 +47,11 @@ export class AdminCountriesController {
     @Query(countryQuery) q: CountryListQuery,
   ): Promise<Page<AdminCountryRow>> {
     return this.countries.listCountries(q);
+  }
+
+  @Get('countries/summary')
+  summary(): Promise<AdminCountrySummary> {
+    return this.countries.summary();
   }
 
   @Get('countries/:iso')
