@@ -66,10 +66,10 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
 }
 
 const TONES = {
-  ok: "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100",
-  warn: "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100",
-  bad: "bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-100",
-  info: "bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-100",
+  ok: "bg-success/15 text-success",
+  warn: "bg-warning/15 text-warning",
+  bad: "bg-destructive/12 text-destructive",
+  info: "bg-info/15 text-info",
   neutral: "bg-muted text-muted-foreground",
 } as const;
 
