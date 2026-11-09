@@ -56,7 +56,7 @@ services:
       <<: *polling
       DATABASE_URL: postgresql://${POSTGRES_USER:-yamboka}:${POSTGRES_PASSWORD:-yamboka_dev_password}@postgres:5432/${POSTGRES_DB:-yamboka_dev}
       REDIS_URL: redis://redis:6379
-    command: sh -c "pnpm --filter api exec prisma generate && pnpm --filter api exec prisma migrate deploy && pnpm --filter api start:dev"
+    command: sh -c "pnpm --filter api exec prisma generate && pnpm --filter api exec prisma migrate deploy && pnpm --filter api seed:catalog && pnpm --filter api start:dev"
     ports: ["127.0.0.1:4000:4000"]
     volumes:
       - ..:/repo
