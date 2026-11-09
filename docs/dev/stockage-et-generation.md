@@ -50,7 +50,7 @@ Contraintes du modèle `genjutsu/motion-transfer` : vidéo MP4 de 4 s minimum (t
 | Route | Rôle |
 |---|---|
 | `GET /api/creations/styles` | styles visibles (presets) avec coût en crédits calculé côté serveur |
-| `POST /api/creations` | multipart : `photo` + `styleId`, `format`, `text`, `price`, `phone`, `consent`. Réserve les crédits, stocke la photo, envoie au fournisseur |
+| `POST /api/creations` | multipart : `photo` + `styleId`, `format`, `text`, `price`, `phone`, `consent`. `consent=true` est **obligatoire** (RG-31, sinon 400) et horodaté (`consentAt`, `consentIp`). Réserve les crédits, stocke la photo, envoie au fournisseur |
 | `GET /api/creations`, `GET /api/creations/:id` | liste paginée (filtre `status`) et détail ; consulter une création en cours la fait avancer |
 | `GET /api/creations/:id/file` | résultat ou aperçu, propriétaire seulement, lecture par morceaux (Range) |
 | `DELETE /api/creations/:id`, `POST /api/creations/:id/report` | suppression (refusée si en cours ou signalée), signalement (gèle la conservation) |

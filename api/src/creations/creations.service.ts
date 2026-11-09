@@ -253,15 +253,16 @@ export class CreationsService {
         message: 'Le fichier n’est pas une photo JPG, PNG ou WebP.',
       });
     }
-    // Une photo qui montre une personne : le client confirme qu'il a le droit de l'utiliser.
-    if (input.personPhoto && !input.consent) {
+    // RG-31 : consentement obligatoire avant chaque génération (droit d'utiliser la photo, respect de la charte).
+    if (!input.consent) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
         message: 'Données invalides.',
         details: [
           {
             field: 'consent',
-            message: 'Confirme que tu as le droit d’utiliser cette photo.',
+            message:
+              'Confirmez que vous avez le droit d’utiliser cette photo et que son contenu respecte la charte de Yamboka.',
           },
         ],
       });
