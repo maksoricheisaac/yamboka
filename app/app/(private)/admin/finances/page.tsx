@@ -6,7 +6,6 @@ import { DataTable, Empty, FilterBar, FilterDateRange, PageHeader, Td, Th, flat 
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth";
 import { formatFcfa, formatNumber } from "@/lib/format";
-import { formatDay } from "@/lib/period";
 import { serverGet } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "Synthèse financière — Administration" };
@@ -36,7 +35,6 @@ export default async function FinancesPage({ searchParams }: PageProps<"/admin/f
     <div className="space-y-8">
       <PageHeader
         title="Synthèse financière"
-        description={`Période du ${formatDay(s.from)} au ${formatDay(s.to)}. Saisissez ici les recharges Higgsfield et les retraits SasPay : ils alimentent l’estimation du solde fournisseur.`}
         actions={
           <Button asChild variant="outline">
             <a href={`/api/admin/finance/export.csv${query}`}><Download aria-hidden /> Exporter les paiements (CSV)</a>

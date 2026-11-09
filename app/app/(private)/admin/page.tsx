@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/admin/ui";
 import { PeriodPicker } from "@/components/admin/period-picker";
 import { requireUser } from "@/lib/auth";
 import { formatFcfa, formatNumber } from "@/lib/format";
-import { formatDay, isIsoDate, presetRange } from "@/lib/period";
+import { isIsoDate, presetRange } from "@/lib/period";
 import { serverGet } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "Tableau de bord — Administration" };
@@ -35,7 +35,6 @@ export default async function AdminHomePage({ searchParams }: PageProps<"/admin"
     <div className="space-y-8">
       <PageHeader
         title="Tableau de bord"
-        description={`Activité du ${formatDay(requested.from)} au ${formatDay(requested.to)}. Les chiffres viennent directement de la base de données.`}
       />
       <PeriodPicker from={requested.from} to={requested.to} />
 
@@ -102,7 +101,6 @@ export default async function AdminHomePage({ searchParams }: PageProps<"/admin"
               <Kpi label="Coût estimé consommé" value={`${formatNumber(s.providerBalance.estimatedConsumedUsd)} $`} />
               <Kpi label="Solde estimé" value={`${formatNumber(s.providerBalance.estimatedBalanceUsd)} $`} />
             </dl>
-            <p className="text-xs text-muted-foreground">Estimation : recharges saisies moins le coût fournisseur des générations non échouées. Ce n’est pas le solde réel du compte Higgsfield.</p>
           </>
         ) : (
           <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">

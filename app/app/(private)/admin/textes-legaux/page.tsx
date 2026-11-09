@@ -22,7 +22,6 @@ export default async function LegalPage() {
     <div className="space-y-8">
       <PageHeader
         title="Textes légaux"
-        description="Chaque publication crée une nouvelle version ; les anciennes sont conservées. Une version majeure impose une nouvelle acceptation aux utilisateurs."
       />
       {TYPES.map((t) => {
         const versions = docs.filter((d) => d.type === t.value);

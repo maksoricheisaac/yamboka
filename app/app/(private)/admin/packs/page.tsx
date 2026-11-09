@@ -22,13 +22,12 @@ export default async function PacksPage({ searchParams }: PageProps<"/admin/pack
     <div className="space-y-6">
       <PageHeader
         title="Packs de crédits"
-        description="Tous les packs restent disponibles à l’achat dans l’espace client. Les pages publiques n’en affichent que trois : choisissez-les ici."
         actions={
           <ActionDialog
             trigger="Nouveau pack"
             triggerVariant="default"
             title="Nouveau pack"
-            description="Le pack est créé inactif et non public. Il doit passer le contrôle de marge pour être publié."
+            description="Créé inactif et non public."
             endpoint="/admin/packs"
             fields={[
               { name: "name", label: "Nom", type: "text" },
@@ -68,9 +67,6 @@ export default async function PacksPage({ searchParams }: PageProps<"/admin/pack
       </FilterBar>
       {packs.length === 0 ? <Empty title="Aucun pack">Aucun pack ne correspond à ces critères.</Empty> : <PacksTable packs={packs} />}
       <Pager page={data.page} total={data.total} pageSize={data.pageSize} path="/admin/packs" params={sp} />
-      <p className="text-xs text-muted-foreground">
-        Marge = (crédits × valeur perçue du crédit − coût fournisseur − commission) ÷ revenu, calculée sur le produit actif le moins rentable (10 s de vidéo, ou 1 image). Seuil, taux de change et frais : « Paramètres ».
-      </p>
     </div>
   );
 }

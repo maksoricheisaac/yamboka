@@ -13,7 +13,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Paramètres" description="Paramètres opérationnels, seuils et règles de rentabilité. Chaque modification exige un motif et est consignée avec l’ancienne et la nouvelle valeur." />
+      <PageHeader title="Paramètres" />
       <SettingsForm initial={settings.values} emailProvider={settings.email.provider} />
     </div>
   );

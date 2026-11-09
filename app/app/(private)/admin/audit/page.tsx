@@ -14,7 +14,7 @@ export default async function AuditPage({ searchParams }: PageProps<"/admin/audi
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Journal d’audit" description="Opérations sensibles : qui, quand, sur quoi, avec les valeurs avant et après et le motif. Le journal est en ajout seul." />
+      <PageHeader title="Journal d’audit" />
       <FilterBar reset="/admin/audit">
         <FilterField label="Action, entité ou acteur" name="q" defaultValue={sp.q} placeholder="pack.update, admin@…" />
         <FilterDateRange from={sp.from} to={sp.to} />

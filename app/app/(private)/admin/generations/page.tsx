@@ -18,7 +18,7 @@ export default async function GenerationsPage({ searchParams }: PageProps<"/admi
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Générations et modération" description="Toutes les créations, filtrables. Masquer une création la retire de l’espace du client et consigne le motif." />
+      <PageHeader title="Générations et modération" />
       <FilterBar reset="/admin/generations">
         <FilterField label="E-mail du client" name="q" defaultValue={sp.q} placeholder="client@…" />
         <FilterSelect label="Statut" name="status" value={sp.status} options={STATUS_OPTIONS.generation} />
