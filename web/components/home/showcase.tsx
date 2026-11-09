@@ -26,7 +26,7 @@ export function Showcase({ demos }: { demos: DemoItem[] }) {
               type="button"
               onClick={() => setId(d.id)}
               aria-pressed={d.id === id}
-              className={`flex w-full items-center gap-3 rounded-2xl border p-2 text-left transition-all active:scale-[0.98] lg:pr-10 ${
+              className={`flex w-full items-center gap-3 rounded-2xl border p-2 text-left transition-[transform,box-shadow,background-color,border-color,color,opacity] active:scale-[0.98] lg:pr-10 ${
                 d.id === id ? "border-primary bg-primary/5 shadow-soft" : "bg-card hover:border-primary/40"
               }`}
             >

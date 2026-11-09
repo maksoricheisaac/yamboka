@@ -20,7 +20,7 @@ import { crumbsFor, type ShellVariant } from "@/lib/nav";
 export function ShellHeader({ variant, user, children }: { variant: ShellVariant; user: NavUser; children?: ReactNode }) {
   const crumbs = crumbsFor(variant, usePathname());
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3 md:px-6">
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-3 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 md:px-6">
       <SidebarTrigger className="-ml-1 size-10 lg:size-8" />
       <Separator orientation="vertical" className="mr-1 data-vertical:h-4 data-vertical:self-auto" />
       <Breadcrumb className="min-w-0">
