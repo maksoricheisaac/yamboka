@@ -81,10 +81,7 @@ export default async function AdminPaymentPage({ params }: PageProps<"/admin/pai
             </li>
           ))}
         </ol>
-        <p className="text-sm text-muted-foreground">
-          Le statut d’un paiement ne peut pas être modifié à la main : seul le fournisseur le décide. « Vérifier » l’interroge à nouveau et ne crédite
-          que s’il confirme le succès ; chaque vérification est enregistrée dans le journal d’audit.
-        </p>
+        <p className="text-sm text-muted-foreground">Statut décidé par le fournisseur uniquement ; « Vérifier » l’interroge à nouveau.</p>
       </section>
     </div>
   );

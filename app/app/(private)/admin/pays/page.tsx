@@ -25,10 +25,9 @@ export default async function CountriesPage({ searchParams }: PageProps<"/admin/
     <div className="space-y-6">
       <PageHeader
         title="Pays et paiements"
-        description="Ouvrez Yamboka pays par pays et opérateur par opérateur. Un pays « Bientôt disponible » est visible mais non sélectionnable ; un pays désactivé n’est jamais proposé. Le serveur refuse tout paiement hors d’un pays et d’un moyen actifs."
       />
       <StatGrid>
-        <StatCard label="Pays actifs" value={summary.active} hint={`sur ${summary.total} (dont la zone International)`} />
+        <StatCard label="Pays actifs" value={summary.active} hint={`sur ${summary.total}`} />
         <StatCard label="Bientôt disponibles" value={summary.comingSoon} />
         <StatCard label="Désactivés" value={summary.disabled} />
       </StatGrid>
@@ -60,7 +59,6 @@ export default async function CountriesPage({ searchParams }: PageProps<"/admin/
                   <td className="font-medium">
                     <span aria-hidden className="mr-2 text-lg">{flagOf(c.iso)}</span>
                     {c.name}
-                    {c.dialCode && <span className="ml-2 text-xs text-muted-foreground">{c.dialCode}</span>}
                   </td>
                   <td className="font-mono text-xs">{c.iso}</td>
                   <td>{c.currency}</td>
@@ -79,7 +77,7 @@ export default async function CountriesPage({ searchParams }: PageProps<"/admin/
                         trigger="Statut"
                         triggerLabel={`Changer le statut de ${c.name}`}
                         title={`Statut de ${c.name}`}
-                        description="Actif : paiements ouverts. Bientôt disponible : affiché, non sélectionnable. Désactivé : jamais proposé. Les paiements déjà effectués ne sont pas modifiés."
+                        description="Actif : ouvert. Bientôt disponible : visible, non sélectionnable. Désactivé : jamais proposé."
                         endpoint={`/admin/countries/${c.iso}/status`}
                         fields={[{ name: "status", label: "Nouveau statut", type: "select", defaultValue: c.status, options: STATUS_OPTIONS }]}
                       />
@@ -95,9 +93,6 @@ export default async function CountriesPage({ searchParams }: PageProps<"/admin/
         </div>
       )}
       <Pager page={data.page} total={data.total} pageSize={data.pageSize} path="/admin/pays" params={sp} />
-      <p className="text-xs text-muted-foreground">
-        Les frais affichés sont les frais indicatifs communiqués par SasPay : information seulement, jamais ajoutés au prix payé par le client. À vérifier avec votre contrat marchand.
-      </p>
     </div>
   );
 }

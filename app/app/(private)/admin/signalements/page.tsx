@@ -15,7 +15,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/admin/si
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Réclamations et signalements" description="Traitez les signalements de contenus et les réclamations des clients. Chaque décision est consignée avec son motif." />
+      <PageHeader title="Réclamations et signalements" />
       <FilterBar reset="/admin/signalements">
         <FilterSelect label="État" name="status" value={sp.status} options={STATUS_OPTIONS.report} />
       </FilterBar>

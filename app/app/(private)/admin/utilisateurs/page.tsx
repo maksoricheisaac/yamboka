@@ -20,7 +20,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/util
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Utilisateurs" description="Recherchez un client, consultez sa fiche, suspendez-le ou ajustez ses crédits." />
+      <PageHeader title="Utilisateurs" />
       <StatGrid>
         <StatCard label="Utilisateurs" value={formatNumber(stats.users.total)} hint={`${stats.users.suspended} suspendu${stats.users.suspended > 1 ? "s" : ""} · ${stats.users.banned} banni${stats.users.banned > 1 ? "s" : ""}`} />
         <StatCard label="Nouveaux" value={formatNumber(stats.users.newInPeriod)} hint={`${STATS_DAYS} derniers jours`} />

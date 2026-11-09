@@ -13,7 +13,7 @@ export default async function PresetsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Presets" description="Styles et tendances proposés aux clients. Un preset publié apparaît dans Tendances ; « À la une » est un choix éditorial distinct, qui le met en avant." />
+      <PageHeader title="Presets" />
       {presets.length === 0 ? <Empty title="Aucun preset" /> : <PresetsTable presets={presets} />}
     </div>
   );

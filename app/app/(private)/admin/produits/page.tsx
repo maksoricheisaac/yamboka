@@ -15,14 +15,13 @@ export default async function ProductsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Produits de génération" description="Types de création et leur tarif en crédits. Activer un produit ou changer son prix est refusé s’il rend une offre non rentable." />
+      <PageHeader title="Produits de génération" />
       <StatGrid>
         <StatCard label="Produits" value={products.length} hint={`${products.length - active.length} inactif${products.length - active.length > 1 ? "s" : ""}`} />
         <StatCard label="Produits actifs" value={active.length} hint="Proposés à la création" />
         <StatCard label="Actifs par facturation" value={`${perSecond} vidéo · ${active.length - perSecond} image`} hint="Vidéo : à la seconde. Image : à l’unité." />
       </StatGrid>
       <ProductsTable products={products} />
-      <p className="text-xs text-muted-foreground">Les coûts fournisseur proviennent du business plan et ne sont pas modifiables ici.</p>
     </div>
   );
 }

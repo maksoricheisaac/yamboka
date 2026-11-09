@@ -6,7 +6,7 @@ import { CountryStatusPill } from "@/components/admin/country-status";
 import { PageHeader, Pill, StatCard, StatGrid } from "@/components/admin/ui";
 import { requireUser } from "@/lib/auth";
 import { flagOf } from "@/lib/flags";
-import { formatMoney, formatNumber } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { serverGet } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "Fiche pays — Administration" };
@@ -29,7 +29,7 @@ export default async function CountryPage({ params }: PageProps<"/admin/pays/[is
             trigger="Changer le statut du pays"
             triggerVariant="default"
             title={`Statut de ${c.name}`}
-            description="Un pays désactivé ou « Bientôt disponible » rend tous ses moyens de paiement inutilisables, quel que soit leur propre statut."
+            description="Un pays inactif bloque tous ses moyens."
             endpoint={`/admin/countries/${c.iso}/status`}
             fields={[{ name: "status", label: "Nouveau statut", type: "select", defaultValue: c.status, options: STATUS_OPTIONS }]}
           />
@@ -98,29 +98,17 @@ export default async function CountryPage({ params }: PageProps<"/admin/pays/[is
       <section aria-labelledby="pricing" className="space-y-3 rounded-2xl border bg-card p-4">
         <h2 id="pricing" className="text-xl font-bold">Devise et tarification</h2>
         {c.pricing.cfa ? (
-          <p className="text-sm text-muted-foreground">
-            Le franc CFA (XAF et XOF, à parité fixe) est réglé dans <strong>Paramètres</strong> : prix du crédit actuel{" "}
-            <strong>{c.pricing.creditValue != null ? formatMoney(c.pricing.creditValue, c.currency) : "non défini"}</strong>. Les packs en XAF s’appliquent ({formatNumber(c.pricing.packs)} actif{c.pricing.packs > 1 ? "s" : ""}).
-          </p>
+          <p className="text-sm text-muted-foreground">Franc CFA : prix du crédit réglé dans <strong>Paramètres</strong>{c.pricing.creditValue != null && <> ({formatMoney(c.pricing.creditValue, c.currency)})</>}.</p>
         ) : (
           <>
             <p className="text-sm text-muted-foreground">
-              Aucun taux de change n’est inventé : saisissez ici le prix d’un crédit en <strong>{c.currency}</strong> et les bornes d’un achat libre.
-              {c.pricing.creditValue != null && (
-                <>
-                  {" "}Actuellement : {formatMoney(c.pricing.creditValue, c.currency)} le crédit
-                  {c.pricing.minAmount != null && c.pricing.maxAmount != null && (
-                    <>, achat entre {formatMoney(c.pricing.minAmount, c.currency)} et {formatMoney(c.pricing.maxAmount, c.currency)}</>
-                  )}
-                  {c.pricing.active ? "" : " (désactivée)"}.
-                </>
-              )}
+              {c.pricing.creditValue != null ? <>{formatMoney(c.pricing.creditValue, c.currency)} le crédit{c.pricing.minAmount != null && c.pricing.maxAmount != null && <>, achat de {formatMoney(c.pricing.minAmount, c.currency)} à {formatMoney(c.pricing.maxAmount, c.currency)}</>}{c.pricing.active ? "" : " (désactivée)"}.</> : <>Prix du crédit en {c.currency} non défini.</>}
             </p>
             <ActionDialog
               trigger="Configurer la tarification"
               triggerVariant="default"
               title={`Tarification en ${c.currency}`}
-              description="Montants entiers dans la devise. Le minimum et le maximum ouvrent l’achat à la quantité ; sans eux, seuls des packs dans cette devise permettent la vente."
+              description="Montants entiers dans la devise."
               endpoint={`/admin/countries/${c.iso}/pricing`}
               fields={[
                 { name: "creditValue", label: `Prix d’un crédit (${c.currency})`, type: "number", defaultValue: c.pricing.creditValue ?? undefined },

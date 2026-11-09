@@ -20,7 +20,6 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/admin/p
     <div className="space-y-6">
       <PageHeader
         title="Paiements"
-        description="Journal des paiements. La vérification manuelle interroge le fournisseur (SasPay) : elle ne crédite que si celui-ci confirme le succès, jamais sur simple décision d’un administrateur."
         actions={
           <Button asChild variant="outline">
             <a href={`/api/admin/finance/export.csv${listQuery(sp, ["provider", "country", "method", "userId"])}`}>

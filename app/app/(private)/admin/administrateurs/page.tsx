@@ -16,13 +16,12 @@ export default async function AdminsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Administrateurs"
-        description="Comptes autorisés à accéder à l’administration. Le rôle ne s’obtient jamais par l’inscription : il est accordé ici, à un compte existant dont l’e-mail est vérifié."
         actions={
           <ActionDialog
             trigger="Ajouter un administrateur"
             triggerVariant="default"
             title="Ajouter un administrateur"
-            description="La personne doit déjà avoir un compte Yamboka actif, avec une adresse e-mail vérifiée."
+            description="Compte existant, e-mail vérifié."
             endpoint="/admin/admins"
             fields={[{ name: "email", label: "Adresse e-mail du compte", type: "text" }]}
             submitLabel="Donner l’accès"
