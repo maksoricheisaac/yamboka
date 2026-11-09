@@ -23,6 +23,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
+    "seed:catalog": "tsx src/payments/catalog/seed-cli.ts",
     "postinstall": "prisma generate",
     "lint:fix": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit",

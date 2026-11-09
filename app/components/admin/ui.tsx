@@ -137,8 +137,8 @@ export function FilterBar({ children, reset }: { children: ReactNode; reset: str
     <form method="get" className="flex flex-wrap items-end gap-3 rounded-2xl border bg-card p-3">
       {children}
       <Button type="submit">Filtrer</Button>
-      <Button asChild variant="secondary" size="sm" className="rounded-full px-3 py-1 text-xs">
-        <Link href={reset}>R éinitialiser</Link>
+      <Button asChild variant="secondary">
+        <Link href={reset}>Réinitialiser</Link>
       </Button>
     </form>
   );

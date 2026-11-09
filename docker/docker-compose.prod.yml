@@ -54,12 +54,12 @@ services:
       retries: 10
     networks: [internal]
 
-  # Migrations Prisma : exécutées à chaque déploiement avant le démarrage de l'API, puis le conteneur s'arrête.
+  # Migrations Prisma puis chargement idempotent du catalogue des paiements : exécutés à chaque déploiement avant le démarrage de l'API, puis le conteneur s'arrête.
   migrate:
     <<: *logging
     build: *api-build
     image: ${COMPOSE_PROJECT_NAME}-api:${IMAGE_TAG:-latest}
-    command: ["node_modules/.bin/prisma", "migrate", "deploy"]
+    command: ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/payments/catalog/seed-cli.js"]
     restart: "no"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}

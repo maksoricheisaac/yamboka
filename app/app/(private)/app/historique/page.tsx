@@ -99,7 +99,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/app/hist
             </label>
             <Button type="submit" variant="outline">Filtrer</Button>
             {(from || to) && (
-              <Button asChild variant="ghost">
+              <Button asChild variant="secondary">
                 <Link href={withParams("/app/historique", { ...params, du: undefined, au: undefined, page: undefined })}>Réinitialiser</Link>
               </Button>
             )}
