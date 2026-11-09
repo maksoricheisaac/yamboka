@@ -39,11 +39,11 @@ export async function AppShell({
         <AppSidebar variant={variant} />
         <SidebarInset className="min-w-0">
           <ShellHeader variant={variant} user={user}>{headerExtra}</ShellHeader>
-          <main id="contenu" className={variant === "user" ? "flex-1 p-4 pb-24 md:p-6 lg:pb-6" : "flex-1 p-4 md:p-6"}>
+          <div id="contenu" className={variant === "user" ? "flex-1 p-4 pb-24 md:p-6 lg:pb-6" : "flex-1 p-4 md:p-6"}>
             <div className="mx-auto w-full max-w-6xl">
               <QueryProvider>{children}</QueryProvider>
             </div>
-          </main>
+          </div>
         </SidebarInset>
         {variant === "user" && <BottomTabs />}
         <Toaster />

@@ -45,7 +45,7 @@ export function Gallery({ items: all }: { items: GalleryEntry[] }) {
             type="button"
             aria-pressed={filter === c.id}
             onClick={() => setFilter(c.id)}
-            className={`rounded-full border px-4 py-2.5 text-sm font-semibold transition-all active:scale-95 ${
+            className={`rounded-full border px-4 py-2.5 text-sm font-semibold transition-[transform,box-shadow,background-color,border-color,color,opacity] active:scale-95 ${
               filter === c.id ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:border-primary/50"
             }`}
           >

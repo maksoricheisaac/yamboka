@@ -224,3 +224,57 @@
 .spotlight:hover::before { opacity: 1; }
 @keyframes playhead { from { left: 0%; } to { left: 100%; } }
 .studio-playhead { animation: playhead 7s linear infinite; }
+
+/*
+ * Fluidité (principes Apple : réponse immédiate, interruptibilité, matériaux).
+ * - Retour tactile instantané, sans flash de surbrillance ni délai de double-tap.
+ * - Courbes partagées : --ease-out (entrées), --ease-spring (léger rebond, gestes à élan).
+ * - « Réduire la transparence » : on remplace le flou par des surfaces pleines.
+ */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.32, 1.4, 0.5, 1);
+}
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  a,
+  button,
+  [role="button"],
+  [role="tab"],
+  summary,
+  label,
+  select {
+    touch-action: manipulation;
+  }
+  table,
+  [data-tabular],
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  :target {
+    scroll-margin-top: 5rem;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  [class*="backdrop-blur"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  header[class*="backdrop-blur"] {
+    background-color: var(--background) !important;
+  }
+}
+@media (prefers-contrast: more) {
+  :root {
+    --border: oklch(0.6 0.02 85);
+    --input: oklch(0.6 0.02 85);
+  }
+  .dark {
+    --border: oklch(1 0 0 / 40%);
+    --input: oklch(1 0 0 / 45%);
+  }
+}

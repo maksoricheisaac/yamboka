@@ -224,7 +224,7 @@ export function SetupWizard() {
             return (
               <li key={s.label} aria-current={i === step ? "step" : undefined} className="relative flex items-start gap-3">
                 <span
-                  className={`grid size-9 shrink-0 place-items-center rounded-full border-2 text-sm font-bold transition-all duration-300 ${
+                  className={`grid size-9 shrink-0 place-items-center rounded-full border-2 text-sm font-bold transition-[transform,box-shadow,background-color,border-color,color,opacity] duration-300 ${
                     done ? "border-accent bg-accent text-accent-foreground" : i === step ? "scale-110 border-accent bg-primary text-accent ring-4 ring-accent/25" : "border-background/30 bg-primary text-primary-foreground/60"
                   }`}
                 >
