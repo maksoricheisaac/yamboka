@@ -144,7 +144,7 @@ export function DataTable<TData extends RowData>({
         ))}
         {filtered && (
           <Button
-            variant="ghost"
+            variant="secondary"
             onClick={() => {
               setQuery("");
               setSelected({});
