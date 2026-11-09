@@ -69,6 +69,8 @@ export interface AdminCountryRow {
   feeNote: string | null;
   methodCount: number;
   activeMethodCount: number;
+  /** Noms des moyens de paiement du catalogue, dans l'ordre d'affichage. */
+  methodNames: string[];
   /** Faux : la devise n'a ni prix du crédit ni pack, le pays ne peut pas être ouvert. */
   sellable: boolean;
 }
@@ -84,6 +86,14 @@ export interface AdminCountryMethodView {
   note: string | null;
   /** Non null : le moyen ne peut pas être activé (raison lisible). */
   blocker: string | null;
+}
+
+/** Compteurs globaux du catalogue (indépendants de la page et des filtres). */
+export interface AdminCountrySummary {
+  total: number;
+  active: number;
+  comingSoon: number;
+  disabled: number;
 }
 
 export interface AdminCountryDetail extends AdminCountryRow {
