@@ -46,7 +46,7 @@ export default function HomePage() {
         <div className="mx-auto grid w-full max-w-6xl items-center gap-10 px-4 pb-8 pt-10 sm:px-6 sm:pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14 lg:pb-16 lg:pt-20">
           <div className="space-y-6">
             <HeroItem delay={0.05}>
-              <h1 id="hero-title" className="text-[2.6rem] font-bold leading-[1.05] sm:text-6xl">
+              <h1 id="hero-title" className="text-display">
                 Crée des vidéos pro <span className="text-primary">pour ton business.</span>
               </h1>
             </HeroItem>
@@ -99,7 +99,7 @@ export default function HomePage() {
         <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
           <div className="relative overflow-hidden rounded-3xl bg-primary px-6 py-12 text-primary-foreground sm:px-12 sm:py-16">
             <div aria-hidden className="absolute -right-16 -top-16 size-64 rounded-full bg-accent/30 blur-3xl" />
-            <div aria-hidden className="absolute -bottom-6 right-8 hidden w-36 rotate-6 rounded-2xl border border-primary-foreground/20 bg-card p-1 shadow-soft md:block">
+            <div aria-hidden className="absolute -bottom-6 right-8 hidden w-36 rotate-6 rounded-3xl bg-card shadow-card p-1 shadow-soft md:block">
               <Still image={media.danseApres} fallback={<StudioScene mode="result" label="" />} />
             </div>
             <div className="relative max-w-xl space-y-4">

@@ -45,7 +45,7 @@ export default async function FinancesPage({ searchParams }: PageProps<"/admin/f
         <FilterDateRange from={sp.from ?? s.from} to={sp.to ?? s.to} />
       </FilterBar>
 
-      <dl className="divide-y rounded-2xl border bg-card">
+      <dl className="divide-y rounded-3xl bg-card shadow-card">
         {rows.map(([k, v]) => (
           <div key={k} className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3">
             <dt className="text-sm text-muted-foreground">{k}</dt>

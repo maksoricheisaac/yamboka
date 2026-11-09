@@ -92,7 +92,7 @@ export function PaymentTracker({ initial }: { initial: PaymentView }) {
           </li>
         ))}
       </ol>
-      <div className="space-y-4 rounded-2xl border bg-card p-6 shadow-soft" aria-live="polite">
+      <div className="space-y-4 rounded-3xl bg-card shadow-card p-6 shadow-soft" aria-live="polite">
         {open && (
           <>
             <div className="flex items-center gap-3">

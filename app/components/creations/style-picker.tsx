@@ -47,7 +47,7 @@ export function StylePicker({
             className="group relative block w-36 shrink-0 snap-start cursor-pointer sm:w-auto"
           >
             <input type="radio" name={name} value={s.id} checked={value === s.id} onChange={() => onChange(s.id)} className="peer sr-only" />
-            <span className="block overflow-hidden rounded-2xl border bg-card shadow-soft transition-[transform,box-shadow,background-color,border-color,color,opacity] peer-checked:border-primary peer-checked:ring-2 peer-checked:ring-primary/40 peer-focus-visible:ring-3 peer-focus-visible:ring-ring/70 group-hover:border-primary/50 group-active:scale-[0.98] motion-reduce:transition-none">
+            <span className="block overflow-hidden rounded-3xl bg-card shadow-card shadow-soft transition-[transform,box-shadow,background-color,border-color,color,opacity] peer-checked:border-primary peer-checked:ring-2 peer-checked:ring-primary/40 peer-focus-visible:ring-3 peer-focus-visible:ring-ring/70 group-hover:border-primary/50 group-active:scale-[0.98] motion-reduce:transition-none">
               <span className="relative block aspect-[3/4] overflow-hidden bg-muted">
                 <StyleThumb style={s} className="transition-transform duration-300 group-hover:scale-[1.04] motion-reduce:transition-none" />
                 <span className="absolute right-2 top-2 grid size-6 place-items-center rounded-full bg-primary text-primary-foreground opacity-0 shadow transition-opacity group-has-[:checked]:opacity-100">

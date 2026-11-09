@@ -32,7 +32,7 @@ export function CostCalculator({
   const credits = seconds * resolution.creditsPerSecond;
 
   return (
-    <div className="rounded-3xl border bg-card p-5 shadow-soft sm:p-6">
+    <div className="rounded-3xl bg-card shadow-card p-5 shadow-soft sm:p-6">
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-5">
           <fieldset>

@@ -85,7 +85,7 @@ export function NotificationsList() {
             <p className="text-sm text-muted-foreground" role="status">{unread > 0 ? `${unread} non lue${unread > 1 ? "s" : ""}` : "Tout est lu"}</p>
             {unread > 0 && <Button size="sm" variant="outline" onClick={() => void markAll()}><Check aria-hidden /> Tout marquer comme lu</Button>}
           </div>
-          <ul className="divide-y overflow-hidden rounded-2xl border bg-card">
+          <ul className="divide-y overflow-hidden rounded-3xl bg-card shadow-card">
             {items.map((n) => (
               <li key={n.id} className={cn("flex items-start gap-2 pr-2", !n.read && "bg-primary/5")}>
                 {n.link ? (

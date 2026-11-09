@@ -189,7 +189,7 @@ export function SetupWizard() {
   const progress = ((step + (step === 3 ? 1 : 0.5)) / STEPS.length) * 100;
 
   return (
-    <div className="w-full max-w-4xl overflow-hidden rounded-3xl border bg-card shadow-soft lg:grid lg:grid-cols-[19rem_1fr]">
+    <div className="w-full max-w-4xl overflow-hidden rounded-3xl bg-card shadow-card shadow-soft lg:grid lg:grid-cols-[19rem_1fr]">
       {/* Panneau de marque : bandeau compact sur mobile, colonne avec stepper vertical à partir de lg */}
       <aside className="relative isolate overflow-hidden bg-primary p-5 text-primary-foreground sm:p-6 lg:p-8">
         <span aria-hidden className="absolute -right-10 -top-10 -z-10 size-40 animate-float rounded-full bg-accent/30 blur-2xl" />

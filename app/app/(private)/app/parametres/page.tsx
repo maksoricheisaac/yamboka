@@ -32,7 +32,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/par
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Paramètres</h1>
+        <h1 className="text-title">Paramètres</h1>
         <p className="mt-1 text-muted-foreground">Votre profil, vos notifications, la sécurité et vos préférences.</p>
       </div>
 
@@ -58,7 +58,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/app/par
       <section aria-label={TABS.find((t) => t.id === tab)?.label} className="space-y-6">
         {tab === "profil" && (
           <>
-            <div className="flex items-center gap-2 rounded-2xl border bg-card px-4 py-3 text-sm">
+            <div className="flex items-center gap-2 rounded-3xl bg-card shadow-card px-4 py-3 text-sm">
               <span className="min-w-0 flex-1 truncate font-medium">{user.email}</span>
               {user.emailVerified ? (
                 <span className="inline-flex shrink-0 items-center gap-1 text-xs text-success"><BadgeCheck className="size-3.5" aria-hidden /> Confirmée</span>

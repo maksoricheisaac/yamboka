@@ -9,7 +9,7 @@ import { StatusBadge } from "./status-badge";
 export function PurchasesList({ payments }: { payments: PaymentView[] }) {
   if (payments.length === 0) {
     return (
-      <div className="space-y-4 rounded-2xl border bg-card p-8 text-center">
+      <div className="space-y-4 rounded-3xl bg-card shadow-card p-8 text-center">
         <p className="text-muted-foreground">Vous n’avez encore rien acheté.</p>
         <Button asChild>
           <Link href="/app/credits">Acheter des crédits</Link>
@@ -22,7 +22,7 @@ export function PurchasesList({ payments }: { payments: PaymentView[] }) {
       {payments.map((p) => {
         const open = p.status === "PENDING" || p.status === "INITIATED";
         return (
-          <li key={p.id} className="rounded-2xl border bg-card p-3.5">
+          <li key={p.id} className="rounded-3xl bg-card shadow-card p-3.5">
             <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
               <div className="min-w-0">
                 <p className="font-medium">

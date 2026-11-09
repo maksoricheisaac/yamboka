@@ -14,9 +14,9 @@ export const metadata: Metadata = { title: "Tableau de bord — Administration" 
 
 function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="space-y-0.5 border-l-2 border-primary/40 pl-3">
-      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className="font-heading text-2xl font-bold">{value}</dd>
+    <div className="space-y-1 rounded-3xl bg-card p-5 shadow-card">
+      <dt className="text-label">{label}</dt>
+      <dd className="text-title tabular-nums">{value}</dd>
       {hint && <dd className="text-xs text-muted-foreground">{hint}</dd>}
     </div>
   );
@@ -39,7 +39,7 @@ export default async function AdminHomePage({ searchParams }: PageProps<"/admin"
       <PeriodPicker from={requested.from} to={requested.to} />
 
       <section aria-labelledby="alertes" className="space-y-3">
-        <h2 id="alertes" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Alertes opérationnelles</h2>
+        <h2 id="alertes" className="text-heading">Alertes opérationnelles</h2>
         {s.alerts.length === 0 ? (
           <p className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">Aucune alerte : paiements, marges et fournisseurs sont dans les seuils.</p>
         ) : (
@@ -63,8 +63,8 @@ export default async function AdminHomePage({ searchParams }: PageProps<"/admin"
       </section>
 
       <section aria-labelledby="activite" className="space-y-4">
-        <h2 id="activite" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Activité</h2>
-        <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+        <h2 id="activite" className="text-heading">Activité</h2>
+        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Kpi label="Inscrits sur la période" value={formatNumber(s.users.newInPeriod)} hint={`${formatNumber(s.users.activeInPeriod)} actifs · ${formatNumber(s.users.total)} comptes au total (cumul)`} />
           <Kpi label="Chiffre d’affaires" value={formatFcfa(s.payments.revenueFcfa)} hint={`${formatNumber(s.payments.successCount)} paiement(s) réussi(s)`} />
           <Kpi label="Volume de paiements" value={formatFcfa(s.payments.volumeFcfa)} hint={`${s.payments.pendingCount} en attente · ${s.payments.failedCount} échoué(s)`} />
@@ -77,7 +77,7 @@ export default async function AdminHomePage({ searchParams }: PageProps<"/admin"
       </section>
 
       <section aria-labelledby="generations" className="space-y-3">
-        <h2 id="generations" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Générations</h2>
+        <h2 id="generations" className="text-heading">Générations</h2>
         {noGenerations ? (
           <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
             Aucune génération sur la période.
@@ -93,7 +93,7 @@ export default async function AdminHomePage({ searchParams }: PageProps<"/admin"
       </section>
 
       <section aria-labelledby="fournisseur" className="space-y-3">
-        <h2 id="fournisseur" className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Solde fournisseur Higgsfield (estimation)</h2>
+        <h2 id="fournisseur" className="text-heading">Solde fournisseur Higgsfield (estimation)</h2>
         {s.providerBalance.known ? (
           <>
             <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-3">

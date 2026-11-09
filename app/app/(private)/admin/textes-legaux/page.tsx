@@ -27,7 +27,7 @@ export default async function LegalPage() {
         const versions = docs.filter((d) => d.type === t.value);
         const latest = versions[0];
         return (
-          <section key={t.value} aria-labelledby={`t-${t.value}`} className="space-y-3 rounded-2xl border bg-card p-4">
+          <section key={t.value} aria-labelledby={`t-${t.value}`} className="space-y-3 rounded-3xl bg-card shadow-card p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 id={`t-${t.value}`} className="text-lg font-bold">
                 {t.label} {latest && <Pill tone="info">version {latest.version}</Pill>}

@@ -46,7 +46,7 @@ export default async function PacksPage({ searchParams }: PageProps<"/admin/pack
         <StatCard label="Offres publiques" value={`${summary.publicVisible} / 3`} hint="Affichées sur la page Tarifs" />
       </StatGrid>
 
-      <section aria-labelledby="public" className="space-y-2 rounded-2xl border bg-card p-4">
+      <section aria-labelledby="public" className="space-y-2 rounded-3xl bg-card shadow-card p-4">
         <h2 id="public" className="font-semibold">Offre affichée sur les pages publiques ({summary.publicVisible}/3)</h2>
         {summary.publicVisible === 0 ? (
           <p className="text-sm text-muted-foreground">Aucun pack public : la page Tarifs n’affiche aucune offre.</p>

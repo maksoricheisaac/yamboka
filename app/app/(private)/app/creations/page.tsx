@@ -11,7 +11,7 @@ export default function CreationsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Mes créations</h1>
+          <h1 className="text-title">Mes créations</h1>
           <p className="mt-1 text-muted-foreground">Retrouvez, partagez et téléchargez tout ce que vous avez créé.</p>
         </div>
         <Button asChild size="lg">

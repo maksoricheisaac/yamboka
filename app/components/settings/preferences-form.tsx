@@ -37,7 +37,7 @@ export function PreferencesForm({ countries, initialCountry }: { countries: Paym
     <div className="space-y-8">
       <section aria-labelledby="pref-lang" className="space-y-2">
         <h2 id="pref-lang" className="font-heading text-lg font-bold">Langue</h2>
-        <p className="rounded-2xl border bg-card px-4 py-3 text-sm">
+        <p className="rounded-3xl bg-card shadow-card px-4 py-3 text-sm">
           <span className="font-medium">Français</span> <span className="text-muted-foreground">— seule langue disponible pour le moment.</span>
         </p>
       </section>

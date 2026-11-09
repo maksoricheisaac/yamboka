@@ -48,7 +48,7 @@ export default async function CountryPage({ params }: PageProps<"/admin/pays/[is
 
       <section aria-labelledby="methods" className="space-y-3">
         <h2 id="methods" className="text-xl font-bold">Moyens de paiement</h2>
-        <div className="relative overflow-x-auto rounded-2xl border bg-card">
+        <div className="relative overflow-x-auto rounded-3xl bg-card shadow-card">
           <table className="w-full min-w-[48rem] text-left text-sm">
             <caption className="sr-only">Moyens de paiement de {c.name}</caption>
             <thead>
@@ -95,7 +95,7 @@ export default async function CountryPage({ params }: PageProps<"/admin/pays/[is
         </div>
       </section>
 
-      <section aria-labelledby="pricing" className="space-y-3 rounded-2xl border bg-card p-4">
+      <section aria-labelledby="pricing" className="space-y-3 rounded-3xl bg-card shadow-card p-4">
         <h2 id="pricing" className="text-xl font-bold">Devise et tarification</h2>
         {c.pricing.cfa ? (
           <p className="text-sm text-muted-foreground">Franc CFA : prix du crédit réglé dans <strong>Paramètres</strong>{c.pricing.creditValue != null && <> ({formatMoney(c.pricing.creditValue, c.currency)})</>}.</p>

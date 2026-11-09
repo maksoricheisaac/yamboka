@@ -15,7 +15,7 @@ export function CreationCard({ creation, priority = false }: { creation: Creatio
     <Link
       href={`/app/creations/${creation.id}`}
       aria-label={`${creationTitle(creation)} — ${creation.status === "COMPLETED" ? "prête" : creation.status === "FAILED" ? "échec, crédits restitués" : "en cours"}`}
-      className="group block overflow-hidden rounded-2xl border bg-card shadow-soft outline-none transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] focus-visible:ring-3 focus-visible:ring-ring/60 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="group block overflow-hidden rounded-3xl bg-card shadow-card shadow-soft outline-none transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] focus-visible:ring-3 focus-visible:ring-ring/60 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
       <div className="relative aspect-[4/5] overflow-hidden bg-muted">
         {thumb ? (

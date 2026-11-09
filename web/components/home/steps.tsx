@@ -20,9 +20,9 @@ export function Steps() {
   return (
     <Stagger as="ol" className="grid gap-4 md:grid-cols-3 md:gap-0">
       {STEPS.map((s, i) => (
-        <StaggerItem key={s.title} className="relative flex items-center gap-4 rounded-2xl border bg-card p-3 md:flex-col md:rounded-none md:border-0 md:bg-transparent md:p-0 md:px-5">
+        <StaggerItem key={s.title} className="relative flex items-center gap-4 rounded-3xl bg-card shadow-card p-3 md:flex-col md:rounded-none md:border-0 md:bg-transparent md:p-0 md:px-5">
           <div className="relative w-24 shrink-0 md:w-40">
-            <div aria-hidden className="overflow-hidden rounded-2xl border bg-card p-1 shadow-soft">
+            <div aria-hidden className="overflow-hidden rounded-3xl bg-card shadow-card p-1 shadow-soft">
               <Still image={images[s.mode]} fallback={<StudioScene mode={s.mode} label="" />} className="rounded-xl" />
             </div>
             <span className="absolute -left-2 -top-2 grid size-8 place-items-center rounded-full bg-primary font-heading text-sm font-bold text-primary-foreground shadow-soft">

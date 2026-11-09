@@ -40,7 +40,7 @@ export function CompareSlider({ demo }: { demo: DemoItem }) {
 
   return (
     <div className="mx-auto w-full max-w-md">
-      <div ref={box} className="relative select-none overflow-hidden rounded-3xl border bg-card p-2 shadow-soft">
+      <div ref={box} className="relative select-none overflow-hidden rounded-3xl bg-card shadow-card p-2 shadow-soft">
         <div className="relative touch-pan-y">
           <DemoMedia media={demo.after} mode="result" tone={demo.tone} label={`${demo.label}, la création`} />
           <div className={`absolute inset-0 ${ease}`} style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}>

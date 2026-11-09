@@ -55,7 +55,7 @@ export default function UseCasesPage() {
         <h2 id="cases-title" className="sr-only">Les usages</h2>
         <ul className="grid gap-6 md:grid-cols-2">
           {CASES.map((c) => (
-            <li key={c.who} className="flex flex-col overflow-hidden rounded-2xl border bg-card p-6 shadow-soft">
+            <li key={c.who} className="flex flex-col overflow-hidden rounded-3xl bg-card shadow-card p-6 shadow-soft">
               {usage[c.key] && (
                 <div className="relative -mx-6 -mt-6 mb-5 aspect-[4/3] bg-muted">
                   <Image src={usage[c.key]!.src} alt={usage[c.key]!.alt} fill unoptimized sizes="(min-width: 768px) 28rem, 100vw" className="object-cover" />

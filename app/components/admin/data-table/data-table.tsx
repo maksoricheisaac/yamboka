@@ -179,7 +179,7 @@ export function DataTable<TData extends RowData>({
         )}
       </div>
 
-      <div className="relative overflow-x-auto rounded-2xl border bg-card">
+      <div className="relative overflow-x-auto rounded-3xl bg-card shadow-card">
         <table className="w-full text-left text-sm" style={{ minWidth }}>
           <caption className="sr-only">{caption}</caption>
           <thead>
