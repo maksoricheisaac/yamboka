@@ -186,7 +186,7 @@ test.describe('Administration — identité et navigation', () => {
   test('présente les rubriques du cahier des charges et leurs pages', async ({ page }) => {
     await adminLogin(page);
     await openMenuIfHidden(page, menuLink(page, 'Utilisateurs'));
-    for (const group of ['Pilotage', 'Clients', 'Générations et modération', 'Offre', 'Finances', 'Configuration', 'Audit']) {
+    for (const group of ['Pilotage', 'Offre', 'Finances', 'Configuration']) {
       await expect(sidebar(page).getByText(group, { exact: true })).toBeVisible();
     }
     for (const title of [

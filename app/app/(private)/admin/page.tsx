@@ -16,7 +16,7 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
   return (
     <div className="space-y-1 rounded-3xl bg-card p-5 shadow-card">
       <dt className="text-label">{label}</dt>
-      <dd className="text-title tabular-nums">{value}</dd>
+      <dd className="font-heading text-2xl font-bold tracking-tight tabular-nums">{value}</dd>
       {hint && <dd className="text-xs text-muted-foreground">{hint}</dd>}
     </div>
   );
@@ -38,18 +38,19 @@ export default async function AdminHomePage({ searchParams }: PageProps<"/admin"
       />
       <PeriodPicker from={requested.from} to={requested.to} />
 
-      <section aria-labelledby="alertes" className="space-y-3">
-        <h2 id="alertes" className="text-heading">Alertes opérationnelles</h2>
-        {s.alerts.length === 0 ? (
-          <p className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">Aucune alerte : paiements, marges et fournisseurs sont dans les seuils.</p>
-        ) : (
+      {s.alerts.length === 0 ? (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span aria-hidden className="size-2 rounded-full bg-success" /> Tout est en ordre : paiements, marges et fournisseurs sont dans les seuils.
+        </p>
+      ) : (
+        <section aria-label="Alertes opérationnelles">
           <ul className="space-y-2">
             {s.alerts.map((a) => {
               const Icon = a.level === "critical" ? OctagonAlert : a.level === "warning" ? AlertTriangle : Info;
               return (
-                <li key={a.key} className={`flex items-start gap-3 rounded-xl border p-3 text-sm ${a.level === "critical" ? "border-destructive/50 bg-destructive/5" : a.level === "warning" ? "border-accent bg-accent/15" : "bg-card"}`}>
+                <li key={a.key} className={`flex items-start gap-3 rounded-2xl p-4 text-sm shadow-card ${a.level === "critical" ? "bg-destructive/8 text-destructive" : a.level === "warning" ? "bg-warning/10 text-warning" : "bg-card"}`}>
                   <Icon className="mt-0.5 size-4 shrink-0" aria-hidden />
-                  <span className="flex-1">{a.message}</span>
+                  <span className="flex-1 text-foreground">{a.message}</span>
                   {a.href && (
                     <Link href={a.href} className="shrink-0 font-medium text-primary underline underline-offset-4">
                       Voir
@@ -59,8 +60,8 @@ export default async function AdminHomePage({ searchParams }: PageProps<"/admin"
               );
             })}
           </ul>
-        )}
-      </section>
+        </section>
+      )}
 
       <section aria-labelledby="activite" className="space-y-4">
         <h2 id="activite" className="text-heading">Activité</h2>
@@ -79,34 +80,33 @@ export default async function AdminHomePage({ searchParams }: PageProps<"/admin"
       <section aria-labelledby="generations" className="space-y-3">
         <h2 id="generations" className="text-heading">Générations</h2>
         {noGenerations ? (
-          <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-            Aucune génération sur la période.
-          </p>
+          <p className="text-sm text-muted-foreground">Aucune génération sur la période.</p>
         ) : (
-          <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-4">
-            <Kpi label="En attente" value={formatNumber(gen.pending)} />
-            <Kpi label="En cours" value={formatNumber(gen.processing)} />
-            <Kpi label="Réussies" value={formatNumber(gen.completed)} />
-            <Kpi label="Échouées" value={formatNumber(gen.failed)} />
+          <dl className="grid grid-cols-2 divide-x divide-y overflow-hidden rounded-3xl bg-card shadow-card sm:grid-cols-4 sm:divide-y-0">
+            {[
+              ["En attente", gen.pending],
+              ["En cours", gen.processing],
+              ["Réussies", gen.completed],
+              ["Échouées", gen.failed],
+            ].map(([label, value]) => (
+              <div key={label} className="space-y-1 p-5">
+                <dt className="text-label">{label}</dt>
+                <dd className="text-title tabular-nums">{formatNumber(Number(value))}</dd>
+              </div>
+            ))}
           </dl>
         )}
-      </section>
-
-      <section aria-labelledby="fournisseur" className="space-y-3">
-        <h2 id="fournisseur" className="text-heading">Solde fournisseur Higgsfield (estimation)</h2>
-        {s.providerBalance.known ? (
-          <>
-            <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-3">
-              <Kpi label="Recharges saisies" value={`${formatNumber(s.providerBalance.topUpsUsd)} $`} />
-              <Kpi label="Coût estimé consommé" value={`${formatNumber(s.providerBalance.estimatedConsumedUsd)} $`} />
-              <Kpi label="Solde estimé" value={`${formatNumber(s.providerBalance.estimatedBalanceUsd)} $`} />
-            </dl>
-          </>
-        ) : (
-          <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-            Non calculable : aucune recharge n’a été saisie. <Link href="/admin/finances" className="font-medium text-primary underline underline-offset-4">Saisir une recharge</Link>.
-          </p>
-        )}
+        <p className="text-sm text-muted-foreground">
+          {s.providerBalance.known ? (
+            <>
+              Solde fournisseur estimé : <strong className="text-foreground">{formatNumber(s.providerBalance.estimatedBalanceUsd)} $</strong> ({formatNumber(s.providerBalance.topUpsUsd)} $ rechargés, {formatNumber(s.providerBalance.estimatedConsumedUsd)} $ consommés).
+            </>
+          ) : (
+            <>
+              Solde fournisseur non calculable : aucune recharge saisie. <Link href="/admin/finances" className="font-medium text-primary underline underline-offset-4">Saisir une recharge</Link>.
+            </>
+          )}
+        </p>
       </section>
     </div>
   );

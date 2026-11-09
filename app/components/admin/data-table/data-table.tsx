@@ -190,7 +190,7 @@ export function DataTable<TData extends RowData>({
                     key={header.id}
                     scope="col"
                     aria-sort={ariaSort(header.column.getIsSorted())}
-                    className={`border-b bg-muted px-4 py-3 font-semibold ${stickyClass(header.column.id, i)}`}
+                    className={`border-b bg-card px-4 py-3 text-[0.8125rem] font-medium text-muted-foreground ${stickyClass(header.column.id, i)}`}
                   >
                     {header.isPlaceholder ? null : <table.FlexRender header={header} />}
                   </th>

@@ -16,20 +16,20 @@ export function PageHeader({ title, description, actions }: { title: string; des
   );
 }
 
-/** Carte d'indicateur : valeur en grand, libellé et précision (ex. période) dessous. */
+/** Indicateur de tête de page : valeur en gras, libellé et précision à côté. Pas de carte : l'œil lit une phrase, pas trois boîtes. */
 export function StatCard({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
   return (
-    <div className="rounded-3xl bg-card shadow-card p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="text-title mt-1 tabular-nums">{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
-    </div>
+    <p className="text-sm text-muted-foreground">
+      <strong className="mr-1.5 font-heading text-xl font-bold tabular-nums text-foreground">{value}</strong>
+      {label}
+      {hint && <span className="text-muted-foreground/80"> · {hint}</span>}
+    </p>
   );
 }
 
-/** Rangée de trois cartes d'indicateurs en tête de page. */
+/** Rangée d'indicateurs en tête de page. */
 export function StatGrid({ children }: { children: ReactNode }) {
-  return <div className="grid gap-3 sm:grid-cols-3">{children}</div>;
+  return <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">{children}</div>;
 }
 
 /** Tableau défilant horizontalement (le conteneur est `relative` : indispensable pour les textes `sr-only`). */
