@@ -1,13 +1,14 @@
 "use client";
 
-import { Check, Eye, EyeOff, MoreVertical, Pencil, Power, PowerOff, ShieldOff, Star, StarOff, Tag, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Check, Eye, EyeOff, MoreVertical, Pencil, Power, PowerOff, ShieldOff, Star, StarOff, Tag, type LucideIcon } from "lucide-react";
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { ActionDialog, type ActionDialogProps } from "@/components/admin/action-dialog";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 /** Icônes nommées par une chaîne : les props restent sérialisables depuis un composant serveur. */
-const ICONS = { edit: Pencil, price: Tag, on: Power, off: PowerOff, publish: Eye, unpublish: EyeOff, star: Star, unstar: StarOff, handle: Check, demote: ShieldOff } satisfies Record<string, LucideIcon>;
+const ICONS = { edit: Pencil, price: Tag, on: Power, off: PowerOff, publish: Eye, unpublish: EyeOff, star: Star, unstar: StarOff, handle: Check, demote: ShieldOff, open: ArrowUpRight, status: Power } satisfies Record<string, LucideIcon>;
 export type RowActionIcon = keyof typeof ICONS;
 
 export interface RowAction {
@@ -16,8 +17,10 @@ export interface RowAction {
   icon?: RowActionIcon;
   /** Action sensible ou destructrice : rangée à part, en bas du menu, et en rouge. */
   destructive?: boolean;
+  /** Lien : l'action ouvre une page au lieu d'un dialogue. */
+  href?: string;
   /** Dialogue de confirmation / de saisie ouvert par l'action (sans bouton propre : c'est le menu qui l'ouvre). */
-  dialog: Omit<ActionDialogProps, "trigger" | "open" | "onOpenChange">;
+  dialog?: Omit<ActionDialogProps, "trigger" | "open" | "onOpenChange">;
 }
 
 /**
@@ -34,6 +37,15 @@ export function RowActions({ label, actions }: { label: string; actions: RowActi
 
   const item = (a: RowAction) => {
     const Icon = a.icon ? ICONS[a.icon] : null;
+    if (a.href)
+      return (
+        <DropdownMenuItem key={a.key} asChild>
+          <Link href={a.href}>
+            {Icon && <Icon aria-hidden />}
+            {a.label}
+          </Link>
+        </DropdownMenuItem>
+      );
     return (
       <DropdownMenuItem key={a.key} variant={a.destructive ? "destructive" : "default"} onSelect={() => setOpenKey(a.key)}>
         {Icon && <Icon aria-hidden />}
@@ -56,7 +68,7 @@ export function RowActions({ label, actions }: { label: string; actions: RowActi
           {risky.map(item)}
         </DropdownMenuContent>
       </DropdownMenu>
-      {current && <ActionDialog key={current.key} {...current.dialog} open onOpenChange={(v) => {
+      {current?.dialog && <ActionDialog key={current.key} {...current.dialog} open onOpenChange={(v) => {
         if (v) return;
         setOpenKey(null);
         // Le dialogue n'a pas de bouton d'ouverture propre : le focus revient explicitement sur le bouton du menu.

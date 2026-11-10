@@ -52,7 +52,7 @@ export default async function CountryPage({ params }: PageProps<"/admin/pays/[is
           <table className="w-full min-w-[48rem] text-left text-sm">
             <caption className="sr-only">Moyens de paiement de {c.name}</caption>
             <thead>
-              <tr className="[&>th]:border-b [&>th]:bg-muted [&>th]:px-4 [&>th]:py-3 [&>th]:font-semibold">
+              <tr className="[&>th]:border-b [&>th]:px-4 [&>th]:py-3 [&>th]:text-[0.8125rem] [&>th]:font-medium [&>th]:text-muted-foreground">
                 <th scope="col">Moyen</th>
                 <th scope="col">Type</th>
                 <th scope="col">Réseau SasPay</th>
