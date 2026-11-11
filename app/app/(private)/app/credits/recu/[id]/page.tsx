@@ -24,7 +24,7 @@ export default async function ReceiptPage({ params }: PageProps<"/app/credits/re
   const r = res.receipt;
 
   return (
-    <article className="mx-auto max-w-xl space-y-6 rounded-2xl border bg-card p-6 shadow-soft sm:p-8" aria-labelledby="receipt-title">
+    <article className="mx-auto max-w-xl space-y-6 rounded-3xl bg-card shadow-card p-6 shadow-soft sm:p-8" aria-labelledby="receipt-title">
       <header className="space-y-1">
         <p className="text-sm font-semibold uppercase tracking-wider text-primary">Reçu</p>
         <h1 id="receipt-title" className="text-3xl font-bold">

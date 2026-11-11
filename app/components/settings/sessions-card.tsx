@@ -48,7 +48,7 @@ export function SessionsCard() {
           Impossible de lister vos appareils pour le moment.
         </p>
       ) : (
-        <ul className="divide-y rounded-2xl border bg-card">
+        <ul className="divide-y rounded-3xl bg-card shadow-card">
           {sessions.map((s) => (
             <li key={s.id} className="flex items-center gap-3 px-4 py-3">
               <Laptop className="size-5 shrink-0 text-muted-foreground" aria-hidden />

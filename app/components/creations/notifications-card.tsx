@@ -39,7 +39,7 @@ export function NotificationsCard({ items, unread }: { items: NotificationItem[]
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
-        <CardTitle className="flex items-center gap-2 text-xl">
+        <CardTitle className="text-heading flex items-center gap-2">
           <Bell className="size-5 text-primary" aria-hidden /> Notifications
           {count > 0 && <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-bold text-accent-foreground">{count}</span>}
         </CardTitle>

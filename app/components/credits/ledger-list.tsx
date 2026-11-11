@@ -20,7 +20,7 @@ export const EMPTY_LEDGER: Record<LedgerFilter, string> = {
 export function LedgerList({ page, filter = "all" }: { page: LedgerPage; filter?: LedgerFilter }) {
   const items = page.items;
   if (items.length === 0) {
-    return <p className="rounded-2xl border bg-card p-6 text-center text-muted-foreground">{EMPTY_LEDGER[filter]}</p>;
+    return <p className="rounded-3xl bg-card shadow-card p-6 text-center text-muted-foreground">{EMPTY_LEDGER[filter]}</p>;
   }
 
   return (
@@ -35,7 +35,7 @@ export function LedgerList({ page, filter = "all" }: { page: LedgerPage; filter?
               ? { href: `/app/creations/${e.generationId}`, text: "Voir la création" }
               : null;
           return (
-            <li key={e.id} className="flex items-center gap-3 rounded-2xl border bg-card px-3.5 py-3">
+            <li key={e.id} className="flex items-center gap-3 rounded-3xl bg-card shadow-card px-3.5 py-3">
               <span aria-hidden className={`grid size-9 shrink-0 place-items-center rounded-full ${added ? "bg-success/15 text-success" : spent ? "bg-destructive/12 text-destructive" : "bg-muted text-muted-foreground"}`}>
                 {e.type === "PURCHASE" ? <Receipt className="size-4" /> : added ? <ArrowDownLeft className="size-4" /> : spent ? <ArrowUpRight className="size-4" /> : <Minus className="size-4" />}
               </span>

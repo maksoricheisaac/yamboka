@@ -58,7 +58,7 @@ async function Costs() {
 
       <ul className="grid gap-3 sm:grid-cols-3">
         {pricing.resolutions.map((r) => (
-          <li key={r.id} className="rounded-2xl border bg-card p-4">
+          <li key={r.id} className="rounded-3xl bg-card shadow-card p-4">
             <p className="text-sm text-muted-foreground">{r.label}</p>
             <p className="font-heading text-2xl font-bold tabular-nums">{formatNumber(r.creditsPerSecond)} <span className="text-sm font-medium text-muted-foreground">crédits par seconde</span></p>
             <p className="text-sm text-muted-foreground">5 secondes : {formatNumber(r.creditsPerSecond * 5)} crédits</p>
@@ -81,7 +81,7 @@ async function Costs() {
           <h3 className="flex items-center gap-2 text-xl font-bold"><Globe2 className="size-5 text-primary" aria-hidden /> Moyens de paiement par pays</h3>
           <ul className="mt-3 grid gap-3 sm:grid-cols-2">
             {pricing.countries.map((c) => (
-              <li key={c.iso} className="rounded-2xl border bg-card p-4">
+              <li key={c.iso} className="rounded-3xl bg-card shadow-card p-4">
                 <p className="font-semibold">{c.name} <span className="text-sm font-normal text-muted-foreground">· {c.currency}</span></p>
                 <p className="text-sm text-muted-foreground">{c.methods.filter((m) => m.status !== "COMING_SOON").map((m) => m.name).join(" · ")}</p>
               </li>

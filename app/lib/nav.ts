@@ -73,22 +73,16 @@ export const USER_NAV: NavGroup[] = [
   },
 ];
 
-/** Rubriques de l'administration : Pilotage, Clients, Générations et modération, Offre, Finances, Configuration, Audit. */
+/** Rubriques de l'administration : Pilotage, Offre, Finances, Configuration (quatre rubriques, pas une par page). */
 export const ADMIN_NAV: NavGroup[] = [
   {
     label: "Pilotage",
-    items: [{ title: "Tableau de bord", href: "/admin", icon: Activity, exact: true }],
-  },
-  {
-    label: "Clients",
     items: [
+      { title: "Tableau de bord", href: "/admin", icon: Activity, exact: true },
       { title: "Utilisateurs", href: "/admin/utilisateurs", icon: Users },
+      { title: "Générations", href: "/admin/generations", icon: Clapperboard },
       { title: "Réclamations", href: "/admin/signalements", icon: LifeBuoy },
     ],
-  },
-  {
-    label: "Générations et modération",
-    items: [{ title: "Générations", href: "/admin/generations", icon: Clapperboard }],
   },
   {
     label: "Offre",
@@ -112,11 +106,8 @@ export const ADMIN_NAV: NavGroup[] = [
       { title: "Paramètres", href: "/admin/parametres", icon: Settings },
       { title: "Textes légaux", href: "/admin/textes-legaux", icon: FileText },
       { title: "Administrateurs", href: "/admin/administrateurs", icon: ShieldCheck },
+      { title: "Journal d’audit", href: "/admin/audit", icon: ScrollText },
     ],
-  },
-  {
-    label: "Audit",
-    items: [{ title: "Journal d’audit", href: "/admin/audit", icon: ScrollText }],
   },
 ];
 

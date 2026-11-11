@@ -21,7 +21,7 @@ export default function ContactPage() {
       <Section labelledBy="contact-title">
         <h2 id="contact-title" className="sr-only">Nous joindre</h2>
         <div className="grid gap-6 md:grid-cols-2">
-          <div className="rounded-2xl border bg-card p-6 shadow-soft">
+          <div className="rounded-3xl bg-card shadow-card p-6 shadow-soft">
             <MessageCircle className="size-7 text-primary" aria-hidden />
             <h3 className="mt-3 text-xl font-bold">WhatsApp</h3>
             {link ? (
@@ -41,7 +41,7 @@ export default function ContactPage() {
               </p>
             )}
           </div>
-          <div className="rounded-2xl border bg-card p-6 shadow-soft">
+          <div className="rounded-3xl bg-card shadow-card p-6 shadow-soft">
             <h3 className="text-xl font-bold">Signaler un contenu</h3>
             <p className="mt-2 text-muted-foreground">
               Un formulaire de signalement ouvert à tous sera disponible à l’ouverture du service. Les contenus

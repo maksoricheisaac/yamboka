@@ -15,7 +15,7 @@ export function PackCard({ offer, maxCredits }: { offer: PublicOffer; maxCredits
   const share = Math.max(8, Math.round((offer.totalCredits / maxCredits) * 100));
   return (
     <article
-      className={`group relative flex h-full flex-col rounded-3xl border bg-card p-6 transition-[transform,box-shadow,background-color,border-color,color,opacity] duration-300 hover:-translate-y-1 hover:shadow-lg motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${
+      className={`group relative flex h-full flex-col rounded-3xl bg-card shadow-card p-6 transition-[transform,box-shadow,background-color,border-color,color,opacity] duration-300 hover:-translate-y-1 hover:shadow-lg motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${
         offer.featured ? "border-primary shadow-soft ring-2 ring-primary/30 md:-translate-y-2 md:hover:-translate-y-3" : "shadow-soft"
       }`}
     >

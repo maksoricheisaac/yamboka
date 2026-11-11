@@ -1,32 +1,39 @@
+import { Clapperboard, Smartphone, Wallet } from "lucide-react";
+
+const POINTS = [
+  { icon: Smartphone, text: "Depuis votre téléphone, en quelques clics" },
+  { icon: Clapperboard, text: "Une vidéo prête à publier à partir de votre photo" },
+  { icon: Wallet, text: "Vous payez seulement les crédits que vous achetez, en mobile money" },
+];
+
 /**
- * Panneau visuel des pages d'authentification (écran large uniquement : sur téléphone, le formulaire passe avant tout).
- * Illustration décorative d'une création qui se révèle ; ce n'est pas un résultat généré, la mention le dit.
+ * Panneau de marque des pages d'authentification (écran large uniquement : sur téléphone, le formulaire passe
+ * avant tout). Du texte et de la matière plutôt qu'une fausse illustration : rien ici ne prétend être une création réelle.
  */
 export function AuthAside() {
   return (
-    <aside aria-hidden className="relative hidden overflow-hidden bg-primary text-primary-foreground lg:flex lg:flex-col lg:items-center lg:justify-center lg:gap-8 lg:p-12">
-      <div className="absolute -right-24 -top-24 size-80 rounded-full bg-accent/25 blur-3xl" />
-      <div className="absolute -bottom-32 -left-20 size-96 rounded-full bg-chart-4/30 blur-3xl" />
+    <aside aria-hidden className="relative hidden overflow-hidden bg-primary text-primary-foreground lg:flex lg:flex-col lg:justify-between lg:p-14">
+      <div className="absolute -right-32 -top-32 size-[28rem] rounded-full bg-accent/30 blur-3xl" />
+      <div className="absolute -bottom-40 -left-24 size-[30rem] rounded-full bg-chart-4/35 blur-3xl" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,oklch(1_0_0/0.08)_1px,transparent_0)] bg-[length:22px_22px]" />
 
-      <div className="relative w-64 rotate-3 rounded-3xl border border-primary-foreground/20 bg-card p-2 shadow-soft">
-        <div className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-linear-to-br from-primary to-chart-4">
-          <svg viewBox="0 0 200 250" className="absolute inset-0 size-full">
-            <circle cx="152" cy="58" r="30" className="animate-float fill-accent" opacity="0.95" />
-            <path d="M-10 205 C 40 165, 80 235, 130 195 S 200 175, 220 205 V 260 H -10 Z" className="fill-foreground/20" />
-            <g className="animate-float" style={{ transformOrigin: "100px 200px" }}>
-              <circle cx="100" cy="100" r="17" className="fill-primary-foreground" />
-              <path d="M70 205 C 70 140, 130 140, 130 205 Z" className="fill-primary-foreground" />
-              <path d="M76 150 L48 118 M124 150 L152 120" className="stroke-primary-foreground" strokeWidth="6" strokeLinecap="round" fill="none" />
-            </g>
-          </svg>
-          <span className="absolute bottom-2 right-2 rounded-full bg-background/90 px-2 py-0.5 text-[0.7rem] font-semibold uppercase tracking-wide text-foreground">Démo</span>
-        </div>
+      <p className="relative text-sm font-medium text-primary-foreground/70">Yamboka</p>
+
+      <div className="relative space-y-10">
+        <p className="text-display max-w-md text-balance">Votre produit, en vidéo.</p>
+        <ul className="max-w-sm space-y-4">
+          {POINTS.map(({ icon: Icon, text }) => (
+            <li key={text} className="flex items-start gap-3 text-base text-primary-foreground/85">
+              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-primary-foreground/12 backdrop-blur">
+                <Icon className="size-4" />
+              </span>
+              <span>{text}</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
-      <div className="relative max-w-xs text-center">
-        <p className="font-heading text-3xl font-bold leading-tight">Votre vidéo. Votre personnage. Une création.</p>
-        <p className="mt-3 text-sm text-primary-foreground/75">Illustration, pas une création réelle.</p>
-      </div>
+      <span />
     </aside>
   );
 }

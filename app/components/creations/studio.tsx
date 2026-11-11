@@ -230,7 +230,7 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
           }}
           className="space-y-3"
         >
-          <div className="rounded-3xl border bg-card p-3 shadow-soft transition-shadow focus-within:shadow-md focus-within:ring-2 focus-within:ring-ring/30">
+          <div className="rounded-3xl bg-card shadow-card p-3 shadow-soft transition-shadow focus-within:shadow-md focus-within:ring-2 focus-within:ring-ring/30">
             {photoUrl && (
               <div className="mb-2 flex items-center gap-2">
                 <span className="relative">

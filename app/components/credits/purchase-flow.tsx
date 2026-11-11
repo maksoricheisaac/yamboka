@@ -39,7 +39,7 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
 }
 
 const choiceClass =
-  "cursor-pointer rounded-xl border bg-card transition-colors hover:border-primary/50 has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:ring-2 has-[:checked]:ring-primary/30 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring";
+  "cursor-pointer rounded-3xl bg-card shadow-card transition-[transform,box-shadow,background-color] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-float active:scale-[0.99] has-[:checked]:bg-primary/6 has-[:checked]:shadow-float has-[:checked]:ring-2 has-[:checked]:ring-primary has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring";
 
 /** Numéro déjà connu, gardé seulement s'il appartient au pays du paiement. */
 /** Premier moyen réellement sélectionnable (les « Bientôt disponible » sont affichés mais jamais choisis). */
@@ -270,7 +270,7 @@ export function PurchaseFlow({
                   {formatNumber(pack.totalCredits)} <span className="text-sm font-medium text-muted-foreground">crédits</span>
                 </span>
                 <span className="mt-1 text-sm font-semibold">{formatMoney(pack.priceFcfa, country.currency)}</span>
-                {pack.equivalent["480p"].videos > 0 && <span className="mt-1 text-xs text-muted-foreground">≈ {formatNumber(pack.equivalent["480p"].videos)} vidéos de {REFERENCE_VIDEO_SECONDS} s</span>}
+                {pack.equivalent["480p"].videos > 0 && <span className="mt-1 text-xs text-muted-foreground">≈ {formatNumber(pack.equivalent["480p"].videos)} {pack.equivalent["480p"].videos > 1 ? "vidéos" : "vidéo"} de {REFERENCE_VIDEO_SECONDS} s</span>}
                 {pack.bonusPercent > 0 && <span className="mt-1 text-xs font-medium text-success">+{pack.bonusPercent} % offerts au 1er achat</span>}
                 <Check className="absolute bottom-3 right-3 hidden size-5 rounded-full bg-primary p-0.5 text-primary-foreground group-has-[:checked]:block" aria-hidden />
               </label>
@@ -279,7 +279,7 @@ export function PurchaseFlow({
         )}
 
         {mode === "custom" && custom && (
-          <div className="space-y-3 rounded-2xl border bg-card p-4">
+          <div className="space-y-3 rounded-3xl bg-card shadow-card p-4">
             <div className="flex items-end gap-2">
               <div className="min-w-0 flex-1">
                 <label htmlFor={`${uid}-credits`} className="mb-1.5 block text-sm font-medium">
@@ -395,7 +395,7 @@ export function PurchaseFlow({
           <div className="space-y-1 text-sm" aria-live="polite">
             <p>
               <strong>{formatNumber(credits)} crédits</strong>
-              {videos > 0 && <span className="text-muted-foreground"> · ≈ {formatNumber(videos)} vidéos de {REFERENCE_VIDEO_SECONDS} s</span>}
+              {videos > 0 && <span className="text-muted-foreground"> · ≈ {formatNumber(videos)} {videos > 1 ? "vidéos" : "vidéo"} de {REFERENCE_VIDEO_SECONDS} s</span>}
               {" "}— à payer : <strong>{formatMoney(amount, country.currency)}</strong>
             </p>
             <p className="text-muted-foreground">

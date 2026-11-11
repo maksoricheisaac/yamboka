@@ -52,7 +52,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/app/hist
     <div className="mx-auto max-w-3xl space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Historique</h1>
+          <h1 className="text-title">Historique</h1>
           <p className="mt-1 text-muted-foreground">Achats, créations, remboursements et bonus : tout ce qui a touché vos crédits.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -87,7 +87,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/app/hist
 
       <section aria-label={current.label}>
         {!purchases && (
-          <form method="get" className="mb-3 flex flex-wrap items-end gap-3 rounded-2xl border bg-card p-3">
+          <form method="get" className="mb-3 flex flex-wrap items-end gap-3 rounded-3xl bg-card shadow-card p-3">
             {current.param !== "tout" && <input type="hidden" name="filtre" value={current.param} />}
             <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
               Du

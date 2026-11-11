@@ -80,7 +80,7 @@ export function CreationDetail({ initial }: { initial: CreationView }) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-start">
-      <div className="rounded-3xl border bg-card p-4 shadow-soft sm:p-6">
+      <div className="rounded-3xl bg-card shadow-card p-4 shadow-soft sm:p-6">
         {c.simulated && (
           <Alert role="status" className="mb-4 border-amber-400 bg-amber-50 text-amber-950">
             <TriangleAlert className="size-4" aria-hidden />
@@ -125,7 +125,7 @@ export function CreationDetail({ initial }: { initial: CreationView }) {
           <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary">
             <Clapperboard className="size-4" aria-hidden /> Vidéo
           </p>
-          <h1 className="text-3xl font-bold">{creationHeading(c)}</h1>
+          <h1 className="text-title">{creationHeading(c)}</h1>
           <StatusPill creation={c} />
         </div>
 
@@ -139,11 +139,11 @@ export function CreationDetail({ initial }: { initial: CreationView }) {
         {c.prompt && (
           <section aria-labelledby="prompt-label" className="space-y-1.5">
             <h2 id="prompt-label" className="text-sm font-semibold text-muted-foreground">Votre description</h2>
-            <p className="whitespace-pre-wrap rounded-2xl border bg-card p-4 text-sm leading-relaxed">{c.prompt}</p>
+            <p className="whitespace-pre-wrap rounded-3xl bg-card shadow-card p-4 text-sm leading-relaxed">{c.prompt}</p>
           </section>
         )}
 
-        <dl className="divide-y rounded-2xl border bg-card px-4">
+        <dl className="divide-y rounded-3xl bg-card shadow-card px-4">
           <Row label="Créée le">{formatDateTime(c.createdAt)}</Row>
           <Row label="Coût">{credits(c.credits)}</Row>
           <Row label="Format">{c.options.format}</Row>

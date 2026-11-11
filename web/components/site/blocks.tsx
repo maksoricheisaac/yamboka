@@ -25,7 +25,7 @@ export function Section({
     <section
       id={id}
       aria-labelledby={labelledBy}
-      className={`${tone === "muted" ? "bg-secondary/50" : ""} py-16 sm:py-20 ${className}`}
+      className={`${tone === "muted" ? "bg-secondary/50" : ""} py-20 sm:py-28 ${className}`}
     >
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">{children}</div>
     </section>
@@ -47,8 +47,8 @@ export function SectionHeading({
 }) {
   return (
     <div className={`mb-10 max-w-2xl space-y-3 ${align === "center" ? "mx-auto text-center" : ""}`}>
-      {eyebrow && <p className="text-sm font-semibold uppercase tracking-wider text-primary">{eyebrow}</p>}
-      <h2 id={id} className="text-3xl font-bold sm:text-4xl">
+      {eyebrow && <p className="text-sm font-semibold text-primary">{eyebrow}</p>}
+      <h2 id={id} className="text-title">
         {title}
       </h2>
       {lead && <p className="text-lg text-muted-foreground">{lead}</p>}
@@ -63,8 +63,8 @@ export function PageHero({ eyebrow, title, lead, path }: { eyebrow?: string; tit
       {path && <JsonLd data={breadcrumbLd([{ name: "Accueil", path: "/" }, { name: title, path }])} />}
       <div aria-hidden className="absolute inset-0 -z-10 bg-[radial-gradient(50rem_20rem_at_90%_0%,color-mix(in_oklch,var(--accent),transparent_80%),transparent)]" />
       <div className="mx-auto w-full max-w-6xl space-y-4 px-4 py-12 sm:px-6 sm:py-16">
-        {eyebrow && <p className="text-sm font-semibold uppercase tracking-wider text-primary">{eyebrow}</p>}
-        <h1 className="max-w-3xl text-4xl font-bold sm:text-5xl">{title}</h1>
+        {eyebrow && <p className="text-sm font-semibold text-primary">{eyebrow}</p>}
+        <h1 className="text-title max-w-3xl sm:text-[3.5rem]">{title}</h1>
         {lead && <p className="max-w-2xl text-lg text-muted-foreground sm:text-xl">{lead}</p>}
       </div>
     </div>
@@ -83,7 +83,7 @@ export function CtaBand({
     <Section>
       <div className="relative overflow-hidden rounded-3xl bg-primary px-6 py-12 text-primary-foreground sm:px-12 sm:py-14">
         <div aria-hidden className="absolute -right-16 -top-16 size-64 rounded-full bg-accent/30 blur-3xl" />
-        <div aria-hidden className="absolute -bottom-6 right-8 hidden w-32 rotate-6 rounded-2xl border border-primary-foreground/20 bg-card p-1 shadow-soft md:block">
+        <div aria-hidden className="absolute -bottom-6 right-8 hidden w-32 rotate-6 rounded-3xl bg-card shadow-card p-1 shadow-soft md:block">
           <Still image={danseApres} fallback={<StudioScene mode="result" label="" />} />
         </div>
         <div className="relative max-w-xl space-y-4">

@@ -63,7 +63,7 @@ export function NotificationPrefs({ initial }: { initial: PreferencesView }) {
         </Alert>
       )}
 
-      <ul className="divide-y rounded-2xl border bg-card">
+      <ul className="divide-y rounded-3xl bg-card shadow-card">
         {EVENTS.map((ev) => (
           <li key={ev.key}>
             <label htmlFor={`pref-${ev.key}`} className="flex min-h-16 cursor-pointer items-center gap-4 px-4 py-3">

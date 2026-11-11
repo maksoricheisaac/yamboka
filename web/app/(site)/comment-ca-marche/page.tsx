@@ -44,7 +44,7 @@ export default function HowItWorksPage() {
         <SectionHeading id="journey-title" title="Le parcours complet" />
         <ol className="space-y-6">
           {JOURNEY.map((step, i) => (
-            <li key={step.title} className={`grid gap-4 rounded-2xl border bg-card p-6 shadow-soft ${comment[i] ? "sm:grid-cols-[4rem_1fr_9rem]" : "sm:grid-cols-[4rem_1fr]"}`}>
+            <li key={step.title} className={`grid gap-4 rounded-3xl bg-card shadow-card p-6 shadow-soft ${comment[i] ? "sm:grid-cols-[4rem_1fr_9rem]" : "sm:grid-cols-[4rem_1fr]"}`}>
               <span
                 aria-hidden
                 className="grid size-12 place-items-center rounded-xl bg-primary font-heading text-xl font-bold text-primary-foreground"

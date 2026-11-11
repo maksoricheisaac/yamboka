@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import type { AdminCountryRow, AdminCountrySummary, Page } from "@yamboka/shared";
 import { CATALOG_STATUS_LABELS } from "@yamboka/shared";
-import Link from "next/link";
 import { CountryStatusPill } from "@/components/admin/country-status";
-import { ActionDialog } from "@/components/admin/action-dialog";
+import { RowActions } from "@/components/admin/row-actions";
 import { Empty, FilterBar, StatCard, StatGrid, FilterField, FilterSelect, PageHeader, Pager, flat, listQuery } from "@/components/admin/ui";
 import { requireUser } from "@/lib/auth";
 import { flagOf } from "@/lib/flags";
@@ -39,11 +38,11 @@ export default async function CountriesPage({ searchParams }: PageProps<"/admin/
       {data.items.length === 0 ? (
         <Empty title="Aucun pays">Aucun pays ne correspond à ces critères.</Empty>
       ) : (
-        <div className="relative overflow-x-auto rounded-2xl border bg-card">
+        <div className="relative overflow-x-auto rounded-3xl bg-card shadow-card">
           <table className="w-full min-w-[56rem] text-left text-sm">
             <caption className="sr-only">Pays intégrés et leur statut</caption>
             <thead>
-              <tr className="[&>th]:border-b [&>th]:bg-muted [&>th]:px-4 [&>th]:py-3 [&>th]:font-semibold">
+              <tr className="[&>th]:border-b [&>th]:px-4 [&>th]:py-3 [&>th]:text-[0.8125rem] [&>th]:font-medium [&>th]:text-muted-foreground">
                 <th scope="col">Pays</th>
                 <th scope="col">ISO</th>
                 <th scope="col">Devise</th>
@@ -55,7 +54,7 @@ export default async function CountriesPage({ searchParams }: PageProps<"/admin/
             </thead>
             <tbody>
               {data.items.map((c) => (
-                <tr key={c.iso} className="hover:bg-muted/40 [&>td]:border-b [&>td]:px-4 [&>td]:py-3">
+                <tr key={c.iso} className="hover:bg-muted/40 [&>td]:border-b [&>td]:px-4 [&>td]:py-3.5 [&>td]:align-middle">
                   <td className="font-medium">
                     <span aria-hidden className="mr-2 text-lg">{flagOf(c.iso)}</span>
                     {c.name}
@@ -72,19 +71,24 @@ export default async function CountriesPage({ searchParams }: PageProps<"/admin/
                   </td>
                   <td className="text-muted-foreground">{c.feeNote ?? "—"}</td>
                   <td className="text-right">
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <ActionDialog
-                        trigger="Statut"
-                        triggerLabel={`Changer le statut de ${c.name}`}
-                        title={`Statut de ${c.name}`}
-                        description="Actif : ouvert. Bientôt disponible : visible, non sélectionnable. Désactivé : jamais proposé."
-                        endpoint={`/admin/countries/${c.iso}/status`}
-                        fields={[{ name: "status", label: "Nouveau statut", type: "select", defaultValue: c.status, options: STATUS_OPTIONS }]}
-                      />
-                      <Link href={`/admin/pays/${c.iso}`} className="font-medium text-primary underline underline-offset-4">
-                        Ouvrir<span className="sr-only"> la fiche de {c.name}</span>
-                      </Link>
-                    </div>
+                    <RowActions
+                      label={`Actions pour ${c.name}`}
+                      actions={[
+                        { key: "open", label: "Ouvrir la fiche", icon: "open", href: `/admin/pays/${c.iso}` },
+                        {
+                          key: "status",
+                          label: "Changer le statut",
+                          icon: "status",
+                          dialog: {
+                            triggerLabel: `Changer le statut de ${c.name}`,
+                            title: `Statut de ${c.name}`,
+                            description: "Actif : ouvert. Bientôt disponible : visible, non sélectionnable. Désactivé : jamais proposé.",
+                            endpoint: `/admin/countries/${c.iso}/status`,
+                            fields: [{ name: "status", label: "Nouveau statut", type: "select", defaultValue: c.status, options: STATUS_OPTIONS }],
+                          },
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

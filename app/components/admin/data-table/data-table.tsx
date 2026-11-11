@@ -179,7 +179,7 @@ export function DataTable<TData extends RowData>({
         )}
       </div>
 
-      <div className="relative overflow-x-auto rounded-2xl border bg-card">
+      <div className="relative overflow-x-auto rounded-3xl bg-card shadow-card">
         <table className="w-full text-left text-sm" style={{ minWidth }}>
           <caption className="sr-only">{caption}</caption>
           <thead>
@@ -190,7 +190,7 @@ export function DataTable<TData extends RowData>({
                     key={header.id}
                     scope="col"
                     aria-sort={ariaSort(header.column.getIsSorted())}
-                    className={`border-b bg-muted px-4 py-3 font-semibold ${stickyClass(header.column.id, i)}`}
+                    className={`border-b bg-card px-4 py-3 text-[0.8125rem] font-medium text-muted-foreground ${stickyClass(header.column.id, i)}`}
                   >
                     {header.isPlaceholder ? null : <table.FlexRender header={header} />}
                   </th>

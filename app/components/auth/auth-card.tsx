@@ -14,7 +14,7 @@ export function AuthCard({ title, lead, children, footer }: { title: string; lea
       </div>
       <div className="space-y-6 sm:rounded-3xl sm:border sm:bg-card sm:p-8 sm:shadow-soft lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold">{title}</h1>
+          <h1 className="text-title">{title}</h1>
           {lead && <p className="text-muted-foreground">{lead}</p>}
         </div>
         {children}

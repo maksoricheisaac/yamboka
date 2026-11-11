@@ -8,7 +8,7 @@ export function PageHeader({ title, description, actions }: { title: string; des
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0 space-y-1">
-        <h1 className="text-xl font-bold sm:text-2xl">{title}</h1>
+        <h1 className="text-title">{title}</h1>
         {description && <p className="max-w-2xl text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -16,26 +16,26 @@ export function PageHeader({ title, description, actions }: { title: string; des
   );
 }
 
-/** Carte d'indicateur : valeur en grand, libellé et précision (ex. période) dessous. */
+/** Indicateur de tête de page : valeur en gras, libellé et précision à côté. Pas de carte : l'œil lit une phrase, pas trois boîtes. */
 export function StatCard({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
   return (
-    <div className="rounded-2xl border bg-card p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums">{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
-    </div>
+    <p className="text-sm text-muted-foreground">
+      <strong className="mr-1.5 font-heading text-xl font-bold tabular-nums text-foreground">{value}</strong>
+      {label}
+      {hint && <span className="text-muted-foreground/80"> · {hint}</span>}
+    </p>
   );
 }
 
-/** Rangée de trois cartes d'indicateurs en tête de page. */
+/** Rangée d'indicateurs en tête de page. */
 export function StatGrid({ children }: { children: ReactNode }) {
-  return <div className="grid gap-3 sm:grid-cols-3">{children}</div>;
+  return <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">{children}</div>;
 }
 
 /** Tableau défilant horizontalement (le conteneur est `relative` : indispensable pour les textes `sr-only`). */
 export function DataTable({ caption, children, minWidth = "44rem" }: { caption: string; children: ReactNode; minWidth?: string }) {
   return (
-    <div className="relative overflow-x-auto rounded-2xl border bg-card">
+    <div className="relative overflow-x-auto rounded-3xl bg-card shadow-card">
       <table className="w-full text-left text-sm [&_tbody_tr:hover]:bg-muted/40 [&_tbody_tr:last-child_td]:border-b-0" style={{ minWidth }}>
         <caption className="sr-only">{caption}</caption>
         {children}
@@ -46,14 +46,14 @@ export function DataTable({ caption, children, minWidth = "44rem" }: { caption: 
 
 export function Th({ children, className = "" }: { children?: ReactNode; className?: string }) {
   return (
-    <th scope="col" className={`border-b bg-muted px-4 py-3 font-semibold ${className}`}>
+    <th scope="col" className={`border-b px-4 py-3 text-[0.8125rem] font-medium text-muted-foreground ${className}`}>
       {children}
     </th>
   );
 }
 
 export function Td({ children, className = "" }: { children?: ReactNode; className?: string }) {
-  return <td className={`border-b px-4 py-3 align-top ${className}`}>{children}</td>;
+  return <td className={`border-b px-4 py-3.5 align-middle ${className}`}>{children}</td>;
 }
 
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {
@@ -66,10 +66,10 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
 }
 
 const TONES = {
-  ok: "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100",
-  warn: "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100",
-  bad: "bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-100",
-  info: "bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-100",
+  ok: "bg-success/15 text-success",
+  warn: "bg-warning/15 text-warning",
+  bad: "bg-destructive/12 text-destructive",
+  info: "bg-info/15 text-info",
   neutral: "bg-muted text-muted-foreground",
 } as const;
 
@@ -134,7 +134,7 @@ export { Pager } from "@/components/pager";
 /** Filtres en méthode GET : fonctionnent sans JavaScript et se partagent par URL. */
 export function FilterBar({ children, reset }: { children: ReactNode; reset: string }) {
   return (
-    <form method="get" className="flex flex-wrap items-end gap-3 rounded-2xl border bg-card p-3">
+    <form method="get" className="flex flex-wrap items-end gap-3 rounded-3xl bg-card shadow-card p-3">
       {children}
       <Button type="submit">Filtrer</Button>
       <Button asChild variant="secondary">

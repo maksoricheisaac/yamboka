@@ -20,7 +20,7 @@ export default async function CreditsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl font-bold">Crédits</h1>
+        <h1 className="text-title">Crédits</h1>
         <div className="flex items-center gap-2">
           <p className="flex items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-sm" aria-label="Solde actuel">
             <Coins className="size-4 text-primary" aria-hidden />
@@ -36,7 +36,7 @@ export default async function CreditsPage() {
       <section aria-labelledby="buy-title">
         <h2 id="buy-title" className="sr-only">Acheter des crédits</h2>
         {pricing.countries.length === 0 ? (
-          <p className="rounded-2xl border bg-card p-6 text-center text-muted-foreground">L’achat de crédits n’est pas disponible pour le moment. Réessayez bientôt.</p>
+          <p className="rounded-3xl bg-card shadow-card p-6 text-center text-muted-foreground">L’achat de crédits n’est pas disponible pour le moment. Réessayez bientôt.</p>
         ) : (
           <PurchaseFlow
             countries={pricing.countries}

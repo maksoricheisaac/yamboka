@@ -238,7 +238,7 @@ export function EmailTestPanel({ provider }: { provider: "console" | "smtp" }) {
   }
 
   return (
-    <div className="space-y-3 rounded-2xl border bg-card p-4">
+    <div className="space-y-3 rounded-3xl bg-card shadow-card p-4">
       <p className="text-sm">
         Envoi d’e-mails : <strong>{provider === "smtp" ? "SMTP (envoi réel)" : "console (aucun e-mail réel)"}</strong>. Variables : <code className="rounded bg-muted px-1">EMAIL_PROVIDER</code>, <code className="rounded bg-muted px-1">SMTP_*</code> (serveur, non modifiables ici).
       </p>

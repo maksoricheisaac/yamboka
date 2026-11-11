@@ -101,7 +101,7 @@ export function CreationsGallery({ compact = false }: { compact?: boolean }) {
       )}
 
       {query.isSuccess && items.length === 0 && (
-        <div className="grid place-items-center gap-3 rounded-3xl border border-dashed bg-card/60 px-6 py-14 text-center">
+        <div className="grid place-items-center gap-3 rounded-3xl bg-card px-6 py-14 text-center shadow-card">
           <span className="grid size-14 place-items-center rounded-full bg-primary/10 text-primary">
             <Sparkles className="size-6" aria-hidden />
           </span>
