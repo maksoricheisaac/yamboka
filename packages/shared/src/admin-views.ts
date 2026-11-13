@@ -79,7 +79,19 @@ export interface AdminUserRow {
 export interface AdminUserDetail extends AdminUserRow {
   phone: string | null;
   deletedAt: string | null;
-  payments: { id: string; amount: number; credits: number; status: string; operator: string; createdAt: string }[];
+  payments: {
+    id: string;
+    amount: number;
+    currency: string;
+    credits: number;
+    status: string;
+    operator: string;
+    createdAt: string;
+    /** Pack acheté (ou achat sur mesure) et référence fournisseur : servent au récapitulatif d'une régularisation. */
+    packName: string;
+    externalReference: string | null;
+    creditState: PaymentCreditState;
+  }[];
   generations: { id: string; status: string; creditsCost: number; product: string; createdAt: string }[];
   ledger: { id: string; type: string; amount: number; note: string | null; createdAt: string }[];
   moderation: { id: string; action: string; reason: string; actor: string; createdAt: string }[];
@@ -173,9 +185,63 @@ export interface AdminPaymentRow {
   lastCheckedAt: string | null;
   /** Problème de traitement constaté (fournisseur injoignable, clé refusée, refus…), sinon null. */
   issue: string | null;
+  /** État de l'attribution des crédits, indépendant du statut du paiement. */
+  creditState: PaymentCreditState;
+  /** Origine de l'attribution : vérification automatique ou régularisation administrative. */
+  creditOrigin: 'AUTO' | 'MANUAL' | null;
+  /** Vrai quand le paiement demande une intervention (confirmé non crédité, bloqué, montant incohérent). */
+  needsAttention: boolean;
 }
 
-export type AdminPaymentEventKind = 'created' | 'webhook' | 'verification' | 'credited' | 'failed';
+/**
+ * - `CREDITED` : les crédits sont au registre.
+ * - `NOT_CREDITED` : le paiement est confirmé mais aucun crédit n'a été attribué — anomalie à régulariser.
+ * - `NONE` : rien à attribuer (paiement en attente, échoué ou annulé).
+ */
+export type PaymentCreditState = 'CREDITED' | 'NOT_CREDITED' | 'NONE';
+
+/** Anomalies filtrables dans le journal des paiements. */
+export const PAYMENT_ANOMALIES = [
+  { value: 'pending', label: 'En attente' },
+  { value: 'uncredited', label: 'Confirmés non crédités' },
+  { value: 'settled', label: 'Régularisés manuellement' },
+  { value: 'attention', label: 'Nécessitent une intervention' },
+] as const;
+export type PaymentAnomaly = (typeof PAYMENT_ANOMALIES)[number]['value'];
+
+/** Compteurs du journal des paiements, calculés sur les MÊMES filtres que la liste affichée. */
+export interface AdminPaymentStats {
+  total: number;
+  success: number;
+  pending: number;
+  failed: number;
+  /** Paiements confirmés par le fournisseur dont les crédits n'ont jamais été attribués. */
+  confirmedNotCredited: number;
+  /** Paiements dont les crédits ont été attribués par un administrateur. */
+  manuallySettled: number;
+}
+
+/** Une tentative de vérification d'un paiement, en ajout seul : jamais modifiée, jamais supprimée. */
+export interface AdminPaymentCheck {
+  at: string;
+  kind: 'PROVIDER' | 'MANUAL';
+  source: string;
+  outcome: string;
+  amount: number | null;
+  currency: string | null;
+  proofReference: string | null;
+  detail: string | null;
+  /** E-mail de l'administrateur à l'origine de la vérification, quand elle n'est pas automatique. */
+  actor: string | null;
+}
+
+export type AdminPaymentEventKind =
+  | 'created'
+  | 'webhook'
+  | 'verification'
+  | 'credited'
+  | 'failed'
+  | 'settled';
 
 /** Une ligne de la chronologie d'un paiement, reconstituée sans stocker de secret ni de donnée personnelle. */
 export interface AdminPaymentEvent {
@@ -194,6 +260,16 @@ export interface AdminPaymentDetail extends AdminPaymentRow {
   /** Frais calculés à la création : source du tarif, frais, total payé par le client. */
   fee: { source: string; fee: number; total: number; absorbed: number } | null;
   timeline: AdminPaymentEvent[];
+  /** Administrateur ayant régularisé le paiement, le cas échéant. */
+  creditedBy: string | null;
+  /** Historique des vérifications auprès du fournisseur et des validations administratives. */
+  checks: AdminPaymentCheck[];
+  /** Tentatives de traitement automatique : combien, quand, et la dernière erreur rencontrée. */
+  reconcileAttempts: number;
+  lastReconcileAt: string | null;
+  lastReconcileError: string | null;
+  /** Vrai quand l'action « Régulariser » est possible : paiement non crédité avec une référence fournisseur. */
+  canSettle: boolean;
 }
 
 export interface AdminGenerationRow {

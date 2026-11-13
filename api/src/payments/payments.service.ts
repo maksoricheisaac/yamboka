@@ -28,11 +28,17 @@ import {
   FeeComputationError,
   type FeeTier,
 } from '../billing/fees';
+import { AuditService } from '../audit/audit.service';
 import { lockUserRow } from '../common/locks';
 import type { Env } from '../config/env';
 import { CreditsService } from '../credits/credits.service';
 import { EmailService } from '../email/email.service';
-import type { CreditPack, Payment, Prisma } from '../generated/prisma/client';
+import type {
+  CreditPack,
+  Payment,
+  PaymentCheckKind,
+  Prisma,
+} from '../generated/prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { JobQueue } from '../queue/job-queue';
@@ -50,6 +56,7 @@ import { PaymentProviders } from './payment-providers.service';
 import {
   InitiatePaymentRequest,
   PaymentProvider,
+  type PaymentStatusResult,
   ProviderAuthError,
   ProviderInvalidResponseError,
   ProviderRejectedError,
@@ -64,8 +71,49 @@ const LATE_SUCCESS_WINDOW_MS = 48 * 3600 * 1000;
 const DEDUPE_WINDOW_MS = 2 * 60 * 1000;
 /** Motif d'un échec dû au seul délai : un succès tardif confirmé par le fournisseur reste crédité. */
 export const TIMEOUT_REASON = 'Délai de confirmation dépassé';
+/** Motif d'un échec dû à un montant annoncé différent de celui demandé : jamais crédité automatiquement. */
+export const MISMATCH_REASON =
+  'Montant incohérent : vérification manuelle requise';
 
 const OPEN: PaymentStatus[] = ['INITIATED', 'PENDING'];
+
+/**
+ * Au-delà de ce délai, un paiement confirmé mais toujours pas crédité, ou un paiement resté ouvert, est signalé
+ * à l'administration (alerte du tableau de bord) : la réconciliation automatique n'a pas suffi.
+ */
+export const ANOMALY_ALERT_AFTER_MS = 30 * 60 * 1000;
+
+/** Nombre de paiements confirmés non crédités repris à chaque passage de la réconciliation. */
+const UNCREDITED_BATCH = 100;
+
+/** Ce qui a déclenché une vérification : tracé dans PaymentCheck. */
+export type CheckSource =
+  'api' | 'callback' | 'webhook' | 'reconcile' | 'admin';
+
+/** Résultat d'une régularisation administrative réussie. */
+export interface SettlementResult {
+  credited: true;
+  credits: number;
+  bonusCredits: number;
+  balance: number;
+  /** Ce sur quoi repose l'attribution : confirmation du fournisseur, ou preuve apportée par l'administrateur. */
+  verifiedBy: 'provider' | 'admin_proof';
+}
+
+/** Texte de la notification de crédit : une régularisation dit à quel paiement elle se rapporte. */
+function creditedBody(
+  origin: 'AUTO' | 'MANUAL',
+  credits: number,
+  bonus: number,
+  reference: string,
+): string {
+  const total = credits + bonus;
+  const offered =
+    bonus > 0 ? `, dont ${bonus} offerts pour votre premier achat` : '';
+  return origin === 'MANUAL'
+    ? `${total} crédits ont été ajoutés à votre compte${offered} après régularisation de votre paiement ${reference}.`
+    : `${total} crédits ont été ajoutés à votre compte${offered}.`;
+}
 type PaymentWithPack = Payment & { pack: CreditPack | null };
 
 @Injectable()
@@ -83,6 +131,7 @@ export class PaymentsService {
     private readonly notifications: NotificationsService,
     private readonly queue: JobQueue,
     private readonly email: EmailService,
+    private readonly audit: AuditService,
     private readonly config: ConfigService<Env, true>,
   ) {}
 
@@ -625,7 +674,7 @@ export class PaymentsService {
     if (this.queue.enabled) {
       await this.queue.enqueueVerifyPayment(payment.id);
     } else {
-      await this.verify(payment.id);
+      await this.verify(payment.id, 'callback');
     }
   }
 
@@ -680,14 +729,21 @@ export class PaymentsService {
    * SUCCESS est « réclamé » par un UPDATE conditionnel, donc un seul appelant crédite, quel que soit le nombre
    * de callbacks ou de relances. Un statut « succès » dont le montant ne correspond pas n'est pas crédité.
    */
-  async verify(paymentId: string): Promise<PaymentStatus> {
+  async verify(
+    paymentId: string,
+    source: CheckSource = 'api',
+  ): Promise<PaymentStatus> {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
     });
     if (!payment) return 'FAILED';
     const reopenable =
       payment.status === 'FAILED' && payment.failureReason === TIMEOUT_REASON;
-    if (!OPEN.includes(payment.status) && !reopenable) return payment.status;
+    // Un paiement SUCCESS dont les crédits n'ont jamais été attribués reste à traiter (anomalie à régulariser).
+    const uncredited =
+      payment.status === 'SUCCESS' && payment.creditedAt === null;
+    if (!OPEN.includes(payment.status) && !reopenable && !uncredited)
+      return payment.status;
     const reference = payment.externalReference;
     if (!reference) return payment.status;
 
@@ -709,10 +765,34 @@ export class PaymentsService {
         where: { id: paymentId },
         data: {
           lastProviderStatus: { error: kind, at: new Date().toISOString() },
+          lastReconcileError: kind,
+          lastReconcileAt: new Date(),
+          reconcileAttempts: { increment: 1 },
         },
+      });
+      await this.recordCheck({
+        paymentId,
+        source,
+        outcome: kind,
+        detail: e instanceof Error ? e.message.slice(0, 300) : null,
       });
       return payment.status;
     }
+    await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: {
+        lastReconcileAt: new Date(),
+        reconcileAttempts: { increment: 1 },
+        lastReconcileError: null,
+      },
+    });
+    await this.recordCheck({
+      paymentId,
+      source,
+      outcome: result.status,
+      amount: result.amount,
+      currency: result.currency,
+    });
 
     if (result.status === 'pending') {
       await this.prisma.payment.update({
@@ -766,11 +846,19 @@ export class PaymentsService {
       this.logger.error(
         `Paiement ${paymentId} : montant incohérent (attendu ${expected} ${payment.currency}, reçu ${result.amount} ${result.currency})`,
       );
+      await this.recordCheck({
+        paymentId,
+        source,
+        outcome: 'amount_mismatch',
+        amount: result.amount,
+        currency: result.currency,
+        detail: `Attendu ${expected} ${payment.currency}`,
+      });
       await this.prisma.payment.updateMany({
         where: { id: paymentId, status: { in: OPEN } },
         data: {
           status: 'FAILED',
-          failureReason: 'Montant incohérent : vérification manuelle requise',
+          failureReason: MISMATCH_REASON,
           lastProviderStatus: {
             status: 'success',
             amount: result.amount,
@@ -798,64 +886,379 @@ export class PaymentsService {
       );
     }
 
+    await this.creditConfirmed({
+      payment,
+      reference,
+      origin: 'AUTO',
+      clientFee: result.clientFee ?? null,
+      debitedAmount: result.debitedAmount ?? null,
+    });
+    return 'SUCCESS';
+  }
+
+  // ───────────── Attribution des crédits d'un paiement confirmé ─────────────
+
+  /**
+   * Attribue les crédits d'un paiement confirmé, UNE SEULE FOIS, quelle que soit l'origine (vérification
+   * automatique, notification du fournisseur, réconciliation, régularisation par un administrateur).
+   *
+   * Trois protections se superposent :
+   * 1. verrou de ligne sur l'utilisateur : deux appels simultanés passent l'un après l'autre ;
+   * 2. UPDATE conditionnel qui « réclame » le paiement : un seul appelant obtient `count === 1` ;
+   * 3. référence `pay:<réf>` unique dans le registre (contrainte en base) : même si 1 et 2 étaient contournés,
+   *    un second mouvement d'achat pour le même paiement resterait impossible.
+   *
+   * L'attribution, la trace d'audit et la notification sont écrites dans la MÊME transaction : le client n'est
+   * jamais prévenu avant que les crédits soient réellement acquis. L'e-mail, lui, part après la validation.
+   */
+  private async creditConfirmed(p: {
+    payment: Payment;
+    reference: string;
+    origin: 'AUTO' | 'MANUAL';
+    /** Administrateur responsable d'une régularisation (origine MANUAL). */
+    adminId?: string;
+    clientFee?: number | null;
+    debitedAmount?: number | null;
+    /** Écrit dans la transaction de l'attribution : la trace et les crédits sont indissociables. */
+    onCommit?: (
+      tx: Prisma.TransactionClient,
+      info: {
+        ledgerReference: string;
+        credits: number;
+        bonusCredits: number;
+        balanceBefore: number;
+        balanceAfter: number;
+      },
+    ) => Promise<void>;
+  }): Promise<{
+    credited: boolean;
+    credits: number;
+    bonusCredits: number;
+    balance: number;
+  }> {
+    const { payment, reference, origin } = p;
     const months = await this.settings.get('purchasedCreditsExpiryMonths');
     const expiresAt = new Date();
     expiresAt.setUTCMonth(expiresAt.getUTCMonth() + months);
 
-    let successNoteId: string | null = null;
-    const credited = await this.prisma.$transaction(async (tx) => {
+    let noteId: string | null = null;
+    const outcome = await this.prisma.$transaction(async (tx) => {
       // Le verrou utilisateur d'abord : deux confirmations simultanées du même compte passent l'une après l'autre,
       // et la seconde voit que la première est déjà réussie (bonus de premier achat une seule fois).
       await lockUserRow(tx, payment.userId);
+      const balanceBefore = await this.credits.getBalance(payment.userId, tx);
+      const nothing = {
+        credited: false,
+        credits: 0,
+        bonusCredits: 0,
+        balance: balanceBefore,
+      };
       const claimed = await tx.payment.updateMany({
         where: {
-          id: paymentId,
+          id: payment.id,
           OR: [
             { status: { in: OPEN } },
             { status: 'FAILED', failureReason: TIMEOUT_REASON },
+            { status: 'FAILED', failureReason: MISMATCH_REASON },
+            // Confirmé par le fournisseur mais jamais crédité : l'anomalie que l'on vient réparer.
+            { status: 'SUCCESS', creditedAt: null },
           ],
         },
         data: {
           status: 'SUCCESS',
           creditedAt: new Date(),
+          creditOrigin: origin,
+          creditedById: p.adminId ?? null,
           failureReason: null,
-          clientFee: result.clientFee ?? null,
-          debitedAmount: result.debitedAmount ?? null,
+          lastReconcileError: null,
+          ...(p.clientFee !== undefined ? { clientFee: p.clientFee } : {}),
+          ...(p.debitedAmount !== undefined
+            ? { debitedAmount: p.debitedAmount }
+            : {}),
           lastProviderStatus: { status: 'success' },
         },
       });
-      if (claimed.count !== 1) return false; // déjà conclu par un autre appelant : rien à créditer
+      // Déjà conclu ET crédité par un autre appelant : aucune seconde attribution.
+      if (claimed.count !== 1) return nothing;
+
       const granted = await this.credits.grantPurchase(tx, {
         userId: payment.userId,
-        paymentId,
+        paymentId: payment.id,
         reference,
         baseCredits: payment.credits,
         expiresAt,
         bonusPercent: payment.firstPurchaseBonusPercent ?? 0,
       });
+      // Le registre portait déjà le mouvement `pay:<réf>` : seul l'état du paiement était en retard.
+      if (!granted.created) return nothing;
+
       if (granted.bonusCredits > 0) {
         await tx.payment.update({
-          where: { id: paymentId },
+          where: { id: payment.id },
           data: { bonusCredits: granted.bonusCredits },
         });
       }
+      const balanceAfter =
+        balanceBefore + payment.credits + granted.bonusCredits;
+      await p.onCommit?.(tx, {
+        ledgerReference: `pay:${reference}`,
+        credits: payment.credits,
+        bonusCredits: granted.bonusCredits,
+        balanceBefore,
+        balanceAfter,
+      });
       const note = await this.notifications.notify(tx, {
         userId: payment.userId,
         type: 'PAYMENT_SUCCESS',
-        title: 'Paiement confirmé',
-        body:
-          granted.bonusCredits > 0
-            ? `${payment.credits + granted.bonusCredits} crédits ont été ajoutés à votre compte, dont ${granted.bonusCredits} offerts pour votre premier achat.`
-            : `${payment.credits} crédits ont été ajoutés à votre compte.`,
+        title:
+          origin === 'MANUAL' ? 'Crédits régularisés' : 'Paiement confirmé',
+        body: creditedBody(
+          origin,
+          payment.credits,
+          granted.bonusCredits,
+          reference,
+        ),
         link: '/app/credits',
-        dedupKey: `payment-ok:${paymentId}`,
+        dedupKey: `payment-ok:${payment.id}`,
       });
-      successNoteId = note.id;
-      return true;
+      noteId = note.id;
+      return {
+        credited: true,
+        credits: payment.credits,
+        bonusCredits: granted.bonusCredits,
+        balance: balanceAfter,
+      };
     });
-    // E-mail de confirmation (et reçu) après validation de la transaction, selon la préférence de l'utilisateur.
-    if (credited) await this.notifications.dispatchEmail(successNoteId);
-    return 'SUCCESS';
+
+    // E-mail APRÈS validation de la transaction : les crédits sont déjà acquis. Un envoi en panne ne doit ni les
+    // retirer, ni faire échouer l'opération : la notification reste « en attente » et le job
+    // `flush-notification-emails` la reprend.
+    if (outcome.credited) {
+      try {
+        await this.notifications.dispatchEmail(noteId);
+      } catch (e) {
+        this.logger.warn(
+          `E-mail de confirmation du paiement ${payment.id} non envoyé : ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+    return outcome;
+  }
+
+  /** Trace, en ajout seul, une tentative de vérification. Ne fait jamais échouer l'opération qu'elle décrit. */
+  private async recordCheck(c: {
+    paymentId: string;
+    source: CheckSource;
+    outcome: string;
+    kind?: PaymentCheckKind;
+    amount?: number | null;
+    currency?: string | null;
+    proofReference?: string | null;
+    detail?: string | null;
+    actorId?: string | null;
+  }): Promise<void> {
+    try {
+      await this.prisma.paymentCheck.create({
+        data: {
+          paymentId: c.paymentId,
+          kind: c.kind ?? 'PROVIDER',
+          source: c.source,
+          outcome: c.outcome,
+          amount: c.amount ?? null,
+          currency: c.currency ?? null,
+          proofReference: c.proofReference ?? null,
+          detail: c.detail ?? null,
+          actorId: c.actorId ?? null,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(
+        `Trace de vérification non écrite pour ${c.paymentId} : ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  // ───────────── Régularisation par un administrateur ─────────────
+
+  /**
+   * Régularise un paiement confirmé dont les crédits n'ont jamais été attribués (notification perdue).
+   *
+   * Rien n'est attribué sur la seule présence d'une transaction dans l'historique : le fournisseur est
+   * TOUJOURS interrogé d'abord, et il doit annoncer un succès au montant et à la devise exacts. Un refus, un
+   * paiement encore en attente ou un montant différent interdisent la régularisation.
+   *
+   * Le fournisseur peut être injoignable. Le mode `MANUAL_PROOF` permet alors à l'administrateur d'engager sa
+   * responsabilité sur une preuve externe (relevé du compte marchand) : l'opération est enregistrée comme une
+   * VALIDATION ADMINISTRATIVE (PaymentCheck de type MANUAL), jamais comme une confirmation du fournisseur.
+   *
+   * L'attribution passe par `creditConfirmed` : même verrou, même UPDATE conditionnel et même référence
+   * `pay:<réf>` que la voie automatique. Une notification arrivée après coup ne crédite donc jamais une
+   * deuxième fois, et deux administrateurs simultanés n'attribuent qu'une seule fois.
+   */
+  async settlePayment(p: {
+    paymentId: string;
+    adminId: string;
+    mode: 'PROVIDER' | 'MANUAL_PROOF';
+    proofReference?: string;
+    reason: string;
+    justification?: string;
+    ip?: string;
+  }): Promise<SettlementResult> {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: p.paymentId },
+    });
+    if (!payment)
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'Paiement introuvable.',
+      });
+
+    // Référence fournisseur absente : rien à vérifier, donc rien à régulariser.
+    const reference = payment.externalReference;
+    if (!reference)
+      throw new UnprocessableEntityException({
+        code: 'NO_PROVIDER_REFERENCE',
+        message:
+          'Ce paiement n’a aucune référence chez le fournisseur : il ne peut pas être régularisé.',
+      });
+
+    // Déjà crédité : le registre fait foi, pas le statut du paiement.
+    const already = await this.prisma.creditLedger.findUnique({
+      where: { reference: `pay:${reference}` },
+    });
+    if (already)
+      throw new ConflictException({
+        code: 'ALREADY_CREDITED',
+        message: 'Les crédits de ce paiement ont déjà été attribués.',
+      });
+
+    let result: PaymentStatusResult | null = null;
+    let providerError: 'unavailable' | 'invalid_response' | null = null;
+    try {
+      result = await this.providers
+        .byName(payment.gateway)
+        .getStatus(reference);
+    } catch (e) {
+      providerError =
+        e instanceof ProviderUnavailableError
+          ? 'unavailable'
+          : 'invalid_response';
+    }
+
+    if (result) {
+      await this.recordCheck({
+        paymentId: payment.id,
+        source: 'admin',
+        outcome: result.status,
+        amount: result.amount,
+        currency: result.currency,
+        actorId: p.adminId,
+      });
+      if (result.status !== 'success')
+        throw new UnprocessableEntityException({
+          code: 'NOT_CONFIRMED',
+          message: `Le fournisseur n’annonce pas ce paiement comme réussi (${result.status}) : aucune régularisation possible.`,
+        });
+      const expected = payment.sentAmount ?? payment.amount;
+      if (result.amount !== expected || result.currency !== payment.currency) {
+        await this.recordCheck({
+          paymentId: payment.id,
+          source: 'admin',
+          outcome: 'amount_mismatch',
+          amount: result.amount,
+          currency: result.currency,
+          detail: `Attendu ${expected} ${payment.currency}`,
+          actorId: p.adminId,
+        });
+        throw new UnprocessableEntityException({
+          code: 'AMOUNT_MISMATCH',
+          message: `Montant confirmé (${result.amount} ${result.currency}) différent du montant attendu (${expected} ${payment.currency}) : régularisation refusée.`,
+        });
+      }
+    } else {
+      await this.recordCheck({
+        paymentId: payment.id,
+        source: 'admin',
+        outcome: providerError!,
+        actorId: p.adminId,
+      });
+      if (p.mode !== 'MANUAL_PROOF')
+        throw new ServiceUnavailableException({
+          code: 'PROVIDER_UNAVAILABLE',
+          message:
+            'Le fournisseur est injoignable : impossible de confirmer ce paiement automatiquement. Une validation administrative sur preuve est possible.',
+        });
+      // Validation administrative : tracée comme telle, avec la référence de la preuve et son auteur.
+      await this.recordCheck({
+        paymentId: payment.id,
+        source: 'admin',
+        kind: 'MANUAL',
+        outcome: 'manual_proof',
+        proofReference: p.proofReference ?? null,
+        detail: p.justification ?? p.reason,
+        actorId: p.adminId,
+      });
+    }
+
+    const granted = await this.creditConfirmed({
+      payment,
+      reference,
+      origin: 'MANUAL',
+      adminId: p.adminId,
+      clientFee: result?.clientFee ?? undefined,
+      debitedAmount: result?.debitedAmount ?? undefined,
+      onCommit: async (tx, info) => {
+        await this.audit.log(
+          {
+            actorId: p.adminId,
+            action: 'payment.settle',
+            entityType: 'Payment',
+            entityId: payment.id,
+            before: {
+              status: payment.status,
+              credited: false,
+              balance: info.balanceBefore,
+            },
+            after: {
+              status: 'SUCCESS',
+              credited: true,
+              creditOrigin: 'MANUAL',
+              mode: p.mode,
+              verifiedBy: result ? 'provider' : 'admin_proof',
+              proofReference: p.proofReference ?? null,
+              userId: payment.userId,
+              credits: info.credits,
+              bonusCredits: info.bonusCredits,
+              ledgerReference: info.ledgerReference,
+              paymentReference: reference,
+              balance: info.balanceAfter,
+              justification: p.justification ?? null,
+            },
+            reason: p.reason,
+            ip: p.ip,
+          },
+          tx,
+        );
+      },
+    });
+
+    // Un autre appelant (notification tardive, réconciliation, second administrateur) a crédité entre-temps.
+    if (!granted.credited)
+      throw new ConflictException({
+        code: 'ALREADY_CREDITED',
+        message: 'Les crédits de ce paiement ont déjà été attribués.',
+      });
+
+    this.logger.log(
+      `Paiement ${payment.id} régularisé par ${p.adminId} (${result ? 'confirmé par le fournisseur' : 'validation administrative'})`,
+    );
+    return {
+      credited: true,
+      credits: granted.credits,
+      bonusCredits: granted.bonusCredits,
+      balance: granted.balance,
+      verifiedBy: result ? 'provider' : 'admin_proof',
+    };
   }
 
   /**
@@ -866,7 +1269,16 @@ export class PaymentsService {
     now = new Date(),
     /** Limite le passage à un fournisseur (diagnostic, tests) ; par défaut tous. */
     gateway?: string,
-  ): Promise<{ checked: number; expired: number }> {
+  ): Promise<{
+    checked: number;
+    expired: number;
+    recovered: number;
+    uncredited: number;
+    stuck: number;
+  }> {
+    // Notifications arrivées avant que la référence soit enregistrée : elles n'avaient alors rien à vérifier.
+    const recovered = await this.recoverOrphanWebhooks(gateway);
+
     const open = await this.prisma.payment.findMany({
       where: { status: { in: OPEN }, ...(gateway ? { gateway } : {}) },
       orderBy: { createdAt: 'asc' },
@@ -885,7 +1297,7 @@ export class PaymentsService {
       ) {
         await this.restart(p.id);
       }
-      const status = await this.verify(p.id);
+      const status = await this.verify(p.id, 'reconcile');
       const tooOld = age > (provider?.pendingTtlMs ?? 24 * 3600 * 1000);
       const neverStarted = !p.externalReference && age > UNSTARTED_GIVE_UP_MS;
       if (OPEN.includes(status) && (tooOld || neverStarted)) {
@@ -909,8 +1321,101 @@ export class PaymentsService {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
-    for (const p of late) await this.verify(p.id);
-    return { checked: open.length, expired };
+    for (const p of late) await this.verify(p.id, 'reconcile');
+
+    // Confirmés par le fournisseur mais jamais crédités : on retente l'attribution (idempotente).
+    const uncredited = await this.creditPendingSuccesses(gateway);
+
+    // Ce qui n'a pas pu être réglé automatiquement est signalé : l'administration doit intervenir.
+    const stuck = await this.countStuck(now, gateway);
+    if (stuck > 0) {
+      this.logger.warn(
+        `${stuck} paiement(s) non régularisé(s) depuis plus de ${Math.round(ANOMALY_ALERT_AFTER_MS / 60000)} minutes : intervention requise.`,
+      );
+    }
+    return { checked: open.length, expired, recovered, uncredited, stuck };
+  }
+
+  /**
+   * Rattrape les paiements que le fournisseur a confirmés mais dont les crédits n'ont jamais été attribués
+   * (interruption entre la confirmation et l'écriture au registre). Idempotent : `creditConfirmed` ne crédite
+   * que si le registre ne porte pas déjà le mouvement `pay:<réf>`.
+   */
+  private async creditPendingSuccesses(gateway?: string): Promise<number> {
+    const rows = await this.prisma.payment.findMany({
+      where: {
+        status: 'SUCCESS',
+        creditedAt: null,
+        externalReference: { not: null },
+        ...(gateway ? { gateway } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+      take: UNCREDITED_BATCH,
+    });
+    let credited = 0;
+    for (const p of rows) {
+      try {
+        // Le fournisseur est réinterrogé : on ne crédite jamais sur la seule foi d'un statut local.
+        await this.verify(p.id, 'reconcile');
+        const after = await this.prisma.payment.findUnique({
+          where: { id: p.id },
+          select: { creditedAt: true },
+        });
+        if (after?.creditedAt) credited += 1;
+      } catch (e) {
+        this.logger.warn(
+          `Rattrapage du paiement ${p.id} impossible : ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+    return credited;
+  }
+
+  /**
+   * Reprend les notifications dont la signature avait été vérifiée mais qui n'ont jamais été traitées : soit
+   * elles sont arrivées avant l'enregistrement de la référence, soit leur traitement a été interrompu.
+   */
+  private async recoverOrphanWebhooks(gateway?: string): Promise<number> {
+    const orphans = await this.prisma.paymentWebhookEvent.findMany({
+      where: { processedAt: null, ...(gateway ? { gateway } : {}) },
+      orderBy: { receivedAt: 'asc' },
+      take: 100,
+    });
+    let recovered = 0;
+    for (const w of orphans) {
+      const payment = await this.prisma.payment.findUnique({
+        where: { externalReference: w.providerTxId },
+        select: { id: true, gateway: true },
+      });
+      // Référence toujours inconnue : la notification reste en attente, sans jamais être perdue.
+      if (!payment || payment.gateway !== w.gateway) continue;
+      await this.verify(payment.id, 'webhook');
+      await this.prisma.paymentWebhookEvent.update({
+        where: { id: w.id },
+        data: { paymentId: payment.id, processedAt: new Date() },
+      });
+      recovered += 1;
+    }
+    return recovered;
+  }
+
+  /**
+   * Paiements qui demandent une intervention humaine : confirmés non crédités, ou ouverts depuis trop longtemps.
+   * Sert l'alerte du tableau de bord d'administration ; rien n'est stocké.
+   */
+  async countStuck(now = new Date(), gateway?: string): Promise<number> {
+    const before = new Date(now.getTime() - ANOMALY_ALERT_AFTER_MS);
+    return this.prisma.payment.count({
+      where: {
+        ...(gateway ? { gateway } : {}),
+        createdAt: { lt: before },
+        OR: [
+          { status: 'SUCCESS', creditedAt: null },
+          { status: { in: OPEN } },
+          { status: 'FAILED', failureReason: MISMATCH_REASON },
+        ],
+      },
+    });
   }
 
   private providerOf(gateway: string): PaymentProvider | undefined {

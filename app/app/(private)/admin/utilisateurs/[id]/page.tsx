@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { AdminUserDetail } from "@yamboka/shared";
 import { ActionDialog } from "@/components/admin/action-dialog";
+import { GrantCreditsDialog } from "@/components/admin/grant-credits-dialog";
 import { Empty, PageHeader, Pill, StatusPill } from "@/components/admin/ui";
 import { UserGenerationsTable, UserLedgerTable, UserPaymentsTable } from "@/components/admin/user-detail-tables";
 import { requireUser } from "@/lib/auth";
@@ -16,6 +17,7 @@ export default async function UserDetailPage({ params }: PageProps<"/admin/utili
   const u = await serverGetOrNull<AdminUserDetail>(`/admin/users/${id}`);
   if (!u) notFound();
   const isAdmin = u.role === "ADMIN";
+  const uncredited = u.payments.filter((p) => p.creditState === "NOT_CREDITED").length;
 
   return (
     <div className="space-y-8">
@@ -25,14 +27,7 @@ export default async function UserDetailPage({ params }: PageProps<"/admin/utili
         actions={
           !isAdmin && (
             <>
-              <ActionDialog
-                trigger="Ajuster les crédits"
-                title="Ajuster les crédits"
-                description="Positif pour créditer, négatif pour débiter. Le solde ne peut jamais devenir négatif."
-                endpoint={`/admin/users/${u.id}/credits`}
-                fields={[{ name: "amount", label: "Nombre de crédits (ex. 20 ou -10)", type: "number" }]}
-                submitLabel="Appliquer l’ajustement"
-              />
+              <GrantCreditsDialog user={u} />
               {u.status === "ACTIVE" ? (
                 <>
                   <ActionDialog trigger="Suspendre" title="Suspendre ce compte" description="Les sessions en cours sont coupées. Le client est prévenu par e-mail." endpoint={`/admin/users/${u.id}/status`} fixed={{ action: "SUSPEND" }} submitLabel="Suspendre" destructive />
@@ -62,6 +57,13 @@ export default async function UserDetailPage({ params }: PageProps<"/admin/utili
         ))}
       </dl>
       {isAdmin && <p className="rounded-xl border bg-card p-3 text-sm text-muted-foreground">Compte administrateur : pour le suspendre, retirez-lui d’abord le rôle dans « Administrateurs ».</p>}
+
+      {uncredited > 0 && (
+        <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm font-medium text-destructive">
+          {uncredited} paiement(s) confirmé(s) sans crédits attribués. Utilisez « Attribuer des crédits » puis
+          « Régularisation d’un paiement » : le fournisseur sera interrogé avant toute attribution.
+        </p>
+      )}
 
       <section aria-labelledby="paiements" className="space-y-3">
         <h2 id="paiements" className="text-xl font-bold">Paiements</h2>

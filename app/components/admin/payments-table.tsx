@@ -1,13 +1,13 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
-import type { AdminPaymentRow, Page } from "@yamboka/shared";
+import { PAYMENT_ANOMALIES, type AdminPaymentRow, type Page } from "@yamboka/shared";
 import Link from "next/link";
 import { providerLabel } from "@/components/credits/labels";
 import { DataTableColumnHeader } from "@/components/admin/data-table/data-table-column-header";
 import { ServerDataTable } from "@/components/admin/data-table/server-data-table";
 import type { DataTableFeatures } from "@/components/admin/data-table/data-table-features";
-import { STATUS_OPTIONS, StatusPill } from "@/components/admin/ui";
+import { Pill, STATUS_OPTIONS, StatusPill } from "@/components/admin/ui";
 import { VerifyPaymentButton } from "@/components/admin/verify-payment-button";
 import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 
@@ -91,6 +91,27 @@ const columns = col.columns([
       </>
     ),
   }),
+  col.accessor("creditState", {
+    id: "credits",
+    header: "Crédits",
+    enableSorting: false,
+    cell: ({ row: { original: p } }) =>
+      p.creditState === "CREDITED" ? (
+        <>
+          <Pill tone="ok">Attribués</Pill>
+          <span className="block text-xs text-muted-foreground">
+            {p.creditOrigin === "MANUAL" ? "régularisation manuelle" : "automatique"}
+          </span>
+        </>
+      ) : p.creditState === "NOT_CREDITED" ? (
+        <>
+          <Pill tone="bad">Non attribués</Pill>
+          <span className="block text-xs font-medium text-destructive">à régulariser</span>
+        </>
+      ) : (
+        <span className="text-xs text-muted-foreground">—</span>
+      ),
+  }),
   col.display({
     id: "verify",
     header: "Actions",
@@ -135,9 +156,10 @@ export function PaymentsTable({
         },
         { param: "country", label: "Pays", options: countries },
         { param: "method", label: "Moyen", options: methods },
+        { param: "anomaly", label: "Anomalie", options: PAYMENT_ANOMALIES.map((a) => ({ value: a.value, label: a.label })) },
       ]}
       dateFilter={{ label: "Période" }}
-      columnLabels={{ customer: "Client", country: "Pays et moyen", provider: "Fournisseur", pack: "Pack", amount: "Montant", status: "État" }}
+      columnLabels={{ customer: "Client", country: "Pays et moyen", provider: "Fournisseur", pack: "Pack", amount: "Montant", status: "État", credits: "Crédits" }}
       emptyMessage="Aucun paiement."
     />
   );

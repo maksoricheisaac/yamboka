@@ -14,16 +14,94 @@ export const userStatusActionSchema = z.object({
 });
 export type UserStatusActionInput = z.infer<typeof userStatusActionSchema>;
 
-export const creditAdjustSchema = z.object({
-  /** Signé : positif pour créditer, négatif pour débiter. */
-  amount: z
-    .number({ error: 'Montant requis.' })
-    .int('Nombre entier requis.')
-    .refine((n) => n !== 0, 'Le montant ne peut pas être nul.')
-    .refine((n) => Math.abs(n) <= 100_000, 'Montant trop élevé.'),
-  reason: reasonSchema,
-});
+/**
+ * Au-delà de ce nombre de crédits, une attribution exceptionnelle exige une justification détaillée ET une
+ * confirmation renforcée dans l'interface. Vérifié côté serveur : le navigateur n'est jamais la seule protection.
+ */
+export const GRANT_JUSTIFICATION_THRESHOLD = 1_000;
+
+/** Plafond d'une attribution manuelle unique. Le serveur refuse au-delà, quelle que soit la requête envoyée. */
+export const MANUAL_GRANT_MAX = 100_000;
+
+/** Longueur minimale d'une justification détaillée (attribution exceptionnelle importante, validation sur preuve). */
+export const JUSTIFICATION_MIN = 20;
+
+const justificationSchema = z
+  .string()
+  .trim()
+  .max(2000, 'Justification trop longue.')
+  .optional();
+
+/**
+ * Attribution exceptionnelle (geste commercial, correction) : écrite en ADMIN_ADJUST avec une référence unique.
+ * La régularisation d'un paiement NE passe PAS par ici : voir `paymentSettleSchema`.
+ */
+export const creditAdjustSchema = z
+  .object({
+    /** Signé : positif pour créditer, négatif pour débiter. */
+    amount: z
+      .number({ error: 'Montant requis.' })
+      .int('Nombre entier requis.')
+      .refine((n) => n !== 0, 'Le montant ne peut pas être nul.')
+      .refine((n) => Math.abs(n) <= MANUAL_GRANT_MAX, 'Montant trop élevé.'),
+    reason: reasonSchema,
+    /** Justification détaillée, obligatoire au-delà de GRANT_JUSTIFICATION_THRESHOLD crédits. */
+    justification: justificationSchema,
+  })
+  .superRefine((v, ctx) => {
+    if (
+      Math.abs(v.amount) >= GRANT_JUSTIFICATION_THRESHOLD &&
+      (v.justification ?? '').length < JUSTIFICATION_MIN
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['justification'],
+        message: `Au-delà de ${GRANT_JUSTIFICATION_THRESHOLD} crédits, une justification détaillée d'au moins ${JUSTIFICATION_MIN} caractères est obligatoire.`,
+      });
+    }
+  });
 export type CreditAdjustInput = z.infer<typeof creditAdjustSchema>;
+
+/**
+ * Régularisation d'un paiement confirmé mais non crédité.
+ *
+ * - `PROVIDER` : le fournisseur est interrogé et doit confirmer un succès au montant exact. Seul cas où une
+ *   attribution est automatiquement justifiée.
+ * - `MANUAL_PROOF` : le fournisseur est injoignable. L'administrateur engage sa responsabilité sur une preuve
+ *   externe (relevé du compte marchand) ; l'opération est tracée comme une validation administrative, jamais
+ *   comme une confirmation du fournisseur. Un paiement que le fournisseur déclare échoué reste refusé.
+ */
+export const paymentSettleSchema = z
+  .object({
+    mode: z.enum(['PROVIDER', 'MANUAL_PROOF']).default('PROVIDER'),
+    /** Référence de la preuve externe, obligatoire en validation administrative. */
+    proofReference: z
+      .string()
+      .trim()
+      .max(120, 'Référence de preuve trop longue.')
+      .optional(),
+    reason: reasonSchema,
+    justification: justificationSchema,
+  })
+  .superRefine((v, ctx) => {
+    if (v.mode !== 'MANUAL_PROOF') return;
+    if ((v.proofReference ?? '').length < 3) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['proofReference'],
+        message:
+          'Une référence de preuve (relevé du compte marchand) est obligatoire pour une validation administrative.',
+      });
+    }
+    if ((v.justification ?? '').length < JUSTIFICATION_MIN) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['justification'],
+        message: `Une justification détaillée d'au moins ${JUSTIFICATION_MIN} caractères est obligatoire pour une validation administrative.`,
+      });
+    }
+  });
+export type PaymentSettleInput = z.infer<typeof paymentSettleSchema>;
 
 export const packUpdateSchema = z
   .object({
@@ -141,6 +219,8 @@ export const listQuerySchema = z.object({
   /** Filtres du journal des paiements. */
   country: z.string().trim().length(2).toUpperCase().optional(),
   method: z.string().trim().max(40).optional(),
+  /** Journal des paiements : anomalie recherchée (voir PAYMENT_ANOMALIES). */
+  anomaly: z.enum(['pending', 'uncredited', 'settled', 'attention']).optional(),
   userId: z.uuid().optional(),
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),

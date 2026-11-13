@@ -18,20 +18,22 @@ async function newCustomer(browser: Browser, baseURL: string, request: Parameter
 }
 
 test.describe('Administration — actions réelles', () => {
-  test('rechercher un client, ajuster ses crédits avec un motif, voir la trace dans le journal', async ({ page, browser, request, baseURL }) => {
+  test('rechercher un client, lui attribuer des crédits avec un motif, voir la trace dans le journal', async ({ page, browser, request, baseURL }) => {
     const customer = await newCustomer(browser, baseURL!, request);
     await adminLogin(page);
     await openCustomer(page, customer.email);
     await expect(page.getByText('0 crédit', { exact: false })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Ajuster les crédits' }).click();
+    await page.getByRole('button', { name: 'Attribuer des crédits' }).click();
     const dialog = page.getByRole('dialog');
-    await dialog.getByLabel(/Nombre de crédits/).fill('10');
-    // Sans motif : refusé par le navigateur (champ requis) puis par l'API.
+    await dialog.getByLabel(/Quantité de crédits/).fill('10');
     await dialog.getByLabel(/Motif/).fill('Geste commercial après incident');
-    await dialog.getByRole('button', { name: 'Appliquer l’ajustement' }).click();
+    // Récapitulatif obligatoire avant confirmation : rien n'est envoyé au premier clic.
+    await dialog.getByRole('button', { name: 'Vérifier le récapitulatif' }).click();
+    await expect(dialog.getByText('Attribution exceptionnelle')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Confirmer l’attribution' }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.getByText('10 crédits')).toBeVisible();
+    await expect(page.getByText('10 crédits').first()).toBeVisible();
 
     // Le client voit son nouveau solde.
     await customer.page.reload();
@@ -160,6 +162,10 @@ test.describe('Administration — paiements', () => {
     await page.goto(`/admin/paiements?q=${encodeURIComponent(customer.email)}`);
     await expect(page.getByRole('heading', { level: 1, name: 'Paiements' })).toBeVisible();
     await expect(page.getByLabel('Fournisseur')).toBeVisible();
+    // Compteurs d'anomalies et filtre dédié : repérer un paiement non crédité ne demande aucune requête SQL.
+    await expect(page.getByText(/confirmés non crédités · à régulariser/)).toBeVisible();
+    await expect(page.getByText(/régularisés manuellement/).first()).toBeVisible();
+    await expect(page.getByLabel('Anomalie')).toBeVisible();
     // Filtre par fournisseur : « SasPay » ne montre pas ce paiement simulé, « Simulé » le montre.
     await page.goto(`/admin/paiements?q=${encodeURIComponent(customer.email)}&provider=saspay`);
     await expect(page.getByText('Aucun résultat pour ces critères.')).toBeVisible();
@@ -171,7 +177,8 @@ test.describe('Administration — paiements', () => {
     await row.getByRole('link', { name: /Détail/ }).click();
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Paiement de');
     await expect(page.getByText('Paiement créé')).toBeVisible();
-    await expect(page.getByText(/ne peut pas être modifié à la main/)).toBeVisible();
+    await expect(page.getByText(/Statut décidé par le fournisseur uniquement/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Historique des vérifications' })).toBeVisible();
     await page.getByRole('button', { name: 'Vérifier' }).click();
     await expect(page.getByRole('status')).toContainText('Statut chez le fournisseur : PENDING');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
