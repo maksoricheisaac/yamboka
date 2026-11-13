@@ -12,7 +12,9 @@ test.describe('Administration — composants partagés (période, menus d’acti
     await page.getByRole('button', { name: '7 derniers jours' }).click();
     await expect(page).toHaveURL(/from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}/);
     await expect(page.getByRole('button', { name: /7 derniers jours/ })).toBeVisible();
-    await expect(page.getByText(/Activité du/)).toBeVisible();
+    // La période choisie n'est plus rappelée en titre : les indicateurs de la période restent le témoin du rechargement.
+    await expect(page.getByRole('heading', { name: 'Activité' })).toBeVisible();
+    await expect(page.getByText('Inscrits sur la période')).toBeVisible();
 
     // Période personnalisée : « Appliquer » reste inactif tant que la fin n'est pas choisie.
     await page.getByRole('button', { name: /7 derniers jours/ }).click();

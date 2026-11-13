@@ -63,7 +63,7 @@ test.describe('Catalogue international — administration', () => {
     await page.getByLabel('Nouveau statut').selectOption('ACTIVE');
     await page.getByLabel(/Motif/).fill('Ouverture de MTN');
     await page.getByRole('button', { name: 'Confirmer' }).click();
-    await page.getByRole('button', { name: 'Changer le statut de AirtelTigo Money' }).click();
+    await page.getByRole('button', { name: 'Changer le statut de AirtelTigo' }).click();
     await page.getByLabel('Nouveau statut').selectOption('COMING_SOON');
     await page.getByLabel(/Motif/).fill('Bientôt');
     await page.getByRole('button', { name: 'Confirmer' }).click();
