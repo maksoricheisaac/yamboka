@@ -1,12 +1,13 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
-import type { AuditRow } from "@yamboka/shared";
-import { DataTable, SortableHeader } from "@/components/admin/data-table/data-table";
-import type { DataTableFeatures } from "@/components/admin/data-table/features";
+import type { AdminAuditPage } from "@yamboka/shared";
+import { DataTableColumnHeader } from "@/components/admin/data-table/data-table-column-header";
+import { ServerDataTable } from "@/components/admin/data-table/server-data-table";
+import type { DataTableFeatures } from "@/components/admin/data-table/data-table-features";
 import { formatDateTime } from "@/lib/format";
 
-const col = createColumnHelper<DataTableFeatures, AuditRow>();
+const col = createColumnHelper<DataTableFeatures, AdminAuditPage["items"][number]>();
 
 function Json({ value }: { value: unknown }) {
   if (value === null || value === undefined) return <span className="text-muted-foreground">—</span>;
@@ -15,16 +16,15 @@ function Json({ value }: { value: unknown }) {
 
 const columns = col.columns([
   col.accessor("createdAt", {
-    id: "date",
-    header: ({ column }) => <SortableHeader column={column} title="Date" />,
-    sortFn: "text",
+    id: "createdAt",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Date" />,
     enableHiding: false,
     cell: ({ row }) => <span className="whitespace-nowrap text-muted-foreground">{formatDateTime(row.original.createdAt)}</span>,
   }),
   col.accessor((r) => r.actor ?? "Système", {
     id: "actor",
-    header: ({ column }) => <SortableHeader column={column} title="Acteur" />,
-    sortFn: "text",
+    header: "Acteur",
+    enableSorting: false,
     cell: ({ row: { original: r } }) => (
       <>
         {r.actor ?? "Système"}
@@ -34,14 +34,12 @@ const columns = col.columns([
   }),
   col.accessor("action", {
     id: "action",
-    header: ({ column }) => <SortableHeader column={column} title="Action" />,
-    sortFn: "text",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Action" />,
     cell: ({ row }) => <span className="font-mono text-xs">{row.original.action}</span>,
   }),
   col.accessor("entityType", {
-    id: "entity",
-    header: ({ column }) => <SortableHeader column={column} title="Entité" />,
-    sortFn: "text",
+    id: "entityType",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Entité" />,
     cell: ({ row: { original: r } }) => (
       <>
         {r.entityType}
@@ -58,16 +56,26 @@ const columns = col.columns([
   col.display({ id: "reason", header: "Motif", cell: ({ row }) => <span className="block max-w-56 text-muted-foreground">{row.original.reason ?? "—"}</span> }),
 ]);
 
-/** Journal en lecture seule : recherche, période et pagination côté serveur ; tri et colonnes sur la page affichée. */
-export function AuditTable({ rows }: { rows: AuditRow[] }) {
+export function AuditTable({ page, admins }: { page: AdminAuditPage; admins: { value: string; label: string }[] }) {
   return (
-    <DataTable
+    <ServerDataTable
       caption="Journal d’audit"
       columns={columns}
-      data={rows}
-      paginate={false}
+      items={page.items}
+      meta={page}
       minWidth="64rem"
-      columnLabels={{ actor: "Acteur", action: "Action", entity: "Entité", before: "Avant", after: "Après", reason: "Motif" }}
+      search={{ label: "Utilisateur, action ou entité", placeholder: "pack.update, admin@…" }}
+      filters={[
+        { param: "actor", label: "Administrateur", options: admins },
+        {
+          param: "entity",
+          label: "Type d’événement",
+          options: page.summary.entityTypes.map((t) => ({ value: t, label: t })),
+        },
+      ]}
+      dateFilter={{ label: "Période" }}
+      columnLabels={{ actor: "Acteur", action: "Action", entityType: "Entité", before: "Avant", after: "Après", reason: "Motif" }}
+      emptyMessage="Aucune entrée."
     />
   );
 }

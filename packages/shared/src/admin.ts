@@ -131,6 +131,13 @@ export const listQuerySchema = z.object({
   /** Colonne de tri (liste blanche propre à chaque liste, sinon ignorée) et sens. Un identifiant départage toujours les égalités. */
   sort: z.string().trim().max(30).optional(),
   dir: z.enum(['asc', 'desc']).optional(),
+  /** Réclamations : motif choisi par le client (REPORT_REASONS). */
+  reason: z.string().trim().max(60).optional(),
+  /** Journal d'audit : e-mail (même partiel) de l'administrateur, et type d'entité visée. */
+  actor: z.string().trim().max(120).optional(),
+  entity: z.string().trim().max(40).optional(),
+  /** Générations : code du produit de génération (WAN_I2V_480…). */
+  product: z.string().trim().max(40).optional(),
   /** Filtres du journal des paiements. */
   country: z.string().trim().length(2).toUpperCase().optional(),
   method: z.string().trim().max(40).optional(),

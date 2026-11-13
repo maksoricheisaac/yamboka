@@ -736,4 +736,80 @@ describe('Administration (e2e)', () => {
       ).toBe(true);
     });
   });
+
+  describe('Listes : filtres, tri et synthèse servis par l’API', () => {
+    it('journal d’audit : synthèse sur tout le journal, filtres acteur et entité, tri par action', async () => {
+      await admin
+        .post('/api/admin/packs', {
+          name: 'Pack pour le journal',
+          price: 3000,
+          credits: 100,
+          bonusPercent: 0,
+          reason: 'Écrire une entrée dans le journal',
+        })
+        .expect(201);
+
+      const all = await admin.get('/api/admin/audit').expect(200);
+      expect(all.body.summary.total).toBeGreaterThan(0);
+      expect(all.body.summary.byAdmin + all.body.summary.bySystem).toBe(
+        all.body.summary.total,
+      );
+      expect(all.body.summary.entityTypes.length).toBeGreaterThan(0);
+
+      const entity = all.body.items[0].entityType as string;
+      const filtered = await admin
+        .get(`/api/admin/audit?entity=${encodeURIComponent(entity)}`)
+        .expect(200);
+      expect(
+        filtered.body.items.every(
+          (r: { entityType: string }) => r.entityType === entity,
+        ),
+      ).toBe(true);
+      expect(filtered.body.total).toBeLessThanOrEqual(all.body.total);
+      // La synthèse décrit TOUT le journal : un filtre ne doit pas la changer.
+      expect(filtered.body.summary.total).toBe(all.body.summary.total);
+
+      const byActor = await admin
+        .get(
+          `/api/admin/audit?actor=${encodeURIComponent(TEST_ENV.ADMIN_EMAIL)}`,
+        )
+        .expect(200);
+      expect(byActor.body.items.length).toBeGreaterThan(0);
+      expect(
+        byActor.body.items.every(
+          (r: { actor: string | null }) => r.actor === TEST_ENV.ADMIN_EMAIL,
+        ),
+      ).toBe(true);
+
+      const sorted = await admin
+        .get('/api/admin/audit?sort=action&dir=asc&pageSize=100')
+        .expect(200);
+      const actions = sorted.body.items.map(
+        (r: { action: string }) => r.action,
+      );
+      expect([...actions].sort()).toEqual(actions);
+    });
+
+    it('catalogue des pays : le tri est servi par la base et porte sur tout le catalogue', async () => {
+      const asc = await admin
+        .get('/api/admin/countries?sort=name&dir=asc&pageSize=100')
+        .expect(200);
+      const desc = await admin
+        .get('/api/admin/countries?sort=name&dir=desc&pageSize=100')
+        .expect(200);
+      const names = (r: { body: { items: { name: string }[] } }) =>
+        r.body.items.map((c) => c.name);
+      expect(names(asc).length).toBeGreaterThan(1);
+      // Comparer les deux sens évite de dépendre de la collation du serveur.
+      expect(names(desc)).toEqual([...names(asc)].reverse());
+    });
+
+    it('réclamations : la recherche porte sur le motif et le détail', async () => {
+      const res = await admin
+        .get('/api/admin/reports?q=zzz-aucun-resultat-possible')
+        .expect(200);
+      expect(res.body.items).toEqual([]);
+      expect(res.body.total).toBe(0);
+    });
+  });
 });

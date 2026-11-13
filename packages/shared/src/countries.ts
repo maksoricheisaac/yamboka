@@ -25,6 +25,9 @@ export const pageQuerySchema = z.object({
 export const countryListQuerySchema = pageQuerySchema.extend({
   q: z.string().trim().max(100).optional(),
   status: z.enum(CATALOG_STATUSES).optional(),
+  /** Tri servi par la base : porte sur tout le catalogue, pas sur la seule page affichée. */
+  sort: z.enum(['name', 'iso', 'currency', 'status']).optional(),
+  dir: z.enum(['asc', 'desc']).optional(),
 });
 export type CountryListQuery = z.infer<typeof countryListQuerySchema>;
 

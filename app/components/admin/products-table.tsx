@@ -3,8 +3,9 @@
 import { createColumnHelper } from "@tanstack/react-table";
 import type { AdminProduct } from "@yamboka/shared";
 import { RowActions } from "@/components/admin/row-actions";
-import { DataTable, SortableHeader } from "@/components/admin/data-table/data-table";
-import type { DataTableFeatures } from "@/components/admin/data-table/features";
+import { DataTableColumnHeader } from "@/components/admin/data-table/data-table-column-header";
+import { DataTable } from "@/components/admin/data-table/data-table";
+import type { DataTableFeatures } from "@/components/admin/data-table/data-table-features";
 import { Pill } from "@/components/admin/ui";
 
 const col = createColumnHelper<DataTableFeatures, AdminProduct>();
@@ -12,7 +13,7 @@ const col = createColumnHelper<DataTableFeatures, AdminProduct>();
 const columns = col.columns([
   col.accessor("name", {
     id: "name",
-    header: ({ column }) => <SortableHeader column={column} title="Produit" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Produit" />,
     sortFn: "text",
     enableHiding: false,
     cell: ({ row: { original: p } }) => (
@@ -27,19 +28,20 @@ const columns = col.columns([
   }),
   col.accessor("billingUnit", {
     id: "billing",
-    header: ({ column }) => <SortableHeader column={column} title="Facturation" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Facturation" />,
     sortFn: "text",
+    filterFn: "equalsString",
     cell: ({ row }) => (row.original.billingUnit === "SECOND" ? "À la seconde" : "À l’image (abandonné)"),
   }),
   col.accessor("creditsPerUnit", {
     id: "price",
-    header: ({ column }) => <SortableHeader column={column} title="Prix en crédits" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Prix en crédits" />,
     sortFn: "basic",
     cell: ({ row }) => `${row.original.creditsPerUnit} crédits`,
   }),
   col.accessor("providerCostUsdPerUnit", {
     id: "cost",
-    header: ({ column }) => <SortableHeader column={column} title="Coût fournisseur" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Coût fournisseur" />,
     sortFn: "basic",
     cell: ({ row: { original: p } }) => (
       <span className="text-muted-foreground">
@@ -47,10 +49,12 @@ const columns = col.columns([
       </span>
     ),
   }),
-  col.accessor((p) => (p.active ? 1 : 0), {
+  // La valeur de la colonne est le jeton du filtre : c'est elle que le filtre de la barre d'outils compare.
+  col.accessor((p) => (p.active ? "active" : "inactive"), {
     id: "status",
-    header: ({ column }) => <SortableHeader column={column} title="Statut" />,
-    sortFn: "basic",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Statut" />,
+    sortFn: "text",
+    filterFn: "equalsString",
     cell: ({ row: { original: p } }) => <Pill tone={p.active ? "ok" : "neutral"}>{p.active ? "Actif" : "Inactif"}</Pill>,
   }),
   col.display({
@@ -102,23 +106,21 @@ export function ProductsTable({ products }: { products: AdminProduct[] }) {
       columns={columns}
       data={products}
       minWidth="44rem"
-      searchText={(p) => `${p.name} ${p.code}`}
-      searchPlaceholder="Rechercher un produit…"
+      pageSize={20}
+      search={{ label: "Nom ou code du produit", placeholder: "Rechercher un produit…" }}
       columnLabels={{ billing: "Facturation", price: "Prix en crédits", cost: "Coût fournisseur", status: "Statut" }}
       filters={[
         {
-          key: "status",
+          columnId: "status",
           label: "Statut",
-          get: (p) => (p.active ? "active" : "inactive"),
           options: [
             { value: "active", label: "Actifs" },
             { value: "inactive", label: "Inactifs" },
           ],
         },
         {
-          key: "billing",
+          columnId: "billing",
           label: "Facturation",
-          get: (p) => p.billingUnit,
           options: [
             { value: "SECOND", label: "À la seconde" },
             { value: "IMAGE", label: "À l’image (abandonné)" },

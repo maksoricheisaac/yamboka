@@ -1,11 +1,12 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
-import type { AdminGenerationRow } from "@yamboka/shared";
+import type { AdminGenerationRow, Page } from "@yamboka/shared";
 import { ActionDialog } from "@/components/admin/action-dialog";
-import { DataTable, SortableHeader } from "@/components/admin/data-table/data-table";
-import type { DataTableFeatures } from "@/components/admin/data-table/features";
-import { Pill, StatusPill } from "@/components/admin/ui";
+import { DataTableColumnHeader } from "@/components/admin/data-table/data-table-column-header";
+import { ServerDataTable } from "@/components/admin/data-table/server-data-table";
+import type { DataTableFeatures } from "@/components/admin/data-table/data-table-features";
+import { Pill, STATUS_OPTIONS, StatusPill } from "@/components/admin/ui";
 import { formatDateTime, formatNumber } from "@/lib/format";
 
 const col = createColumnHelper<DataTableFeatures, AdminGenerationRow>();
@@ -13,20 +14,19 @@ const col = createColumnHelper<DataTableFeatures, AdminGenerationRow>();
 const columns = col.columns([
   col.accessor("createdAt", {
     id: "createdAt",
-    header: ({ column }) => <SortableHeader column={column} title="Date" />,
-    sortFn: "text",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Date" />,
     enableHiding: false,
     cell: ({ row }) => <span className="whitespace-nowrap text-muted-foreground">{formatDateTime(row.original.createdAt)}</span>,
   }),
   col.accessor((g) => g.user.email, {
     id: "client",
-    header: ({ column }) => <SortableHeader column={column} title="Client" />,
-    sortFn: "text",
+    header: "Client",
+    enableSorting: false,
   }),
   col.accessor("product", {
     id: "product",
-    header: ({ column }) => <SortableHeader column={column} title="Produit" />,
-    sortFn: "text",
+    header: "Produit",
+    enableSorting: false,
     cell: ({ row: { original: g } }) => (
       <>
         {g.product}
@@ -35,15 +35,13 @@ const columns = col.columns([
     ),
   }),
   col.accessor("creditsCost", {
-    id: "cost",
-    header: ({ column }) => <SortableHeader column={column} title="Coût" />,
-    sortFn: "basic",
+    id: "creditsCost",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Coût" />,
     cell: ({ row }) => <span className="whitespace-nowrap tabular-nums">{formatNumber(row.original.creditsCost)} cr.</span>,
   }),
   col.accessor("status", {
     id: "status",
-    header: ({ column }) => <SortableHeader column={column} title="État" />,
-    sortFn: "text",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="État" />,
     cell: ({ row: { original: g } }) => (
       <>
         <StatusPill kind="generation" value={g.status} />
@@ -74,15 +72,29 @@ const columns = col.columns([
   }),
 ]);
 
-/** La recherche, les filtres et la pagination restent côté serveur : le tableau apporte le tri de la page affichée. */
-export function GenerationsTable({ generations }: { generations: AdminGenerationRow[] }) {
+export function GenerationsTable({
+  page,
+  presets,
+  products,
+}: {
+  page: Page<AdminGenerationRow>;
+  presets: { value: string; label: string }[];
+  products: { value: string; label: string }[];
+}) {
   return (
-    <DataTable
+    <ServerDataTable
       caption="Liste des générations"
       columns={columns}
-      data={generations}
-      paginate={false}
-      columnLabels={{ client: "Client", product: "Produit", cost: "Coût", status: "État" }}
+      items={page.items}
+      meta={page}
+      search={{ label: "Identifiant, client ou consigne", placeholder: "client@…, UUID, texte de la consigne…" }}
+      filters={[
+        { param: "status", label: "État", options: STATUS_OPTIONS.generation },
+        { param: "product", label: "Type de génération", options: products },
+        { param: "presetId", label: "Preset", options: presets },
+      ]}
+      dateFilter={{ label: "Période" }}
+      columnLabels={{ client: "Client", product: "Produit", creditsCost: "Coût", status: "État" }}
       emptyMessage="Aucune génération."
     />
   );

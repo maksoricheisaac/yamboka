@@ -14,8 +14,8 @@ import {
   type AdminPaymentEvent,
   type AdminPaymentRow,
   type AdminStats,
-  type AuditRow,
   type DailyPoint,
+  type AdminAuditPage,
   type FinanceSummary,
   type LegalPublishInput,
   type LegalVersionRow,
@@ -31,6 +31,7 @@ import {
   CUSTOM_PURCHASE_LABEL,
 } from '@yamboka/shared';
 import { buildPage, clampPage } from '@yamboka/shared';
+import { range, startOfToday } from '../common/period';
 import { orderBy } from '../common/sort';
 import { AuditService } from '../audit/audit.service';
 import { CatalogService } from '../catalog/catalog.service';
@@ -47,15 +48,8 @@ import { AdminOfferService } from './admin-offer.service';
 
 const DAY = 24 * 3600 * 1000;
 
-/** Début de la période (minuit UTC) et fin (exclue). */
-function range(q: { from?: string; to?: string }, defaultDays: number) {
-  const to = q.to ? new Date(`${q.to}T00:00:00Z`) : new Date();
-  const end = q.to ? new Date(to.getTime() + DAY) : to;
-  const from = q.from
-    ? new Date(`${q.from}T00:00:00Z`)
-    : new Date(end.getTime() - defaultDays * DAY);
-  return { from, end };
-}
+/** Forme d'un identifiant UUID : une recherche libre ne doit jamais être comparée telle quelle à une colonne UUID. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Neutralise l'injection de formules dans un tableur (=, +, -, @ en début de cellule). */
 export function csvCell(value: string | number | null | undefined): string {
@@ -378,6 +372,8 @@ export class AdminOpsService {
           OR: [
             { user: { email: { contains: q.q, mode: 'insensitive' } } },
             { externalReference: { contains: q.q, mode: 'insensitive' } },
+            // Numéro du payeur : la recherche d'un paiement part souvent du téléphone donné au guichet.
+            { payerPhone: { contains: q.q } },
           ],
         },
       ];
@@ -772,9 +768,17 @@ export class AdminOpsService {
       ].includes(q.status)
     )
       where.status = q.status as 'PENDING';
-    if (q.q) where.user = { email: { contains: q.q, mode: 'insensitive' } };
-    if (q.presetId && /^[0-9a-f-]{36}$/i.test(q.presetId))
-      where.presetId = q.presetId;
+    if (q.q) {
+      const term = q.q;
+      where.OR = [
+        { user: { email: { contains: term, mode: 'insensitive' } } },
+        { prompt: { contains: term, mode: 'insensitive' } },
+        // L'identifiant est un UUID : ne le comparer que si la saisie en a la forme, sinon Prisma refuse la requête.
+        ...(UUID.test(term) ? [{ id: term }] : []),
+      ];
+    }
+    if (q.product) where.product = { code: q.product };
+    if (q.presetId && UUID.test(q.presetId)) where.presetId = q.presetId;
     if (q.from || q.to) {
       const { from, end } = range(q, 3650);
       where.createdAt = { gte: from, lt: end };
@@ -1012,7 +1016,8 @@ export class AdminOpsService {
 
   // ───────────── Audit ─────────────
 
-  async listAudit(q: ListQuery): Promise<Page<AuditRow>> {
+  async listAudit(q: ListQuery): Promise<AdminAuditPage> {
+    const summary = await this.auditSummary();
     const where: Prisma.AuditLogWhereInput = {};
     if (q.q) {
       where.OR = [
@@ -1021,6 +1026,9 @@ export class AdminOpsService {
         { actor: { email: { contains: q.q, mode: 'insensitive' } } },
       ];
     }
+    if (q.actor)
+      where.actor = { email: { contains: q.actor, mode: 'insensitive' } };
+    if (q.entity) where.entityType = q.entity;
     if (q.from || q.to) {
       const { from, end } = range(q, 3650);
       where.createdAt = { gte: from, lt: end };
@@ -1029,7 +1037,10 @@ export class AdminOpsService {
     const page = clampPage(q.page, total, q.pageSize);
     const rows = await this.prisma.auditLog.findMany({
       where,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: orderBy(q, ['createdAt', 'action', 'entityType'], {
+        field: 'createdAt',
+        dir: 'desc',
+      }),
       skip: (page - 1) * q.pageSize,
       take: q.pageSize,
       select: {
@@ -1045,7 +1056,7 @@ export class AdminOpsService {
         actor: { select: { email: true } },
       },
     });
-    return buildPage(
+    const pageResult = buildPage(
       rows.map((r) => ({
         id: r.id,
         action: r.action,
@@ -1062,6 +1073,31 @@ export class AdminOpsService {
       page,
       q.pageSize,
     );
+    return { ...pageResult, summary };
+  }
+
+  /**
+   * Synthèse du journal, calculée sur TOUTES les entrées (jamais sur la page affichée) et indépendante des filtres.
+   *
+   * Il n'existe pas de notion de gravité dans le journal : plutôt que d'inventer une liste d'actions « critiques »,
+   * la synthèse distingue ce qu'un administrateur a fait de ce que le système a écrit seul (webhooks, tâches).
+   */
+  async auditSummary(): Promise<AdminAuditPage['summary']> {
+    const [total, today, byAdmin, entities] = await Promise.all([
+      this.prisma.auditLog.count(),
+      this.prisma.auditLog.count({
+        where: { createdAt: { gte: startOfToday() } },
+      }),
+      this.prisma.auditLog.count({ where: { actorId: { not: null } } }),
+      this.prisma.auditLog.groupBy({ by: ['entityType'] }),
+    ]);
+    return {
+      total,
+      today,
+      byAdmin,
+      bySystem: total - byAdmin,
+      entityTypes: entities.map((e) => e.entityType).sort(),
+    };
   }
 
   // ───────────── Comptes administrateurs ─────────────

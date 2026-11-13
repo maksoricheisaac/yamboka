@@ -5,8 +5,9 @@ import type { AdminCountryDetail } from "@yamboka/shared";
 import { CATALOG_STATUS_LABELS } from "@yamboka/shared";
 import { ActionDialog } from "@/components/admin/action-dialog";
 import { CountryStatusPill } from "@/components/admin/country-status";
-import { DataTable, SortableHeader } from "@/components/admin/data-table/data-table";
-import type { DataTableFeatures } from "@/components/admin/data-table/features";
+import { DataTableColumnHeader } from "@/components/admin/data-table/data-table-column-header";
+import { DataTable } from "@/components/admin/data-table/data-table";
+import type { DataTableFeatures } from "@/components/admin/data-table/data-table-features";
 import { Pill } from "@/components/admin/ui";
 
 type Method = AdminCountryDetail["methods"][number];
@@ -21,7 +22,7 @@ const col = createColumnHelper<DataTableFeatures, MethodRow>();
 const columns = col.columns([
   col.accessor("name", {
     id: "name",
-    header: ({ column }) => <SortableHeader column={column} title="Moyen" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Moyen" />,
     sortFn: "text",
     enableHiding: false,
     cell: ({ row: { original: m } }) => (
@@ -34,18 +35,18 @@ const columns = col.columns([
   }),
   col.accessor((m) => TYPE_LABELS[m.type], {
     id: "type",
-    header: ({ column }) => <SortableHeader column={column} title="Type" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Type" />,
     sortFn: "text",
   }),
   col.accessor((m) => m.saspayNetwork ?? "", {
     id: "network",
-    header: ({ column }) => <SortableHeader column={column} title="Réseau SasPay" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Réseau SasPay" />,
     sortFn: "text",
     cell: ({ row }) => <span className="font-mono text-xs">{row.original.saspayNetwork ?? "—"}</span>,
   }),
   col.accessor((m) => CATALOG_STATUS_LABELS[m.status], {
     id: "status",
-    header: ({ column }) => <SortableHeader column={column} title="Statut" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Statut" />,
     sortFn: "text",
     cell: ({ row: { original: m } }) => (
       <>

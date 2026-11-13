@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { AdminPackPage } from "@yamboka/shared";
 import { ActionDialog } from "@/components/admin/action-dialog";
 import { PacksTable } from "@/components/admin/packs-table";
-import { Empty, FilterBar, FilterField, FilterSelect, PageHeader, Pager, Pill, StatCard, StatGrid, flat, listQuery } from "@/components/admin/ui";
+import { PageHeader, Pill, StatCard, StatGrid, flat, listQuery } from "@/components/admin/ui";
 import { requireUser } from "@/lib/auth";
 import { formatFcfa } from "@/lib/format";
 import { serverGet } from "@/lib/server-api";
@@ -12,16 +12,15 @@ export const metadata: Metadata = { title: "Packs de crédits — Administration
 export default async function PacksPage({ searchParams }: PageProps<"/admin/packs">) {
   await requireUser({ role: "ADMIN" });
   const sp = flat(await searchParams);
-  const data = await serverGet<AdminPackPage>(`/admin/packs${listQuery(sp)}`);
-  const packs = data.items;
-  const { summary } = data;
-  const publicPacks = summary.publicPacks;
-  const underMargin = summary.belowMargin;
+  // `summary` est calculée par l’API sur TOUS les packs : ni la page affichée, ni les filtres ne la changent.
+  const page = await serverGet<AdminPackPage>(`/admin/packs${listQuery(sp)}`);
+  const { summary } = page;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Packs de crédits"
+        description="Prix, crédits, marges et publication sur les pages publiques."
         actions={
           <ActionDialog
             trigger="Nouveau pack"
@@ -41,9 +40,14 @@ export default async function PacksPage({ searchParams }: PageProps<"/admin/pack
       />
 
       <StatGrid>
-        <StatCard label="Packs" value={summary.total} hint={`${summary.total - summary.active} inactif${summary.total - summary.active > 1 ? "s" : ""}`} />
-        <StatCard label="Packs actifs (vendus)" value={summary.active} hint={underMargin > 0 ? `${underMargin} sous la marge minimale` : "Tous au-dessus de la marge minimale"} />
-        <StatCard label="Offres publiques" value={`${summary.publicVisible} / 3`} hint="Affichées sur la page Tarifs" />
+        <StatCard label="Packs" value={summary.total} hint="catalogue complet" />
+        <StatCard
+          label="Actifs (vendus)"
+          value={summary.active}
+          hint={summary.belowMargin > 0 ? `${summary.belowMargin} sous la marge minimale` : "tous au-dessus de la marge minimale"}
+        />
+        <StatCard label="Inactifs" value={summary.total - summary.active} hint="jamais proposés à l’achat" />
+        <StatCard label="Offres publiques" value={`${summary.publicVisible} / 3`} hint="affichées sur la page Tarifs" />
       </StatGrid>
 
       <section aria-labelledby="public" className="space-y-2 rounded-3xl bg-card shadow-card p-4">
@@ -52,21 +56,19 @@ export default async function PacksPage({ searchParams }: PageProps<"/admin/pack
           <p className="text-sm text-muted-foreground">Aucun pack public : la page Tarifs n’affiche aucune offre.</p>
         ) : (
           <ul className="flex flex-wrap gap-2 text-sm">
-            {publicPacks.map((p) => (
+            {summary.publicPacks.map((p) => (
               <li key={p.id}>
-                <Pill tone={p.featured ? "ok" : "neutral"}>{p.name} · {formatFcfa(p.priceFcfa)}{p.featured ? " · recommandé" : ""}</Pill>
+                <Pill tone={p.featured ? "ok" : "neutral"}>
+                  {p.name} · {formatFcfa(p.priceFcfa)}
+                  {p.featured ? " · recommandé" : ""}
+                </Pill>
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      <FilterBar reset="/admin/packs">
-        <FilterField label="Nom du pack" name="q" defaultValue={sp.q} />
-        <FilterSelect label="Statut" name="status" value={sp.status} options={[{ value: "active", label: "Actifs" }, { value: "inactive", label: "Inactifs" }]} />
-      </FilterBar>
-      {packs.length === 0 ? <Empty title="Aucun pack">Aucun pack ne correspond à ces critères.</Empty> : <PacksTable packs={packs} />}
-      <Pager page={data.page} total={data.total} pageSize={data.pageSize} path="/admin/packs" params={sp} />
+      <PacksTable page={page} />
     </div>
   );
 }

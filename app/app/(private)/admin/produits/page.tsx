@@ -9,17 +9,19 @@ export const metadata: Metadata = { title: "Produits — Administration" };
 
 export default async function ProductsPage() {
   await requireUser({ role: "ADMIN" });
+  // La liste entière est chargée (quelques produits) : les indicateurs se calculent dessus, pas sur une page.
   const products = await serverGet<AdminProduct[]>("/admin/products");
   const active = products.filter((p) => p.active);
-  const perSecond = active.filter((p) => p.billingUnit === "SECOND").length;
+  const perSecond = products.filter((p) => p.billingUnit === "SECOND").length;
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Produits de génération" />
+      <PageHeader title="Produits de génération" description="Ce que la création propose, son prix en crédits et son coût fournisseur." />
       <StatGrid>
-        <StatCard label="Produits" value={products.length} hint={`${products.length - active.length} inactif${products.length - active.length > 1 ? "s" : ""}`} />
-        <StatCard label="Produits actifs" value={active.length} hint="Proposés à la création" />
-        <StatCard label="Actifs par facturation" value={`${perSecond} vidéo · ${active.length - perSecond} image`} hint="Vidéo : à la seconde. Image : à l’unité." />
+        <StatCard label="Produits" value={products.length} hint="catalogue complet" />
+        <StatCard label="Actifs" value={active.length} hint="proposés à la création" />
+        <StatCard label="Inactifs" value={products.length - active.length} hint="jamais proposés" />
+        <StatCard label="Par facturation" value={`${perSecond} vidéo · ${products.length - perSecond} image`} hint="vidéo à la seconde, image à l’unité" />
       </StatGrid>
       <ProductsTable products={products} />
     </div>

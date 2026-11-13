@@ -16,6 +16,7 @@ import type {
 } from '@yamboka/shared';
 import { buildPage, clampPage } from '@yamboka/shared';
 import { AuditService } from '../audit/audit.service';
+import { orderBy } from '../common/sort';
 import type { Prisma } from '../generated/prisma/client';
 import {
   activationBlocker,
@@ -52,7 +53,14 @@ export class AdminCountriesService {
     const page = clampPage(q.page, total, q.pageSize);
     const rows = await this.prisma.country.findMany({
       where,
-      orderBy: [{ sortOrder: 'asc' }, { iso: 'asc' }],
+      orderBy: q.sort
+        ? orderBy(
+            q,
+            ['name', 'iso', 'currency', 'status'],
+            { field: 'name', dir: 'asc' },
+            'iso',
+          )
+        : [{ sortOrder: 'asc' }, { iso: 'asc' }],
       skip: (page - 1) * q.pageSize,
       take: q.pageSize,
       include: {
