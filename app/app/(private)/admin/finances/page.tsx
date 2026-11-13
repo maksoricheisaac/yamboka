@@ -2,7 +2,8 @@ import { Download } from "lucide-react";
 import type { Metadata } from "next";
 import type { FinanceSummary, PayoutRow, TopUpRow } from "@yamboka/shared";
 import { ActionDialog } from "@/components/admin/action-dialog";
-import { DataTable, Empty, FilterBar, FilterDateRange, PageHeader, Td, Th, flat } from "@/components/admin/ui";
+import { PayoutsTable, TopUpsTable } from "@/components/admin/finance-tables";
+import { Empty, FilterBar, FilterDateRange, PageHeader, flat } from "@/components/admin/ui";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth";
 import { formatFcfa, formatNumber } from "@/lib/format";
@@ -72,16 +73,7 @@ export default async function FinancesPage({ searchParams }: PageProps<"/admin/f
           />
         </div>
         {topUps.length === 0 ? <Empty title="Aucune recharge saisie" /> : (
-          <DataTable caption="Recharges Higgsfield" minWidth="30rem">
-            <thead><tr><Th>Date</Th><Th>Montant</Th><Th>Coût</Th><Th>Taux</Th><Th>Note</Th></tr></thead>
-            <tbody>
-              {topUps.map((t) => (
-                <tr key={t.id}>
-                  <Td>{t.createdAt.slice(0, 10)}</Td><Td>{formatNumber(t.amountUsd)} $</Td><Td>{formatFcfa(t.amountXaf)}</Td><Td>{t.fxRate}</Td><Td className="text-muted-foreground">{t.note ?? "—"}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </DataTable>
+          <TopUpsTable topUps={topUps} />
         )}
       </section>
 
@@ -104,14 +96,7 @@ export default async function FinancesPage({ searchParams }: PageProps<"/admin/f
           />
         </div>
         {payouts.length === 0 ? <Empty title="Aucun retrait saisi" /> : (
-          <DataTable caption="Retraits SasPay" minWidth="28rem">
-            <thead><tr><Th>Date</Th><Th>Montant</Th><Th>Commission</Th><Th>Note</Th></tr></thead>
-            <tbody>
-              {payouts.map((p) => (
-                <tr key={p.id}><Td>{p.date}</Td><Td>{formatFcfa(p.amountXaf)}</Td><Td>{formatFcfa(p.commissionXaf)}</Td><Td className="text-muted-foreground">{p.note ?? "—"}</Td></tr>
-              ))}
-            </tbody>
-          </DataTable>
+          <PayoutsTable payouts={payouts} />
         )}
       </section>
     </div>

@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import type { AdminGenerationRow, AdminPreset, Page } from "@yamboka/shared";
-import { ActionDialog } from "@/components/admin/action-dialog";
-import { DataTable, Empty, FilterBar, FilterDateRange, FilterField, FilterSelect, PageHeader, Pager, Pill, STATUS_OPTIONS, StatusPill, Td, Th, flat, listQuery } from "@/components/admin/ui";
+import { GenerationsTable } from "@/components/admin/generations-table";
+import { Empty, FilterBar, FilterDateRange, FilterField, FilterSelect, PageHeader, Pager, STATUS_OPTIONS, flat, listQuery } from "@/components/admin/ui";
 import { requireUser } from "@/lib/auth";
-import { formatDateTime, formatNumber } from "@/lib/format";
 import { serverGet } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "Générations — Administration" };
@@ -28,31 +27,7 @@ export default async function GenerationsPage({ searchParams }: PageProps<"/admi
       {data.items.length === 0 ? (
         <Empty title="Aucune génération">Aucune création ne correspond. La génération de vidéos et d’images n’est pas encore ouverte aux clients : cette liste se remplira à l’ouverture.</Empty>
       ) : (
-        <DataTable caption="Liste des générations">
-          <thead><tr><Th>Date</Th><Th>Client</Th><Th>Produit</Th><Th>Coût</Th><Th>État</Th><Th className="text-right">Actions</Th></tr></thead>
-          <tbody>
-            {data.items.map((g) => (
-              <tr key={g.id}>
-                <Td className="whitespace-nowrap text-muted-foreground">{formatDateTime(g.createdAt)}</Td>
-                <Td>{g.user.email}</Td>
-                <Td>{g.product}{g.preset && <span className="block text-xs text-muted-foreground">{g.preset}</span>}</Td>
-                <Td>{formatNumber(g.creditsCost)} cr.</Td>
-                <Td><StatusPill kind="generation" value={g.status} />{g.hidden && <> <Pill tone="warn">Masquée</Pill></>}</Td>
-                <Td className="text-right">
-                  <ActionDialog
-                    trigger={g.hidden ? "Ré-afficher" : "Masquer"}
-                    triggerLabel={`${g.hidden ? "Ré-afficher" : "Masquer"} la création de ${g.user.email}`}
-                    title={g.hidden ? "Ré-afficher cette création" : "Masquer cette création"}
-                    endpoint={`/admin/generations/${g.id}/hide`}
-                    fixed={{ hidden: !g.hidden }}
-                    submitLabel={g.hidden ? "Ré-afficher" : "Masquer"}
-                    destructive={!g.hidden}
-                  />
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </DataTable>
+        <GenerationsTable generations={data.items} />
       )}
       <Pager page={data.page} total={data.total} pageSize={data.pageSize} path="/admin/generations" params={sp} />
     </div>

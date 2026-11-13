@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import type { AdminCountryRow, AdminCountrySummary, Page } from "@yamboka/shared";
 import { CATALOG_STATUS_LABELS } from "@yamboka/shared";
-import { CountryStatusPill } from "@/components/admin/country-status";
-import { RowActions } from "@/components/admin/row-actions";
+import { CountriesTable } from "@/components/admin/countries-table";
 import { Empty, FilterBar, StatCard, StatGrid, FilterField, FilterSelect, PageHeader, Pager, flat, listQuery } from "@/components/admin/ui";
 import { requireUser } from "@/lib/auth";
-import { flagOf } from "@/lib/flags";
 import { serverGet } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "Pays et paiements — Administration" };
@@ -38,63 +36,7 @@ export default async function CountriesPage({ searchParams }: PageProps<"/admin/
       {data.items.length === 0 ? (
         <Empty title="Aucun pays">Aucun pays ne correspond à ces critères.</Empty>
       ) : (
-        <div className="relative overflow-x-auto rounded-3xl bg-card shadow-card">
-          <table className="w-full min-w-[56rem] text-left text-sm">
-            <caption className="sr-only">Pays intégrés et leur statut</caption>
-            <thead>
-              <tr className="[&>th]:border-b [&>th]:px-4 [&>th]:py-3 [&>th]:text-[0.8125rem] [&>th]:font-medium [&>th]:text-muted-foreground">
-                <th scope="col">Pays</th>
-                <th scope="col">ISO</th>
-                <th scope="col">Devise</th>
-                <th scope="col">Moyens</th>
-                <th scope="col">Statut</th>
-                <th scope="col">Frais indicatifs</th>
-                <th scope="col" className="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((c) => (
-                <tr key={c.iso} className="hover:bg-muted/40 [&>td]:border-b [&>td]:px-4 [&>td]:py-3.5 [&>td]:align-middle">
-                  <td className="font-medium">
-                    <span aria-hidden className="mr-2 text-lg">{flagOf(c.iso)}</span>
-                    {c.name}
-                  </td>
-                  <td className="font-mono text-xs">{c.iso}</td>
-                  <td>{c.currency}</td>
-                  <td className="tabular-nums">
-                    {c.activeMethodCount} actif{c.activeMethodCount > 1 ? "s" : ""} / {c.methodCount}
-                    <span className="block text-xs font-normal text-muted-foreground">{c.methodNames.join(", ")}</span>
-                  </td>
-                  <td>
-                    <CountryStatusPill status={c.status} />
-                    {!c.sellable && <span className="block text-xs text-muted-foreground">Tarification {c.currency} à configurer</span>}
-                  </td>
-                  <td className="text-muted-foreground">{c.feeNote ?? "—"}</td>
-                  <td className="text-right">
-                    <RowActions
-                      label={`Actions pour ${c.name}`}
-                      actions={[
-                        { key: "open", label: "Ouvrir la fiche", icon: "open", href: `/admin/pays/${c.iso}` },
-                        {
-                          key: "status",
-                          label: "Changer le statut",
-                          icon: "status",
-                          dialog: {
-                            triggerLabel: `Changer le statut de ${c.name}`,
-                            title: `Statut de ${c.name}`,
-                            description: "Actif : ouvert. Bientôt disponible : visible, non sélectionnable. Désactivé : jamais proposé.",
-                            endpoint: `/admin/countries/${c.iso}/status`,
-                            fields: [{ name: "status", label: "Nouveau statut", type: "select", defaultValue: c.status, options: STATUS_OPTIONS }],
-                          },
-                        },
-                      ]}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <CountriesTable countries={data.items} />
       )}
       <Pager page={data.page} total={data.total} pageSize={data.pageSize} path="/admin/pays" params={sp} />
     </div>

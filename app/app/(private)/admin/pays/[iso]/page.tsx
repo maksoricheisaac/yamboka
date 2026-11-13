@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import type { AdminCountryDetail } from "@yamboka/shared";
 import { CATALOG_STATUS_LABELS } from "@yamboka/shared";
 import { ActionDialog } from "@/components/admin/action-dialog";
+import { CountryMethodsTable } from "@/components/admin/country-methods-table";
 import { CountryStatusPill } from "@/components/admin/country-status";
-import { PageHeader, Pill, StatCard, StatGrid } from "@/components/admin/ui";
+import { PageHeader, StatCard, StatGrid } from "@/components/admin/ui";
 import { requireUser } from "@/lib/auth";
 import { flagOf } from "@/lib/flags";
 import { formatMoney } from "@/lib/format";
@@ -12,7 +13,6 @@ import { serverGet } from "@/lib/server-api";
 export const metadata: Metadata = { title: "Fiche pays — Administration" };
 
 const STATUS_OPTIONS = (["ACTIVE", "COMING_SOON", "DISABLED"] as const).map((s) => ({ value: s, label: CATALOG_STATUS_LABELS[s] }));
-const TYPE_LABELS = { MOBILE_MONEY: "Mobile money", CARD: "Carte bancaire", BANK_TRANSFER: "Virement" } as const;
 
 export default async function CountryPage({ params }: PageProps<"/admin/pays/[iso]">) {
   await requireUser({ role: "ADMIN" });
@@ -48,51 +48,7 @@ export default async function CountryPage({ params }: PageProps<"/admin/pays/[is
 
       <section aria-labelledby="methods" className="space-y-3">
         <h2 id="methods" className="text-xl font-bold">Moyens de paiement</h2>
-        <div className="relative overflow-x-auto rounded-3xl bg-card shadow-card">
-          <table className="w-full min-w-[48rem] text-left text-sm">
-            <caption className="sr-only">Moyens de paiement de {c.name}</caption>
-            <thead>
-              <tr className="[&>th]:border-b [&>th]:px-4 [&>th]:py-3 [&>th]:text-[0.8125rem] [&>th]:font-medium [&>th]:text-muted-foreground">
-                <th scope="col">Moyen</th>
-                <th scope="col">Type</th>
-                <th scope="col">Réseau SasPay</th>
-                <th scope="col">Statut</th>
-                <th scope="col" className="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {c.methods.map((m) => (
-                <tr key={m.id} className="[&>td]:border-b [&>td]:px-4 [&>td]:py-3 [&>td]:align-top">
-                  <td className="font-medium">
-                    {m.name}
-                    {m.feeNote && <span className="block text-xs font-normal text-muted-foreground">Frais indicatifs : {m.feeNote}</span>}
-                    {m.note && <span className="block text-xs font-normal text-muted-foreground">{m.note}</span>}
-                  </td>
-                  <td>{TYPE_LABELS[m.type]}</td>
-                  <td className="font-mono text-xs">{m.saspayNetwork ?? "—"}</td>
-                  <td>
-                    <CountryStatusPill status={m.status} />
-                    {m.blocker && (
-                      <span className="mt-1 block max-w-64 text-xs text-muted-foreground">
-                        <Pill tone="neutral">Non activable</Pill> {m.blocker}
-                      </span>
-                    )}
-                  </td>
-                  <td className="text-right">
-                    <ActionDialog
-                      trigger="Statut"
-                      triggerLabel={`Changer le statut de ${m.name}`}
-                      title={`${m.name} · ${c.name}`}
-                      description={m.blocker ? `Ce moyen ne peut pas être activé : ${m.blocker}` : "Statut propre à ce moyen dans ce pays."}
-                      endpoint={`/admin/countries/${c.iso}/methods/${m.methodCode}/status`}
-                      fields={[{ name: "status", label: "Nouveau statut", type: "select", defaultValue: m.status, options: STATUS_OPTIONS }]}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <CountryMethodsTable iso={c.iso} name={c.name} methods={c.methods} />
       </section>
 
       <section aria-labelledby="pricing" className="space-y-3 rounded-3xl bg-card shadow-card p-4">

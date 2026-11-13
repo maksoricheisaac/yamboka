@@ -32,30 +32,6 @@ export function StatGrid({ children }: { children: ReactNode }) {
   return <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">{children}</div>;
 }
 
-/** Tableau défilant horizontalement (le conteneur est `relative` : indispensable pour les textes `sr-only`). */
-export function DataTable({ caption, children, minWidth = "44rem" }: { caption: string; children: ReactNode; minWidth?: string }) {
-  return (
-    <div className="relative overflow-x-auto rounded-3xl bg-card shadow-card">
-      <table className="w-full text-left text-sm [&_tbody_tr:hover]:bg-muted/40 [&_tbody_tr:last-child_td]:border-b-0" style={{ minWidth }}>
-        <caption className="sr-only">{caption}</caption>
-        {children}
-      </table>
-    </div>
-  );
-}
-
-export function Th({ children, className = "" }: { children?: ReactNode; className?: string }) {
-  return (
-    <th scope="col" className={`border-b px-4 py-3 text-[0.8125rem] font-medium text-muted-foreground ${className}`}>
-      {children}
-    </th>
-  );
-}
-
-export function Td({ children, className = "" }: { children?: ReactNode; className?: string }) {
-  return <td className={`border-b px-4 py-3.5 align-middle ${className}`}>{children}</td>;
-}
-
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="rounded-2xl border border-dashed bg-card/50 p-8 text-center">

@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { AdminUserDetail } from "@yamboka/shared";
 import { ActionDialog } from "@/components/admin/action-dialog";
-import { DataTable, Empty, LEDGER_LABELS, PageHeader, Pill, StatusPill, Td, Th } from "@/components/admin/ui";
+import { Empty, PageHeader, Pill, StatusPill } from "@/components/admin/ui";
+import { UserGenerationsTable, UserLedgerTable, UserPaymentsTable } from "@/components/admin/user-detail-tables";
 import { requireUser } from "@/lib/auth";
-import { formatDateTime, formatFcfa, formatNumber, formatPhone } from "@/lib/format";
+import { formatDateTime, formatNumber, formatPhone } from "@/lib/format";
 import { serverGetOrNull } from "@/lib/server-api";
 
 export const metadata: Metadata = { title: "Fiche client — Administration" };
@@ -65,58 +66,21 @@ export default async function UserDetailPage({ params }: PageProps<"/admin/utili
       <section aria-labelledby="paiements" className="space-y-3">
         <h2 id="paiements" className="text-xl font-bold">Paiements</h2>
         {u.payments.length === 0 ? <Empty title="Aucun paiement" /> : (
-          <DataTable caption="Paiements du client" minWidth="32rem">
-            <thead><tr><Th>Date</Th><Th>Montant</Th><Th>Crédits</Th><Th>Opérateur</Th><Th>État</Th></tr></thead>
-            <tbody>
-              {u.payments.map((p) => (
-                <tr key={p.id}>
-                  <Td className="whitespace-nowrap">{formatDateTime(p.createdAt)}</Td>
-                  <Td>{formatFcfa(p.amount)}</Td>
-                  <Td>{formatNumber(p.credits)}</Td>
-                  <Td>{p.operator}</Td>
-                  <Td><StatusPill kind="payment" value={p.status} /></Td>
-                </tr>
-              ))}
-            </tbody>
-          </DataTable>
+          <UserPaymentsTable payments={u.payments} />
         )}
       </section>
 
       <section aria-labelledby="generations" className="space-y-3">
         <h2 id="generations" className="text-xl font-bold">Générations</h2>
         {u.generations.length === 0 ? <Empty title="Aucune génération" /> : (
-          <DataTable caption="Générations du client" minWidth="30rem">
-            <thead><tr><Th>Date</Th><Th>Produit</Th><Th>Coût</Th><Th>État</Th></tr></thead>
-            <tbody>
-              {u.generations.map((g) => (
-                <tr key={g.id}>
-                  <Td className="whitespace-nowrap">{formatDateTime(g.createdAt)}</Td>
-                  <Td>{g.product}</Td>
-                  <Td>{formatNumber(g.creditsCost)} crédits</Td>
-                  <Td><StatusPill kind="generation" value={g.status} /></Td>
-                </tr>
-              ))}
-            </tbody>
-          </DataTable>
+          <UserGenerationsTable generations={u.generations} />
         )}
       </section>
 
       <section aria-labelledby="registre" className="space-y-3">
         <h2 id="registre" className="text-xl font-bold">Registre de crédits</h2>
         {u.ledger.length === 0 ? <Empty title="Aucun mouvement" /> : (
-          <DataTable caption="Derniers mouvements de crédits" minWidth="32rem">
-            <thead><tr><Th>Date</Th><Th>Type</Th><Th>Montant</Th><Th>Note</Th></tr></thead>
-            <tbody>
-              {u.ledger.map((l) => (
-                <tr key={l.id}>
-                  <Td className="whitespace-nowrap">{formatDateTime(l.createdAt)}</Td>
-                  <Td>{LEDGER_LABELS[l.type] ?? l.type}</Td>
-                  <Td className={`tabular-nums font-medium ${l.amount < 0 ? "text-destructive" : ""}`}>{l.amount > 0 ? `+${l.amount}` : l.amount}</Td>
-                  <Td className="text-muted-foreground">{l.note ?? "—"}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </DataTable>
+          <UserLedgerTable ledger={u.ledger} />
         )}
       </section>
 

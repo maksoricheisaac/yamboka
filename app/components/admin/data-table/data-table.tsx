@@ -20,6 +20,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "cn";
 import { features, type DataTableFeatures } from "./features";
 
 export interface TableFilter<TData> {
@@ -179,45 +181,45 @@ export function DataTable<TData extends RowData>({
         )}
       </div>
 
-      <div className="relative overflow-x-auto rounded-3xl bg-card shadow-card">
-        <table className="w-full text-left text-sm" style={{ minWidth }}>
-          <caption className="sr-only">{caption}</caption>
-          <thead>
+      <div className="overflow-hidden rounded-3xl bg-card shadow-card">
+        <Table style={{ minWidth }}>
+          <TableCaption className="sr-only">{caption}</TableCaption>
+          <TableHeader>
             {table.getHeaderGroups().map((group) => (
-              <tr key={group.id}>
+              <TableRow key={group.id} className="hover:bg-transparent">
                 {group.headers.map((header, i) => (
-                  <th
+                  <TableHead
                     key={header.id}
                     scope="col"
                     aria-sort={ariaSort(header.column.getIsSorted())}
-                    className={`border-b bg-card px-4 py-3 text-[0.8125rem] font-medium text-muted-foreground ${stickyClass(header.column.id, i)}`}
+                    className={cn("bg-card", stickyClass(header.column.id, i))}
                   >
                     {header.isPlaceholder ? null : <table.FlexRender header={header} />}
-                  </th>
+                  </TableHead>
                 ))}
-              </tr>
+              </TableRow>
             ))}
-          </thead>
-          <tbody>
+          </TableHeader>
+          <TableBody>
             {table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="group/row hover:bg-muted/40">
+                <TableRow key={row.id} className="group/row">
                   {row.getVisibleCells().map((cell, i) => (
-                    <td key={cell.id} className={`border-b px-4 py-3 align-top group-last/row:border-b-0 ${stickyClass(cell.column.id, i, true)}`}>
+                    <TableCell key={cell.id} className={cn("align-top", stickyClass(cell.column.id, i, true))}>
                       <table.FlexRender cell={cell} />
-                    </td>
+                    </TableCell>
                   ))}
-                </tr>
+                </TableRow>
               ))
             ) : (
-              <tr>
-                <td colSpan={columns.length} className="h-24 px-4 text-center text-muted-foreground">
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
                   {filtered ? "Aucun résultat pour ces critères." : emptyMessage}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {paginate && (
