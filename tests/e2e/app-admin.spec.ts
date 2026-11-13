@@ -88,7 +88,7 @@ test.describe('Administration — actions réelles', () => {
     await form.getByRole('button', { name: 'Créer le pack' }).click();
     // Le tableau est paginé : on retrouve le pack par la recherche plutôt que par sa position.
     await page.getByLabel('Nom du pack').fill(packName);
-    await page.getByRole('button', { name: 'Filtrer' }).click();
+    await page.getByLabel('Nom du pack').press('Enter');
     const fourth = page.getByRole('row', { name: packName });
     const rowMenu = fourth.getByRole('button', { name: `Actions pour le pack ${packName}` });
     await rowMenu.click();
@@ -135,9 +135,12 @@ test.describe('Administration — actions réelles', () => {
     await adminLogin(page);
     await page.goto('/admin/audit');
     await expect(page.getByRole('table', { name: 'Journal d’audit' })).toBeVisible();
-    await page.getByLabel('Action, entité ou acteur').fill('inexistant-xyz');
-    await page.getByRole('button', { name: 'Filtrer' }).click();
-    await expect(page.getByText('Aucune entrée')).toBeVisible();
+    await page.getByLabel('Utilisateur, action ou entité').fill('inexistant-xyz');
+    await page.getByLabel('Utilisateur, action ou entité').press('Enter');
+    // Le tableau distingue « rien à montrer » de « rien pour ces critères » : le second invite à les effacer.
+    await expect(page.getByText('Aucun résultat pour ces critères.')).toBeVisible();
+    await page.getByRole('button', { name: 'Réinitialiser' }).click();
+    await expect(page.getByRole('row').nth(1)).toBeVisible();
   });
 });
 
@@ -159,7 +162,7 @@ test.describe('Administration — paiements', () => {
     await expect(page.getByLabel('Fournisseur')).toBeVisible();
     // Filtre par fournisseur : « SasPay » ne montre pas ce paiement simulé, « Simulé » le montre.
     await page.goto(`/admin/paiements?q=${encodeURIComponent(customer.email)}&provider=saspay`);
-    await expect(page.getByText('Aucun paiement', { exact: true })).toBeVisible();
+    await expect(page.getByText('Aucun résultat pour ces critères.')).toBeVisible();
     await page.goto(`/admin/paiements?q=${encodeURIComponent(customer.email)}&provider=mock`);
     const row = page.getByRole('row', { name: new RegExp(customer.email) });
     await expect(row.getByText('Simulé')).toBeVisible();

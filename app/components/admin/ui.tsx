@@ -120,17 +120,6 @@ export function FilterBar({ children, reset }: { children: ReactNode; reset: str
   );
 }
 
-export function FilterField({ label, name, defaultValue, type = "text", placeholder, children }: { label: string; name: string; defaultValue?: string; type?: string; placeholder?: string; children?: ReactNode }) {
-  return (
-    <label className="flex min-w-36 flex-col gap-1 text-xs font-medium text-muted-foreground">
-      {label}
-      {children ?? (
-        <input name={name} type={type} defaultValue={defaultValue} placeholder={placeholder} className="h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground" />
-      )}
-    </label>
-  );
-}
-
 /** Période Du/Au en un seul calendrier ; émet les champs `from` et `to` dans le formulaire de filtre. */
 export function FilterDateRange({ from, to }: { from?: string; to?: string }) {
   return (
@@ -138,19 +127,6 @@ export function FilterDateRange({ from, to }: { from?: string; to?: string }) {
       Période
       <DateRangePicker from={from} to={to} name={{ from: "from", to: "to" }} />
     </div>
-  );
-}
-
-export function FilterSelect({ label, name, value, options, all = "Tous" }: { label: string; name: string; value?: string; options: { value: string; label: string }[]; all?: string }) {
-  return (
-    <FilterField label={label} name={name}>
-      <select name={name} defaultValue={value ?? ""} className="h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground">
-        <option value="">{all}</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-    </FilterField>
   );
 }
 

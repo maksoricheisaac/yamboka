@@ -1,11 +1,12 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
-import type { AdminReportRow } from "@yamboka/shared";
+import type { AdminReportRow, Page } from "@yamboka/shared";
 import { ActionDialog } from "@/components/admin/action-dialog";
-import { DataTable, SortableHeader } from "@/components/admin/data-table/data-table";
-import type { DataTableFeatures } from "@/components/admin/data-table/features";
-import { StatusPill } from "@/components/admin/ui";
+import { DataTableColumnHeader } from "@/components/admin/data-table/data-table-column-header";
+import { ServerDataTable } from "@/components/admin/data-table/server-data-table";
+import type { DataTableFeatures } from "@/components/admin/data-table/data-table-features";
+import { STATUS_OPTIONS, StatusPill } from "@/components/admin/ui";
 import { formatDateTime } from "@/lib/format";
 
 const col = createColumnHelper<DataTableFeatures, AdminReportRow>();
@@ -13,15 +14,13 @@ const col = createColumnHelper<DataTableFeatures, AdminReportRow>();
 const columns = col.columns([
   col.accessor("createdAt", {
     id: "createdAt",
-    header: ({ column }) => <SortableHeader column={column} title="Reçu le" />,
-    sortFn: "text",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Reçu le" />,
     enableHiding: false,
     cell: ({ row }) => <span className="whitespace-nowrap text-muted-foreground">{formatDateTime(row.original.createdAt)}</span>,
   }),
   col.accessor("reason", {
     id: "reason",
-    header: ({ column }) => <SortableHeader column={column} title="Motif" />,
-    sortFn: "text",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Motif" />,
     cell: ({ row: { original: r } }) => (
       <>
         <span className="font-medium">{r.reason}</span>
@@ -32,13 +31,12 @@ const columns = col.columns([
   }),
   col.accessor((r) => r.reporter ?? "Anonyme", {
     id: "reporter",
-    header: ({ column }) => <SortableHeader column={column} title="Par" />,
-    sortFn: "text",
+    header: "Par",
+    enableSorting: false,
   }),
   col.accessor("status", {
     id: "status",
-    header: ({ column }) => <SortableHeader column={column} title="État" />,
-    sortFn: "text",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="État" />,
     cell: ({ row }) => <StatusPill kind="report" value={row.original.status} />,
   }),
   col.display({
@@ -71,14 +69,19 @@ const columns = col.columns([
   }),
 ]);
 
-/** Le filtre d'état et la pagination restent côté serveur : le tableau apporte le tri de la page affichée. */
-export function ReportsTable({ reports }: { reports: AdminReportRow[] }) {
+export function ReportsTable({ page, reasons }: { page: Page<AdminReportRow>; reasons: { value: string; label: string }[] }) {
   return (
-    <DataTable
+    <ServerDataTable
       caption="Signalements et réclamations"
       columns={columns}
-      data={reports}
-      paginate={false}
+      items={page.items}
+      meta={page}
+      search={{ label: "Utilisateur, motif ou détail", placeholder: "client@…, motif…" }}
+      filters={[
+        { param: "status", label: "État", options: STATUS_OPTIONS.report },
+        { param: "reason", label: "Catégorie", options: reasons },
+      ]}
+      dateFilter={{ label: "Période" }}
       columnLabels={{ reason: "Motif", reporter: "Par", status: "État" }}
       emptyMessage="Aucun signalement."
     />

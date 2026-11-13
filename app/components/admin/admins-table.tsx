@@ -3,8 +3,9 @@
 import { createColumnHelper } from "@tanstack/react-table";
 import type { AdminAccount } from "@yamboka/shared";
 import { ActionDialog } from "@/components/admin/action-dialog";
-import { DataTable, SortableHeader } from "@/components/admin/data-table/data-table";
-import type { DataTableFeatures } from "@/components/admin/data-table/features";
+import { DataTableColumnHeader } from "@/components/admin/data-table/data-table-column-header";
+import { DataTable } from "@/components/admin/data-table/data-table";
+import type { DataTableFeatures } from "@/components/admin/data-table/data-table-features";
 import { formatDateTime } from "@/lib/format";
 
 /** Le compte connecté est marqué dans la ligne : les colonnes restent définies une seule fois, hors du composant. */
@@ -15,7 +16,7 @@ const col = createColumnHelper<DataTableFeatures, AdminRow>();
 const columns = col.columns([
   col.accessor((a) => `${a.firstName} ${a.lastName}`, {
     id: "name",
-    header: ({ column }) => <SortableHeader column={column} title="Nom" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Nom" />,
     sortFn: "text",
     enableHiding: false,
     cell: ({ row: { original: a } }) => (
@@ -27,12 +28,12 @@ const columns = col.columns([
   }),
   col.accessor("email", {
     id: "email",
-    header: ({ column }) => <SortableHeader column={column} title="E-mail" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="E-mail" />,
     sortFn: "text",
   }),
   col.accessor("createdAt", {
     id: "createdAt",
-    header: ({ column }) => <SortableHeader column={column} title="Depuis le" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Depuis le" />,
     sortFn: "text",
     cell: ({ row }) => <span className="whitespace-nowrap text-muted-foreground">{formatDateTime(row.original.createdAt)}</span>,
   }),

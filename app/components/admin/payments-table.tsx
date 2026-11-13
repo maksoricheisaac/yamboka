@@ -1,13 +1,13 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
-import type { AdminPaymentRow } from "@yamboka/shared";
+import type { AdminPaymentRow, Page } from "@yamboka/shared";
 import Link from "next/link";
 import { providerLabel } from "@/components/credits/labels";
-import { DataTable, SortableHeader } from "@/components/admin/data-table/data-table";
-import { ServerSortHeader } from "@/components/admin/data-table/server-sort";
-import type { DataTableFeatures } from "@/components/admin/data-table/features";
-import { StatusPill } from "@/components/admin/ui";
+import { DataTableColumnHeader } from "@/components/admin/data-table/data-table-column-header";
+import { ServerDataTable } from "@/components/admin/data-table/server-data-table";
+import type { DataTableFeatures } from "@/components/admin/data-table/data-table-features";
+import { STATUS_OPTIONS, StatusPill } from "@/components/admin/ui";
 import { VerifyPaymentButton } from "@/components/admin/verify-payment-button";
 import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 
@@ -15,15 +15,15 @@ const col = createColumnHelper<DataTableFeatures, AdminPaymentRow>();
 
 const columns = col.columns([
   col.accessor("createdAt", {
-    id: "date",
-    header: () => <ServerSortHeader id="createdAt" title="Date" />,
+    id: "createdAt",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Date" />,
     enableHiding: false,
     cell: ({ row }) => <span className="whitespace-nowrap text-muted-foreground">{formatDateTime(row.original.createdAt)}</span>,
   }),
   col.accessor((p) => p.user.email, {
     id: "customer",
-    header: ({ column }) => <SortableHeader column={column} title="Client" />,
-    sortFn: "text",
+    header: "Client",
+    enableSorting: false,
     cell: ({ row: { original: p } }) => (
       <>
         {p.user.email}
@@ -36,8 +36,8 @@ const columns = col.columns([
   }),
   col.accessor((p) => p.countryName ?? p.country, {
     id: "country",
-    header: ({ column }) => <SortableHeader column={column} title="Pays" />,
-    sortFn: "text",
+    header: "Pays",
+    enableSorting: false,
     cell: ({ row: { original: p } }) => (
       <>
         {p.countryName ?? p.country}
@@ -47,8 +47,8 @@ const columns = col.columns([
   }),
   col.accessor("provider", {
     id: "provider",
-    header: ({ column }) => <SortableHeader column={column} title="Fournisseur" />,
-    sortFn: "text",
+    header: "Fournisseur",
+    enableSorting: false,
     cell: ({ row: { original: p } }) => (
       <>
         {providerLabel(p.provider)}
@@ -58,8 +58,8 @@ const columns = col.columns([
   }),
   col.accessor("packName", {
     id: "pack",
-    header: ({ column }) => <SortableHeader column={column} title="Pack" />,
-    sortFn: "text",
+    header: "Pack",
+    enableSorting: false,
     cell: ({ row: { original: p } }) => (
       <>
         {p.packName}
@@ -69,7 +69,7 @@ const columns = col.columns([
   }),
   col.accessor("amount", {
     id: "amount",
-    header: () => <ServerSortHeader id="amount" title="Montant" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Montant" />,
     cell: ({ row: { original: p } }) => (
       <>
         <span className="whitespace-nowrap font-medium">{formatMoney(p.amount, p.currency)}</span>
@@ -81,7 +81,7 @@ const columns = col.columns([
   }),
   col.accessor("status", {
     id: "status",
-    header: () => <ServerSortHeader id="status" title="État" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="État" />,
     cell: ({ row: { original: p } }) => (
       <>
         <StatusPill kind="payment" value={p.status} />
@@ -106,16 +106,39 @@ const columns = col.columns([
   }),
 ]);
 
-/** Recherche, filtres (statut, période) et pagination restent côté serveur ; le tableau apporte tri et colonnes. */
-export function PaymentsTable({ payments }: { payments: AdminPaymentRow[] }) {
+export function PaymentsTable({
+  page,
+  countries,
+  methods,
+}: {
+  page: Page<AdminPaymentRow>;
+  countries: { value: string; label: string }[];
+  methods: { value: string; label: string }[];
+}) {
   return (
-    <DataTable
+    <ServerDataTable
       caption="Journal des paiements"
       columns={columns}
-      data={payments}
-      paginate={false}
+      items={page.items}
+      meta={page}
       minWidth="64rem"
+      search={{ label: "E-mail, référence ou numéro", placeholder: "client@…, référence, 06…" }}
+      filters={[
+        { param: "status", label: "État", options: STATUS_OPTIONS.payment },
+        {
+          param: "provider",
+          label: "Fournisseur",
+          options: [
+            { value: "saspay", label: "SasPay" },
+            { value: "mock", label: "Simulé" },
+          ],
+        },
+        { param: "country", label: "Pays", options: countries },
+        { param: "method", label: "Moyen", options: methods },
+      ]}
+      dateFilter={{ label: "Période" }}
       columnLabels={{ customer: "Client", country: "Pays et moyen", provider: "Fournisseur", pack: "Pack", amount: "Montant", status: "État" }}
+      emptyMessage="Aucun paiement."
     />
   );
 }

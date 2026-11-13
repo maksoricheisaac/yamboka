@@ -1,10 +1,11 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
-import type { AdminPack } from "@yamboka/shared";
+import type { AdminPack, AdminPackPage } from "@yamboka/shared";
 import { RowActions } from "@/components/admin/row-actions";
-import { DataTable, SortableHeader } from "@/components/admin/data-table/data-table";
-import type { DataTableFeatures } from "@/components/admin/data-table/features";
+import { DataTableColumnHeader } from "@/components/admin/data-table/data-table-column-header";
+import { ServerDataTable } from "@/components/admin/data-table/server-data-table";
+import type { DataTableFeatures } from "@/components/admin/data-table/data-table-features";
 import { Pill } from "@/components/admin/ui";
 import { formatFcfa, formatNumber } from "@/lib/format";
 
@@ -13,21 +14,19 @@ const col = createColumnHelper<DataTableFeatures, AdminPack>();
 const columns = col.columns([
   col.accessor("name", {
     id: "name",
-    header: ({ column }) => <SortableHeader column={column} title="Pack" />,
-    sortFn: "text",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Pack" />,
     enableHiding: false,
     cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
   }),
   col.accessor("priceFcfa", {
     id: "price",
-    header: ({ column }) => <SortableHeader column={column} title="Prix" />,
-    sortFn: "basic",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Prix" />,
     cell: ({ row }) => <span className="whitespace-nowrap">{formatFcfa(row.original.priceFcfa)}</span>,
   }),
   col.accessor("totalCredits", {
     id: "credits",
-    header: ({ column }) => <SortableHeader column={column} title="Crédits" />,
-    sortFn: "basic",
+    header: "Crédits",
+    enableSorting: false,
     cell: ({ row }) => (
       <>
         {formatNumber(row.original.totalCredits)}
@@ -39,8 +38,8 @@ const columns = col.columns([
   }),
   col.accessor((p) => p.worstMarginPercent ?? -Infinity, {
     id: "margin",
-    header: ({ column }) => <SortableHeader column={column} title="Marge minimale" />,
-    sortFn: "basic",
+    header: "Marge minimale",
+    enableSorting: false,
     cell: ({ row: { original: p } }) =>
       p.worstMarginPercent === null ? (
         "—"
@@ -52,8 +51,8 @@ const columns = col.columns([
   }),
   col.accessor((p) => (p.active ? 1 : 0), {
     id: "status",
-    header: ({ column }) => <SortableHeader column={column} title="Statut" />,
-    sortFn: "basic",
+    header: "Statut",
+    enableSorting: false,
     cell: ({ row: { original: p } }) => (
       <span className="flex flex-wrap gap-1">
         <Pill tone={p.active ? "ok" : "neutral"}>{p.active ? "Actif" : "Inactif"}</Pill>
@@ -144,14 +143,25 @@ const columns = col.columns([
   }),
 ]);
 
-export function PacksTable({ packs }: { packs: AdminPack[] }) {
+export function PacksTable({ page }: { page: AdminPackPage }) {
   return (
-    <DataTable
+    <ServerDataTable
       caption="Packs de crédits, prix, marges et publication"
       columns={columns}
-      data={packs}
+      items={page.items}
+      meta={page}
       minWidth="48rem"
-      paginate={false}
+      search={{ label: "Nom du pack", placeholder: "Nom du pack…" }}
+      filters={[
+        {
+          param: "status",
+          label: "Statut",
+          options: [
+            { value: "active", label: "Actifs" },
+            { value: "inactive", label: "Inactifs" },
+          ],
+        },
+      ]}
       columnLabels={{ price: "Prix", credits: "Crédits", margin: "Marge minimale", status: "Statut" }}
       emptyMessage="Aucun pack."
     />

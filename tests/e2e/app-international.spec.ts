@@ -5,20 +5,57 @@ test.describe('Catalogue international — administration', () => {
     await adminLogin(page);
     await page.goto('/admin/pays');
     await expect(page.getByRole('heading', { level: 1, name: 'Pays et paiements' })).toBeVisible();
+    const pager = page.getByRole('navigation', { name: 'Pagination' });
     // 22 pays au total (21 + International), 20 par page : deux pages, total annoncé.
-    await expect(page.getByRole('navigation', { name: 'Pagination' })).toContainText('1–20 sur 22 résultats');
-    await page.getByRole('navigation', { name: 'Pagination' }).getByRole('link', { name: 'Page 2' }).click();
+    await expect(pager).toContainText('22 résultats');
+    await expect(pager).toContainText('Page 1 sur 2');
+    await expect(pager.getByRole('button', { name: 'Page précédente' })).toBeDisabled();
+
+    await pager.getByRole('button', { name: 'Page suivante' }).click();
     await expect(page).toHaveURL(/page=2/);
-    await expect(page.getByRole('navigation', { name: 'Pagination' })).toContainText('21–22 sur 22 résultats');
+    await expect(pager).toContainText('Page 2 sur 2');
+    await expect(pager.getByRole('button', { name: 'Page suivante' })).toBeDisabled();
 
-    // Changer la taille revient à la première page et conserve le contexte.
-    await page.getByRole('navigation', { name: 'Pagination' }).getByRole('link', { name: '50', exact: true }).click();
-    await expect(page.getByRole('navigation', { name: 'Pagination' })).toContainText('1–22 sur 22 résultats');
+    await pager.getByRole('button', { name: 'Première page' }).click();
+    await expect(page).not.toHaveURL(/page=2/);
 
-    // Recherche côté serveur.
-    await page.goto('/admin/pays?q=rwanda');
+    // Changer la taille revient à la première page et tient dans une seule page.
+    await pager.getByLabel('Lignes par page').selectOption('50');
+    await expect(pager).toContainText('Page 1 sur 1');
+    await expect(page).toHaveURL(/pageSize=50/);
+
+    // Indicateurs : calculés sur tout le catalogue, pas sur la page affichée.
+    await expect(page.getByText('Pays', { exact: false }).first()).toBeVisible();
+
+    // Recherche depuis la barre d’outils : le critère part dans l’adresse.
+    await page.goto('/admin/pays');
+    await page.getByLabel('Nom, code ISO ou devise').fill('rwanda');
+    await page.getByLabel('Nom, code ISO ou devise').press('Enter');
+    await expect(page).toHaveURL(/q=rwanda/);
     await expect(page.getByRole('row', { name: /Rwanda/ })).toBeVisible();
-    await expect(page.getByRole('navigation', { name: 'Pagination' })).toContainText('1–1 sur 1 résultat');
+    await expect(pager).toContainText('1 résultat');
+
+    // Critères combinés : la recherche et le statut s’additionnent, et l’indicateur les compte.
+    await page.getByLabel('Statut').selectOption('ACTIVE');
+    await expect(page).toHaveURL(/status=ACTIVE/);
+    await expect(page.getByText('2 critères actifs')).toBeVisible();
+    await expect(page.getByText('Aucun résultat pour ces critères.')).toBeVisible();
+
+    // Réinitialisation : tous les critères partent de l’adresse d’un coup.
+    await page.getByRole('button', { name: 'Réinitialiser' }).click();
+    await expect(page).not.toHaveURL(/q=rwanda/);
+    await expect(page).not.toHaveURL(/status=ACTIVE/);
+    await expect(pager).toContainText('22 résultats');
+
+    // Tri servi par la base : il porte sur tout le catalogue et se lit dans l’adresse.
+    await page.getByRole('button', { name: 'Trier par Pays' }).or(page.getByRole('button', { name: 'Pays', exact: true })).first().click();
+    await expect(page).toHaveURL(/sort=name&dir=asc/);
+
+    // Colonnes masquables.
+    await page.getByRole('button', { name: 'Colonnes' }).click();
+    await page.getByRole('menuitemcheckbox', { name: 'Devise' }).click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('columnheader', { name: 'Devise' })).toHaveCount(0);
 
     // Statut : filtre côté serveur (CG et CM au minimum).
     await page.goto('/admin/pays?status=ACTIVE');

@@ -25,9 +25,9 @@ import type {
   AdminStats,
   AdminUserDetail,
   AdminUserRow,
-  AuditRow,
   CreditAdjustInput,
   DemoteAdminInput,
+  AdminAuditPage,
   FinanceSummary,
   LegalPublishInput,
   LegalVersionRow,
@@ -469,7 +469,7 @@ export class AdminController {
   // ───────────── Audit ─────────────
 
   @Get('audit')
-  listAudit(@Query(query) q: ListQuery): Promise<Page<AuditRow>> {
+  listAudit(@Query(query) q: ListQuery): Promise<AdminAuditPage> {
     return this.ops.listAudit(q);
   }
 }

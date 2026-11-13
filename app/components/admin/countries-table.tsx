@@ -1,11 +1,12 @@
 "use client";
 
 import { createColumnHelper } from "@tanstack/react-table";
-import type { AdminCountryRow } from "@yamboka/shared";
+import type { AdminCountryRow, Page } from "@yamboka/shared";
 import { CATALOG_STATUS_LABELS } from "@yamboka/shared";
 import { CountryStatusPill } from "@/components/admin/country-status";
-import { DataTable, SortableHeader } from "@/components/admin/data-table/data-table";
-import type { DataTableFeatures } from "@/components/admin/data-table/features";
+import { DataTableColumnHeader } from "@/components/admin/data-table/data-table-column-header";
+import { ServerDataTable } from "@/components/admin/data-table/server-data-table";
+import type { DataTableFeatures } from "@/components/admin/data-table/data-table-features";
 import { RowActions } from "@/components/admin/row-actions";
 import { flagOf } from "@/lib/flags";
 
@@ -16,8 +17,7 @@ const col = createColumnHelper<DataTableFeatures, AdminCountryRow>();
 const columns = col.columns([
   col.accessor("name", {
     id: "name",
-    header: ({ column }) => <SortableHeader column={column} title="Pays" />,
-    sortFn: "text",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Pays" />,
     enableHiding: false,
     cell: ({ row: { original: c } }) => (
       <span className="font-medium whitespace-nowrap">
@@ -30,19 +30,17 @@ const columns = col.columns([
   }),
   col.accessor("iso", {
     id: "iso",
-    header: ({ column }) => <SortableHeader column={column} title="ISO" />,
-    sortFn: "text",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="ISO" />,
     cell: ({ row }) => <span className="font-mono text-xs">{row.original.iso}</span>,
   }),
   col.accessor("currency", {
     id: "currency",
-    header: ({ column }) => <SortableHeader column={column} title="Devise" />,
-    sortFn: "text",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Devise" />,
   }),
   col.accessor("activeMethodCount", {
     id: "methods",
-    header: ({ column }) => <SortableHeader column={column} title="Moyens" />,
-    sortFn: "basic",
+    header: "Moyens",
+    enableSorting: false,
     cell: ({ row: { original: c } }) => (
       <span className="tabular-nums">
         {c.activeMethodCount} actif{c.activeMethodCount > 1 ? "s" : ""} / {c.methodCount}
@@ -52,8 +50,7 @@ const columns = col.columns([
   }),
   col.accessor((c) => CATALOG_STATUS_LABELS[c.status], {
     id: "status",
-    header: ({ column }) => <SortableHeader column={column} title="Statut" />,
-    sortFn: "text",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Statut" />,
     cell: ({ row: { original: c } }) => (
       <>
         <CountryStatusPill status={c.status} />
@@ -93,18 +90,16 @@ const columns = col.columns([
   }),
 ]);
 
-/**
- * La recherche, le filtre de statut et la pagination restent côté serveur : le tableau apporte le tri
- * et le choix des colonnes sur la page affichée.
- */
-export function CountriesTable({ countries }: { countries: AdminCountryRow[] }) {
+export function CountriesTable({ page }: { page: Page<AdminCountryRow> }) {
   return (
-    <DataTable
+    <ServerDataTable
       caption="Pays intégrés et leur statut"
       columns={columns}
-      data={countries}
+      items={page.items}
+      meta={page}
       minWidth="56rem"
-      paginate={false}
+      search={{ label: "Nom, code ISO ou devise", placeholder: "Rwanda, RW, RWF…" }}
+      filters={[{ param: "status", label: "Statut", options: STATUS_OPTIONS }]}
       columnLabels={{ iso: "ISO", currency: "Devise", methods: "Moyens", status: "Statut", fees: "Frais indicatifs" }}
       emptyMessage="Aucun pays."
     />

@@ -261,6 +261,21 @@ export interface AuditRow {
   createdAt: string;
 }
 
+/** Page du journal + synthèse calculée sur TOUT le journal (la page affichée n'en montre qu'une partie). */
+export type AdminAuditPage = Page<AuditRow> & {
+  summary: {
+    total: number;
+    /** Entrées écrites depuis minuit (UTC). */
+    today: number;
+    /** Entrées écrites par un administrateur identifié. */
+    byAdmin: number;
+    /** Entrées écrites par le système, sans administrateur (webhooks, tâches). */
+    bySystem: number;
+    /** Types d'entités réellement présents dans le journal, pour alimenter le filtre. */
+    entityTypes: string[];
+  };
+};
+
 export interface AdminAccount {
   id: string;
   firstName: string;

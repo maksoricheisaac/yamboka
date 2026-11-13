@@ -171,4 +171,30 @@ test.describe('Administration — composants partagés (période, menus d’acti
     await validate.click();
     await expect(page).toHaveURL(/\/app$/);
   });
+
+  test('tableau chargé en entier (presets) : recherche, filtre, réinitialisation et colonnes masquables', async ({ page }) => {
+    await adminLogin(page);
+    await page.goto('/admin/presets');
+    await expect(page.getByRole('table', { name: 'Presets' })).toBeVisible();
+
+    // Recherche globale, calculée dans le navigateur : sans accent ni casse.
+    await page.getByLabel('Nom, catégorie ou produit').fill('zzz-inexistant');
+    await expect(page.getByText('Aucun résultat pour ces critères.')).toBeVisible();
+    await expect(page.getByText('1 critère actif')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Réinitialiser' }).click();
+    await expect(page.getByText('Aucun résultat pour ces critères.')).toHaveCount(0);
+
+    // Filtre de colonne : la publication ne laisse rien passer quand tous les presets sont publiés.
+    await page.getByLabel('Publication').selectOption('draft');
+    await expect(page.getByText('1 critère actif')).toBeVisible();
+    await page.getByRole('button', { name: 'Réinitialiser' }).click();
+
+    // Colonnes masquables, la colonne d'identité restant toujours affichée.
+    await page.getByRole('button', { name: 'Colonnes' }).click();
+    await page.getByRole('menuitemcheckbox', { name: 'Produit' }).click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('columnheader', { name: 'Produit' })).toHaveCount(0);
+    await expect(page.getByRole('columnheader', { name: 'Preset' })).toBeVisible();
+  });
 });

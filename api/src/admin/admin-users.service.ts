@@ -14,6 +14,7 @@ import type {
   UserStatusActionInput,
 } from '@yamboka/shared';
 import { buildPage, clampPage } from '@yamboka/shared';
+import { range } from '../common/period';
 import { orderBy } from '../common/sort';
 import { AuditService } from '../audit/audit.service';
 import { CreditsService } from '../credits/credits.service';
@@ -304,11 +305,28 @@ export class AdminUsersService {
       ['NEW', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'].includes(q.status)
     )
       where.status = q.status as 'NEW';
+    if (q.reason) where.reason = q.reason;
+    if (q.q) {
+      const term = q.q;
+      where.OR = [
+        { reason: { contains: term, mode: 'insensitive' } },
+        { details: { contains: term, mode: 'insensitive' } },
+        { reporterContact: { contains: term, mode: 'insensitive' } },
+        { reporter: { email: { contains: term, mode: 'insensitive' } } },
+      ];
+    }
+    if (q.from || q.to) {
+      const { from, end } = range(q, 3650);
+      where.createdAt = { gte: from, lt: end };
+    }
     const total = await this.prisma.report.count({ where });
     const page = clampPage(q.page, total, q.pageSize);
     const rows = await this.prisma.report.findMany({
       where,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: orderBy(q, ['createdAt', 'status', 'reason'], {
+        field: 'createdAt',
+        dir: 'desc',
+      }),
       skip: (page - 1) * q.pageSize,
       take: q.pageSize,
       select: {
