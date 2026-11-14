@@ -10,6 +10,7 @@ const ICONS: Record<NotificationKind, { icon: LucideIcon; tone: string }> = {
   GENERATION_READY: { icon: CheckCircle2, tone: "bg-success/15 text-success" },
   GENERATION_FAILED: { icon: CircleAlert, tone: "bg-destructive/12 text-destructive" },
   CREDITS_REFUNDED: { icon: RotateCcw, tone: "bg-accent/35 text-accent-foreground" },
+  CREDITS_GRANTED: { icon: Coins, tone: "bg-success/15 text-success" },
   PAYMENT_SUCCESS: { icon: Coins, tone: "bg-success/15 text-success" },
   PAYMENT_FAILED: { icon: CreditCard, tone: "bg-destructive/12 text-destructive" },
   DELETION_REMINDER: { icon: Bell, tone: "bg-muted text-muted-foreground" },

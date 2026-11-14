@@ -13,6 +13,10 @@ import {
   type AdminPaymentDetail,
   type AdminPaymentEvent,
   type AdminPaymentRow,
+  type AdminPaymentCheck,
+  type AdminPaymentStats,
+  type PaymentCreditState,
+  type PaymentSettleInput,
   type AdminStats,
   type DailyPoint,
   type AdminAuditPage,
@@ -38,7 +42,7 @@ import { CatalogService } from '../catalog/catalog.service';
 import type { Env } from '../config/env';
 import { EmailService } from '../email/email.service';
 import { Prisma } from '../generated/prisma/client';
-import { PaymentsService } from '../payments/payments.service';
+import { MISMATCH_REASON, PaymentsService } from '../payments/payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   SETTING_DEFAULTS,
@@ -62,6 +66,7 @@ export function csvCell(value: string | number | null | undefined): string {
 const PAYMENT_INCLUDE = {
   user: { select: { email: true } },
   pack: { select: { name: true } },
+  creditedBy: { select: { email: true } },
 } as const;
 
 @Injectable()
@@ -286,6 +291,17 @@ export class AdminOpsService {
         href: '/admin/paiements?status=PENDING',
       });
     }
+    const uncredited = await this.prisma.payment.count({
+      where: { status: 'SUCCESS', creditedAt: null },
+    });
+    if (uncredited > 0) {
+      alerts.push({
+        key: 'uncredited-payments',
+        level: 'critical',
+        message: `${uncredited} paiement(s) confirmé(s) par le fournisseur mais non crédité(s) : à régulariser.`,
+        href: '/admin/paiements?anomaly=uncredited',
+      });
+    }
     const [failureAlert, balanceAlert, maintenance] = await Promise.all([
       this.settingNumber('failureRateAlertPercent', 20),
       this.settingNumber('providerBalanceAlertUsd', 10),
@@ -382,6 +398,8 @@ export class AdminOpsService {
       const { from, end } = range(q, 3650);
       where.createdAt = { gte: from, lt: end };
     }
+    const anomaly = anomalyWhere(q.anomaly);
+    if (anomaly) Object.assign(where, anomaly);
     return where;
   }
 
@@ -417,7 +435,72 @@ export class AdminOpsService {
       debitedAmount: p.debitedAmount,
       lastCheckedAt: typeof last?.at === 'string' ? last.at : null,
       issue: paymentIssue(p.status, last),
+      creditState: creditStateOf(p.status, p.creditedAt),
+      creditOrigin: p.creditOrigin,
+      needsAttention:
+        (p.status === 'SUCCESS' && p.creditedAt === null) ||
+        p.failureReason === MISMATCH_REASON,
     };
+  }
+
+  /**
+   * Compteurs du journal : mêmes filtres que la liste (recherche, fournisseur, pays, moyen, période), mais SANS
+   * le statut ni l'anomalie — ce sont justement eux que ces chiffres décomposent. Un filtre « en attente » ne
+   * fait donc pas tomber les autres compteurs à zéro.
+   */
+  async paymentStats(q: ListQuery): Promise<AdminPaymentStats> {
+    const where = this.paymentWhere({
+      ...q,
+      status: undefined,
+      anomaly: undefined,
+    });
+    const count = (extra: Prisma.PaymentWhereInput) =>
+      this.prisma.payment.count({ where: { ...where, ...extra } });
+    const [
+      total,
+      success,
+      pending,
+      failed,
+      confirmedNotCredited,
+      manuallySettled,
+    ] = await Promise.all([
+      count({}),
+      count({ status: 'SUCCESS' }),
+      count({ status: { in: ['INITIATED', 'PENDING'] } }),
+      count({ status: { in: ['FAILED', 'CANCELLED'] } }),
+      count({ status: 'SUCCESS', creditedAt: null }),
+      count({ creditOrigin: 'MANUAL' }),
+    ]);
+    return {
+      total,
+      success,
+      pending,
+      failed,
+      confirmedNotCredited,
+      manuallySettled,
+    };
+  }
+
+  /**
+   * Régularisation d'un paiement confirmé non crédité. Toute la logique (vérification auprès du fournisseur,
+   * protection contre la double attribution, audit, notification) vit dans PaymentsService : l'administration
+   * ne fait que transmettre l'identité de l'administrateur responsable.
+   */
+  async settlePayment(
+    adminId: string,
+    id: string,
+    body: PaymentSettleInput,
+    ip?: string,
+  ) {
+    return this.payments.settlePayment({
+      paymentId: id,
+      adminId,
+      mode: body.mode,
+      proofReference: body.proofReference,
+      reason: body.reason,
+      justification: body.justification,
+      ip,
+    });
   }
 
   async listPayments(q: ListQuery): Promise<Page<AdminPaymentRow>> {
@@ -453,7 +536,7 @@ export class AdminOpsService {
         code: 'NOT_FOUND',
         message: 'Paiement introuvable.',
       });
-    const [webhooks, audits] = await Promise.all([
+    const [webhooks, audits, checks] = await Promise.all([
       p.externalReference
         ? this.prisma.paymentWebhookEvent.findMany({
             where: { gateway: p.gateway, providerTxId: p.externalReference },
@@ -463,6 +546,12 @@ export class AdminOpsService {
       this.prisma.auditLog.findMany({
         where: { entityType: 'Payment', entityId: id },
         orderBy: { createdAt: 'asc' },
+        include: { actor: { select: { email: true } } },
+      }),
+      this.prisma.paymentCheck.findMany({
+        where: { paymentId: id },
+        orderBy: { createdAt: 'asc' },
+        take: 200,
         include: { actor: { select: { email: true } } },
       }),
     ]);
@@ -489,11 +578,12 @@ export class AdminOpsService {
       })),
     ];
     if (p.creditedAt) {
+      const manual = p.creditOrigin === 'MANUAL';
       timeline.push({
         at: p.creditedAt.toISOString(),
-        kind: 'credited',
-        label: 'Crédits ajoutés',
-        detail: `${p.credits + p.bonusCredits} crédits`,
+        kind: manual ? 'settled' : 'credited',
+        label: manual ? 'Crédits régularisés manuellement' : 'Crédits ajoutés',
+        detail: `${p.credits + p.bonusCredits} crédits${manual && p.creditedBy ? ` · par ${p.creditedBy.email}` : ''}`,
       });
     } else if (p.status === 'FAILED' || p.status === 'CANCELLED') {
       timeline.push({
@@ -527,6 +617,23 @@ export class AdminOpsService {
             }
           : null,
       timeline,
+      creditedBy: p.creditedBy?.email ?? null,
+      checks: checks.map((c): AdminPaymentCheck => ({
+        at: c.createdAt.toISOString(),
+        kind: c.kind,
+        source: c.source,
+        outcome: c.outcome,
+        amount: c.amount,
+        currency: c.currency,
+        proofReference: c.proofReference,
+        detail: c.detail,
+        actor: c.actor?.email ?? null,
+      })),
+      reconcileAttempts: p.reconcileAttempts,
+      lastReconcileAt: p.lastReconcileAt?.toISOString() ?? null,
+      lastReconcileError: p.lastReconcileError,
+      // Régularisable tant que les crédits ne sont pas attribués et qu'une référence fournisseur existe.
+      canSettle: p.creditedAt === null && p.externalReference !== null,
     };
   }
 
@@ -1249,6 +1356,45 @@ function statusOf(value: unknown): string {
  * Problème de traitement à signaler à l'administrateur, déduit de la dernière réponse du fournisseur.
  * Seulement tant que le paiement n'est pas conclu : un paiement réussi n'a plus rien à signaler.
  */
+/**
+ * État de l'attribution des crédits, lu sur le paiement : `creditedAt` n'est renseigné que par la transaction
+ * qui écrit réellement le mouvement au registre.
+ */
+function creditStateOf(
+  status: string,
+  creditedAt: Date | null,
+): PaymentCreditState {
+  if (creditedAt) return 'CREDITED';
+  return status === 'SUCCESS' ? 'NOT_CREDITED' : 'NONE';
+}
+
+/** Traduit une anomalie choisie dans le journal en condition de recherche. */
+function anomalyWhere(
+  anomaly: ListQuery['anomaly'],
+): Prisma.PaymentWhereInput | null {
+  switch (anomaly) {
+    case 'pending':
+      return { status: { in: ['INITIATED', 'PENDING'] } };
+    case 'uncredited':
+      return { status: 'SUCCESS', creditedAt: null };
+    case 'settled':
+      return { creditOrigin: 'MANUAL' };
+    case 'attention':
+      return {
+        OR: [
+          { status: 'SUCCESS', creditedAt: null },
+          { status: 'FAILED', failureReason: MISMATCH_REASON },
+          {
+            lastReconcileError: { not: null },
+            status: { in: ['INITIATED', 'PENDING'] },
+          },
+        ],
+      };
+    default:
+      return null;
+  }
+}
+
 function paymentIssue(
   status: string,
   last: { error?: string; rejected?: string } | null,

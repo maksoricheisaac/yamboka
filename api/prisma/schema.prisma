@@ -55,6 +55,20 @@ enum PaymentStatus {
   CANCELLED
 }
 
+/// Origine de l'attribution des crédits d'un paiement : vérification automatique ou régularisation administrative.
+enum CreditOrigin {
+  AUTO
+  MANUAL
+}
+
+/// Nature d'une tentative de vérification d'un paiement.
+enum PaymentCheckKind {
+  /// Interrogation de l'endpoint de statut du fournisseur (seule preuve automatique acceptée).
+  PROVIDER
+  /// Validation administrative sur preuve externe, quand le fournisseur est injoignable.
+  MANUAL
+}
+
 enum MobileOperator {
   MTN
   AIRTEL
@@ -135,6 +149,8 @@ enum NotificationType {
   PAYMENT_SUCCESS
   PAYMENT_FAILED
   CREDITS_REFUNDED
+  /// Attribution de crédits par un administrateur (geste commercial, correction).
+  CREDITS_GRANTED
   DELETION_REMINDER
   MODERATION
   SYSTEM
@@ -168,6 +184,8 @@ model User {
   ledger           CreditLedger[]     @relation("LedgerOwner")
   ledgerCreated    CreditLedger[]     @relation("LedgerCreator")
   payments         Payment[]
+  paymentsSettled  Payment[]          @relation("PaymentCreditedBy")
+  paymentChecks    PaymentCheck[]
   generations      Generation[]
   mediaFiles       MediaFile[]
   reportsFiled     Report[]           @relation("ReportReporter")
@@ -477,14 +495,25 @@ model Payment {
   status                    PaymentStatus  @default(INITIATED)
   lastProviderStatus        Json?
   failureReason             String?
+  /// Horodatage de l'attribution des crédits. null sur un paiement SUCCESS = anomalie « confirmé non crédité ».
   creditedAt                DateTime?
+  /// Comment les crédits ont été attribués : AUTO (confirmation du fournisseur) ou MANUAL (régularisation admin).
+  creditOrigin              CreditOrigin?
+  /// Administrateur ayant régularisé le paiement, le cas échéant (jamais renseigné pour une attribution AUTO).
+  creditedById              String?        @db.Uuid
+  /// Nombre de tentatives de traitement (vérification auprès du fournisseur), date et dernière erreur.
+  reconcileAttempts         Int            @default(0)
+  lastReconcileAt           DateTime?
+  lastReconcileError        String?
   createdAt                 DateTime       @default(now())
   updatedAt                 DateTime       @updatedAt
 
-  user   User           @relation(fields: [userId], references: [id], onDelete: Restrict)
-  pack   CreditPack?    @relation(fields: [packId], references: [id], onDelete: Restrict)
-  ledger CreditLedger[]
-  lots   CreditLot[]
+  user       User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  creditedBy User?          @relation("PaymentCreditedBy", fields: [creditedById], references: [id], onDelete: Restrict)
+  pack       CreditPack?    @relation(fields: [packId], references: [id], onDelete: Restrict)
+  ledger     CreditLedger[]
+  lots       CreditLot[]
+  checks     PaymentCheck[]
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
@@ -492,6 +521,33 @@ model Payment {
   @@index([gateway, createdAt])
   @@index([country, createdAt])
   @@index([methodCode])
+  /// Repérage immédiat des paiements confirmés non crédités (anomalie à régulariser).
+  @@index([status, creditedAt])
+}
+
+/// Trace, en ajout seul, de CHAQUE tentative de vérification d'un paiement : qui l'a déclenchée, ce que le
+/// fournisseur a répondu, et la conclusion retenue. Sert à auditer une régularisation et à diagnostiquer un blocage.
+model PaymentCheck {
+  id             String           @id @default(uuid()) @db.Uuid
+  paymentId      String           @db.Uuid
+  kind           PaymentCheckKind
+  /// Ce qui a déclenché la vérification : callback, webhook, reconcile, admin.
+  source         String
+  /// Conclusion : success, pending, failed, cancelled, unavailable, invalid_response, amount_mismatch, manual_proof.
+  outcome        String
+  /// Montant et devise annoncés par le fournisseur, quand il a répondu.
+  amount         Int?
+  currency       String?
+  /// Référence de preuve externe (relevé marchand) pour une validation administrative.
+  proofReference String?
+  detail         String?
+  actorId        String?          @db.Uuid
+  createdAt      DateTime         @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId, createdAt])
 }
 
 /// Notification de paiement reçue d'un fournisseur, signature VÉRIFIÉE. Sert à dédupliquer les rejeux et à tracer ce qui

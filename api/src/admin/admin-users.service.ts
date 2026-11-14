@@ -13,13 +13,14 @@ import type {
   Page,
   UserStatusActionInput,
 } from '@yamboka/shared';
-import { buildPage, clampPage } from '@yamboka/shared';
+import { buildPage, clampPage, CUSTOM_PURCHASE_LABEL } from '@yamboka/shared';
 import { range } from '../common/period';
 import { orderBy } from '../common/sort';
 import { AuditService } from '../audit/audit.service';
 import { CreditsService } from '../credits/credits.service';
 import { EmailService } from '../email/email.service';
 import type { Prisma } from '../generated/prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const TARGET_STATUS = {
@@ -50,6 +51,7 @@ export class AdminUsersService {
     private readonly credits: CreditsService,
     private readonly audit: AuditService,
     private readonly email: EmailService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async list(q: ListQuery & { role?: string }): Promise<Page<AdminUserRow>> {
@@ -157,10 +159,20 @@ export class AdminUsersService {
       payments: u.payments.map((p) => ({
         id: p.id,
         amount: p.amount,
+        currency: p.currency,
         credits: p.credits,
         status: p.status,
         operator: p.operator,
         createdAt: p.createdAt.toISOString(),
+        packName: p.pack?.name ?? CUSTOM_PURCHASE_LABEL,
+        externalReference: p.externalReference,
+        // Confirmé sans crédits attribués : c'est ce paiement-là qu'une régularisation vise.
+        creditState:
+          p.creditedAt !== null
+            ? 'CREDITED'
+            : p.status === 'SUCCESS'
+              ? 'NOT_CREDITED'
+              : 'NONE',
       })),
       generations: u.generations.map((g) => ({
         id: g.id,
@@ -276,6 +288,7 @@ export class AdminUsersService {
       amount: input.amount,
       reason: input.reason,
       adminId,
+      // Trace écrite DANS la transaction de l'ajustement : pas de crédit sans trace, pas de trace sans crédit.
       onCommit: (tx, reference) =>
         this.audit
           .log(
@@ -285,7 +298,14 @@ export class AdminUsersService {
               entityType: 'User',
               entityId: userId,
               before: { balance: before },
-              after: { balance: before + input.amount, reference },
+              after: {
+                balance: before + input.amount,
+                reference,
+                amount: input.amount,
+                type: 'ADMIN_ADJUST',
+                justification: input.justification ?? null,
+                paymentId: null,
+              },
               reason: input.reason,
               ip,
             },
@@ -293,6 +313,19 @@ export class AdminUsersService {
           )
           .then(() => undefined),
     });
+    // Le client est prévenu APRÈS validation : on n'annonce jamais des crédits qui pourraient ne pas exister.
+    if (input.amount > 0) {
+      const note = await this.notifications.notify(this.prisma, {
+        userId,
+        type: 'CREDITS_GRANTED',
+        title: 'Crédits ajoutés',
+        body: `${input.amount} crédits ont été ajoutés à votre compte par le support. Motif : ${input.reason}`,
+        link: '/app/credits',
+        dedupKey: `credits-grant:${result.reference}`,
+      });
+      // L'envoi n'est jamais bloquant : les crédits sont acquis, la notification reste reprenable.
+      await this.notifications.dispatchEmail(note.id).catch(() => undefined);
+    }
     return { balance: result.balance };
   }
 

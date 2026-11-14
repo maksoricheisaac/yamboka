@@ -19,6 +19,7 @@ import type {
   AdminPackPage,
   AdminPaymentDetail,
   AdminPaymentRow,
+  AdminPaymentStats,
   AdminPreset,
   AdminProduct,
   AdminReportRow,
@@ -36,6 +37,7 @@ import type {
   PackCreateInput,
   PackUpdateInput,
   PayoutInput,
+  PaymentSettleInput,
   PayoutRow,
   ProductUpdateInput,
   PromoteAdminInput,
@@ -48,6 +50,7 @@ import type {
 import {
   creditAdjustSchema,
   demoteAdminSchema,
+  paymentSettleSchema,
   legalPublishSchema,
   listQuerySchema,
   packCreateSchema,
@@ -318,10 +321,34 @@ export class AdminController {
     return this.ops.listPayments(q);
   }
 
+  @Get('payments/stats')
+  @ApiOperation({
+    summary:
+      'Compteurs du journal des paiements (dont anomalies), sur les filtres courants',
+  })
+  paymentStats(@Query(query) q: ListQuery): Promise<AdminPaymentStats> {
+    return this.ops.paymentStats(q);
+  }
+
   @Get('payments/:id')
   @ApiOperation({ summary: 'Fiche et chronologie d’un paiement' })
   getPayment(@Param('id', uuid) id: string): Promise<AdminPaymentDetail> {
     return this.ops.getPayment(id);
+  }
+
+  @HttpCode(200)
+  @Post('payments/:id/settle')
+  @ApiOperation({
+    summary:
+      'Régulariser un paiement confirmé non crédité (vérification du fournisseur obligatoire, motif consigné)',
+  })
+  settlePayment(
+    @CurrentUser() admin: AuthUser,
+    @Param('id', uuid) id: string,
+    @Body(new ZodPipe(paymentSettleSchema)) body: PaymentSettleInput,
+    @ClientIp() ip?: string,
+  ) {
+    return this.ops.settlePayment(admin.id, id, body, ip);
   }
 
   @HttpCode(200)
