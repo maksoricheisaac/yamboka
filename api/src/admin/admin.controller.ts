@@ -51,10 +51,26 @@ import type {
   SimulationView,
   ProviderBalanceRow,
   UserStatusActionInput,
+  PricingSections,
+  PricingPreview,
+  PricingDraftInput,
+  PricingRollbackInput,
+  ModelUpsertInput,
+  ModelActiveInput,
+  ModelTestResult,
+  CalibrateInput,
+  CalibrateApplyInput,
+  CalibrationGrid,
 } from '@yamboka/shared';
 import {
+  calibrateApplySchema,
+  calibrateSchema,
   calibrationSchema,
   creditAdjustSchema,
+  modelActiveSchema,
+  modelUpsertSchema,
+  pricingDraftSchema,
+  pricingRollbackSchema,
   demoteAdminSchema,
   paymentSettleSchema,
   legalPublishSchema,
@@ -72,11 +88,15 @@ import {
 } from '@yamboka/shared';
 import type { Response } from 'express';
 import { z } from 'zod';
+import { formatMicroUsd } from '../billing/usd';
 import { ClientIp, CurrentUser, Roles } from '../common/decorators';
+import { ModelCalibrationService } from '../generation/model-calibration.service';
+import { ModelCatalogService } from '../generation/model-catalog.service';
 import type { AuthUser } from '../common/decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { AdminOfferService } from './admin-offer.service';
 import { AdminOpsService } from './admin-ops.service';
+import { AdminPricingService } from './admin-pricing.service';
 import { AdminSimulatorService } from './admin-simulator.service';
 import { AdminUsersService } from './admin-users.service';
 
@@ -123,6 +143,9 @@ export class AdminController {
     private readonly offer: AdminOfferService,
     private readonly ops: AdminOpsService,
     private readonly simulator: AdminSimulatorService,
+    private readonly pricing: AdminPricingService,
+    private readonly catalog: ModelCatalogService,
+    private readonly calibration: ModelCalibrationService,
   ) {}
 
   @Get('ping')
@@ -469,6 +492,148 @@ export class AdminController {
   }
 
   // ───────────── Configuration ─────────────
+
+  // ───────────── Configuration des calculs ─────────────
+
+  @Get('pricing')
+  @ApiOperation({
+    summary:
+      'Configuration des calculs : version en vigueur, historique, modèles, packs, moyens de paiement et alertes',
+  })
+  pricingSections(): Promise<PricingSections> {
+    return this.pricing.sections();
+  }
+
+  @Post('pricing/preview')
+  @ApiOperation({
+    summary:
+      'Aperçu avant / après d’un brouillon, par modèle, qualité et durée. Lecture seule : rien n’est enregistré',
+  })
+  @HttpCode(200)
+  pricingPreview(
+    @Body(new ZodPipe(pricingDraftSchema)) body: PricingDraftInput,
+  ): Promise<PricingPreview> {
+    return this.pricing.preview(body);
+  }
+
+  @Post('pricing/apply')
+  @ApiOperation({
+    summary:
+      'Applique le brouillon : nouvelle version prise en compte immédiatement, sans redéploiement',
+  })
+  pricingApply(
+    @CurrentUser() admin: AuthUser,
+    @Body(new ZodPipe(pricingDraftSchema)) body: PricingDraftInput,
+    @ClientIp() ip?: string,
+  ): Promise<{ versionId: string; appliedAt: string }> {
+    return this.pricing.apply(admin.id, body, ip);
+  }
+
+  @Post('pricing/rollback')
+  @ApiOperation({
+    summary:
+      'Retour à une version précédente : une nouvelle version la recopie, rien n’est supprimé',
+  })
+  pricingRollback(
+    @CurrentUser() admin: AuthUser,
+    @Body(new ZodPipe(pricingRollbackSchema)) body: PricingRollbackInput,
+    @ClientIp() ip?: string,
+  ): Promise<{ versionId: string }> {
+    return this.pricing.rollback(admin.id, body.versionId, body.note, ip);
+  }
+
+  // ───────────── Catalogue de modèles ─────────────
+  // Le slug d'un modèle contient des « / » (« alibaba/wan-3.0/image-to-video ») : il ne peut donc pas être
+  // un segment d'URL. Il passe en paramètre de requête ou dans le corps.
+
+  @Post('models')
+  @ApiOperation({
+    summary:
+      'Crée ou modifie un modèle et son schéma de paramètres. Un modèle créé est inactif tant que son tarif n’est pas complet',
+  })
+  upsertModel(
+    @CurrentUser() admin: AuthUser,
+    @Body(new ZodPipe(modelUpsertSchema)) body: ModelUpsertInput,
+  ): Promise<{ slug: string; active: boolean }> {
+    return this.catalog
+      .upsert(body, admin.id)
+      .then((m) => ({ slug: m.slug, active: m.active }));
+  }
+
+  @Post('models/active')
+  @ApiOperation({
+    summary:
+      'Active ou désactive un modèle. L’activation est refusée si une combinaison autorisée n’a pas de tarif',
+  })
+  @HttpCode(200)
+  setModelActive(
+    @CurrentUser() admin: AuthUser,
+    @Query('slug') slug: string,
+    @Body(new ZodPipe(modelActiveSchema)) body: ModelActiveInput,
+  ): Promise<{ slug: string; active: boolean }> {
+    return this.catalog
+      .setActive(slug, body.active, admin.id)
+      .then((m) => ({ slug: m.slug, active: m.active }));
+  }
+
+  @Post('models/test')
+  @ApiOperation({
+    summary:
+      'Teste un modèle sans rien produire : vérifie le schéma et demande le prix au fournisseur (gratuit)',
+  })
+  @HttpCode(200)
+  testModel(@Query('slug') slug: string): Promise<ModelTestResult> {
+    return this.calibration.testModel(slug);
+  }
+
+  @Post('models/calibrate')
+  @ApiOperation({
+    summary:
+      'Calibrage : /estimate sur la grille complète et tableau de prix proposé. Rien n’est appliqué',
+  })
+  @HttpCode(200)
+  async calibrateModel(
+    @CurrentUser() admin: AuthUser,
+    @Query('slug') slug: string,
+    @Body(new ZodPipe(calibrateSchema)) body: CalibrateInput,
+  ): Promise<CalibrationGrid> {
+    const grid = await this.calibration.estimateGrid(slug, {
+      durations: body.durations,
+      adminId: admin.id,
+    });
+    return {
+      slug: grid.slug,
+      maxDeviationPercent: grid.maxDeviationPercent,
+      rows: grid.rows.map((r) => ({
+        resolution: r.resolution,
+        options: r.options,
+        durationSeconds: r.durationSeconds,
+        configuredUsdPerUnit: formatMicroUsd(r.configuredMicroUsdPerUnit, 6),
+        observedUsdPerUnit:
+          r.observedMicroUsdPerUnit === null
+            ? null
+            : formatMicroUsd(r.observedMicroUsdPerUnit, 6),
+        deviationPercent: r.deviationPercent,
+        error: r.error,
+      })),
+    };
+  }
+
+  @Post('models/calibrate/apply')
+  @ApiOperation({
+    summary:
+      'Applique le tableau de calibrage proposé : une nouvelle version de tarif par résolution, source ESTIMATE',
+  })
+  calibrateApply(
+    @CurrentUser() admin: AuthUser,
+    @Query('slug') slug: string,
+    @Body(new ZodPipe(calibrateApplySchema)) body: CalibrateApplyInput,
+  ): Promise<{ applied: number }> {
+    return this.calibration.applyGrid(slug, body.rows, {
+      adminId: admin.id,
+      note: body.note,
+    });
+  }
 
   @Get('settings')
   getSettings(): Promise<SettingsView> {

@@ -23,12 +23,15 @@ import type {
   ReportCreationInput,
   StyleView,
   CreationConfig,
+  CreationQuoteInput,
+  CreationQuoteView,
 } from '@yamboka/shared';
 import {
   SUGGESTION_AUDIENCES,
   MAX_UPLOAD_BYTES,
   pageQuerySchema,
   createCreationSchema,
+  creationQuoteSchema,
   reportCreationSchema,
 } from '@yamboka/shared';
 import type { Request, Response } from 'express';
@@ -72,6 +75,20 @@ export class CreationsController {
   })
   async config(): Promise<CreationConfig> {
     return this.creations.config();
+  }
+
+  @RequireVerifiedEmail()
+  @Throttle({ global: { limit: 60, ttl: 60_000 } })
+  @Post('quote')
+  @ApiOperation({
+    summary:
+      'Devis pour des paramètres donnés, gardé 10 minutes : un changement de tarif ne change pas un prix déjà affiché',
+  })
+  async quote(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodPipe(creationQuoteSchema)) body: CreationQuoteInput,
+  ): Promise<CreationQuoteView> {
+    return this.creations.quote(user.id, body);
   }
 
   @Get('styles/:id/thumbnail')

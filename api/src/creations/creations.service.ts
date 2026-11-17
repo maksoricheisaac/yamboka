@@ -10,6 +10,9 @@ import {
 import type {
   CreateCreationInput,
   CreationConfig,
+  CreationModelSchema,
+  CreationQuoteInput,
+  CreationQuoteView,
   CreationFormat,
   CreationOptions,
   CreationPage,
@@ -23,7 +26,11 @@ import type {
 import {
   buildPage,
   clampPage,
+  CREATION_FORMATS,
+  DEFAULT_FORMAT,
   DEFAULT_RESOLUTION,
+  VIDEO_DURATION,
+  VIDEO_RESOLUTIONS,
   MAX_UPLOAD_BYTES,
   videoCostCredits,
 } from '@yamboka/shared';
@@ -41,7 +48,11 @@ import {
   GenerationUnavailableError,
 } from '../generation/generation-provider';
 import { ModelCatalogService } from '../generation/model-catalog.service';
-import type { CatalogModel } from '../generation/model-input';
+import {
+  enumValues,
+  integerBounds,
+  type CatalogModel,
+} from '../generation/model-input';
 import type { MediaFile, Prisma } from '../generated/prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -172,7 +183,154 @@ export class CreationsService {
         this.settings.get('generationConfirmBalancePercent'),
       ]);
     const rates = await this.videoRates.ratesOf(model, ctx);
-    return { rates, creditValueFcfa, guard: { credits, balancePercent } };
+    return {
+      rates,
+      creditValueFcfa,
+      guard: { credits, balancePercent },
+      model: this.modelSchema(model),
+    };
+  }
+
+  /**
+   * Schéma du modèle actif rendu au client : qualités, bornes de durée et formats viennent du CATALOGUE.
+   * Le formulaire de création s'en déduit — aucune de ces listes n'est écrite dans l'interface.
+   * Les valeurs sont filtrées par ce que le contrat partagé autorise : un modèle qui proposerait une
+   * qualité inconnue du parcours ne la verrait pas apparaître, plutôt que de casser la page.
+   */
+  private modelSchema(model: CatalogModel): CreationModelSchema {
+    const resolutionParam = model.params.find((p) => p.role === 'RESOLUTION');
+    const durationParam = model.params.find((p) => p.role === 'DURATION');
+    const formatParam = model.params.find((p) => p.role === 'ASPECT_RATIO');
+
+    const resolutions = enumValues(resolutionParam?.allowedValues).filter(
+      (r): r is VideoResolution =>
+        (VIDEO_RESOLUTIONS as readonly string[]).includes(r),
+    );
+    const formats = enumValues(formatParam?.allowedValues).filter(
+      (f): f is CreationFormat =>
+        (CREATION_FORMATS as readonly string[]).includes(f),
+    );
+    const bounds = integerBounds(durationParam?.allowedValues);
+    const fallbackDefault = Number(durationParam?.defaultValue);
+
+    return {
+      slug: model.slug,
+      name: model.name,
+      needsPhoto: model.params.some((p) => p.role === 'IMAGE_URL'),
+      resolutions:
+        resolutions.length > 0 ? resolutions : [...VIDEO_RESOLUTIONS],
+      duration: {
+        min: bounds.min ?? VIDEO_DURATION.min,
+        max: bounds.max ?? VIDEO_DURATION.max,
+        default: Number.isInteger(fallbackDefault)
+          ? fallbackDefault
+          : VIDEO_DURATION.default,
+      },
+      formats: formats.length > 0 ? formats : [...CREATION_FORMATS],
+      defaultFormat: formats[0] ?? DEFAULT_FORMAT,
+    };
+  }
+
+  /**
+   * Devis pour des paramètres donnés, GARDÉ côté serveur pour un temps réglable (`quoteValiditySeconds`,
+   * 10 minutes par défaut). Appliquer une nouvelle configuration prend effet tout de suite sur les devis
+   * SUIVANTS ; celui-ci reste honoré jusqu'à son échéance, tant qu'il couvre encore le coût fournisseur.
+   */
+  async quote(
+    userId: string,
+    input: CreationQuoteInput,
+  ): Promise<CreationQuoteView> {
+    const model = await this.catalog.defaultModel();
+    const ctx = await this.creditPricing.context();
+    const built = this.catalog.build(
+      model,
+      this.clientValuesOf(model, {
+        prompt: 'devis',
+        durationSeconds: input.durationSeconds,
+        resolution: input.resolution,
+        format: input.format,
+      } as CreateCreationInput),
+      { prompt: 'devis' },
+    );
+    const rates = await this.videoRates.ratesOf(model, ctx);
+    const credits = videoCostCredits(
+      rates,
+      input.resolution,
+      input.durationSeconds,
+    );
+    const unit = await this.catalog.costPerUnit(model, {
+      priced: built.priced,
+      resolution: built.resolution,
+      at: ctx.at,
+    });
+    const costMicroUsd =
+      unit.microUsdPerUnit *
+      BigInt(input.durationSeconds) *
+      BigInt(unit.price.billableMultiplier);
+    const validity = ctx.config.quoteValiditySeconds;
+    const row = await this.prisma.creationQuote.create({
+      data: {
+        userId,
+        modelSlug: model.slug,
+        resolution: built.resolution,
+        durationSeconds: input.durationSeconds,
+        options: built.priced as unknown as Prisma.InputJsonValue,
+        credits,
+        costMicroUsd,
+        pricingConfigId: ctx.config.id,
+        expiresAt: new Date(Date.now() + validity * 1000),
+      },
+    });
+    return {
+      quoteId: row.id,
+      credits,
+      creditsPerSecond: rates[input.resolution],
+      resolution: input.resolution,
+      durationSeconds: input.durationSeconds,
+      expiresAt: row.expiresAt.toISOString(),
+    };
+  }
+
+  /**
+   * Prix à facturer en tenant compte d'un devis déjà affiché. Le devis l'emporte s'il est encore valable,
+   * s'il porte EXACTEMENT les mêmes paramètres, et s'il couvre toujours le coût fournisseur. Cette dernière
+   * condition n'est pas négociable : la promesse commerciale ne va jamais jusqu'à vendre à perte.
+   */
+  private async honouredPrice(
+    userId: string,
+    quoteId: string | undefined,
+    p: {
+      modelSlug: string;
+      resolution: string | null;
+      durationSeconds: number;
+      freshCredits: number;
+      costMicroUsd: bigint;
+      ctx: PricingContext;
+    },
+  ): Promise<{ credits: number; quoteId: string | null }> {
+    if (!quoteId) return { credits: p.freshCredits, quoteId: null };
+    const row = await this.prisma.creationQuote.findFirst({
+      where: {
+        id: quoteId,
+        userId,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+        modelSlug: p.modelSlug,
+        resolution: p.resolution,
+        durationSeconds: p.durationSeconds,
+      },
+    });
+    if (!row) return { credits: p.freshCredits, quoteId: null };
+    if (row.credits >= p.freshCredits) {
+      return { credits: row.credits, quoteId: row.id };
+    }
+    // Le tarif a monté depuis le devis : on l'honore seulement s'il couvre encore le coût.
+    const cover = this.creditPricing.coverCredits(p.ctx, p.costMicroUsd);
+    if (row.credits >= cover) return { credits: row.credits, quoteId: row.id };
+    this.logger.warn(
+      `Devis ${row.id} non honoré : ${row.credits} crédits ne couvrent plus le coût (${cover} requis).`,
+    );
+    return { credits: p.freshCredits, quoteId: null };
   }
 
   async listStyles(audience?: SuggestionAudience): Promise<StyleView[]> {
@@ -299,7 +457,7 @@ export class CreationsService {
     // Coût : recalculé ICI avec la MÊME fonction que l'affichage et que le simulateur. Rien ne vient du client.
     const ctx = await this.creditPricing.context();
     const rates = await this.videoRates.ratesOf(model, ctx);
-    const cost = videoCostCredits(
+    const freshCost = videoCostCredits(
       rates,
       input.resolution,
       input.durationSeconds,
@@ -327,6 +485,25 @@ export class CreationsService {
       durationSeconds: built.durationSeconds ?? input.durationSeconds,
       ctx,
     });
+
+    // Devis déjà affiché : il est honoré s'il est encore valable ET s'il couvre toujours le coût.
+    const unitForQuote = await this.catalog.costPerUnit(model, {
+      priced: built.priced,
+      resolution: built.resolution ?? input.resolution,
+      at: ctx.at,
+    });
+    const honoured = await this.honouredPrice(userId, input.quoteId, {
+      modelSlug: model.slug,
+      resolution: built.resolution ?? input.resolution,
+      durationSeconds: input.durationSeconds,
+      freshCredits: freshCost,
+      costMicroUsd:
+        unitForQuote.microUsdPerUnit *
+        BigInt(input.durationSeconds) *
+        BigInt(unitForQuote.price.billableMultiplier),
+      ctx,
+    });
+    const cost = honoured.credits;
 
     const options: CreationOptions = {
       prompt: input.prompt,
@@ -381,6 +558,13 @@ export class CreationsService {
         });
         // Les dollars sont engagés dans la MÊME transaction : on ne peut pas réserver des crédits pour une
         // création que le solde fournisseur ne peut pas payer, ni l'inverse.
+        if (honoured.quoteId) {
+          // Un devis ne sert qu'une fois, et dans la même transaction que le débit.
+          await tx.creationQuote.updateMany({
+            where: { id: honoured.quoteId, usedAt: null },
+            data: { usedAt: new Date() },
+          });
+        }
         if (billing) {
           await this.providerLedger.reserve(tx, {
             generationId,

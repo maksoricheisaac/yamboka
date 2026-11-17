@@ -187,6 +187,7 @@ model User {
   paymentsSettled  Payment[]                    @relation("PaymentCreditedBy")
   paymentChecks    PaymentCheck[]
   generations      Generation[]
+  quotes           CreationQuote[]
   mediaFiles       MediaFile[]
   reportsFiled     Report[]                     @relation("ReportReporter")
   reportsHandled   Report[]                     @relation("ReportHandler")
@@ -857,6 +858,19 @@ model PricingConfig {
   /// Part du bonus de premier achat comptée dans la valeur d'un crédit, en % : 100 au lancement (prudent, le
   /// bonus compte sur chaque crédit), à abaisser plus tard vers la part réellement observée sur les ventes.
   bonusValuationPercent Decimal  @default(100) @db.Decimal(7, 4)
+  /// Frais de chaque étape du circuit de recharge, en % : retrait SasPay, MoMo → carte, recharge
+  /// fournisseur. PROVISOIRES tant que `provisional` est vrai : une fois r_out mesuré, c'est lui qui fait foi.
+  withdrawalFeePercent  Decimal  @default(1) @db.Decimal(7, 4)
+  momoToCardFeePercent  Decimal  @default(0) @db.Decimal(7, 4)
+  topUpFeePercent       Decimal  @default(0) @db.Decimal(7, 4)
+  /// Marge nette minimale acceptée, en % : en dessous, l'application exige une confirmation renforcée.
+  minMarginPercent      Decimal  @default(5) @db.Decimal(7, 4)
+  /// Achat minimum sur mesure, en FCFA : en dessous, la marge nette ne serait plus positive.
+  minPurchaseXaf        Int      @default(500)
+  /// Durée de validité d'un devis déjà affiché, en secondes.
+  quoteValiditySeconds  Int      @default(600)
+  /// Version dont celle-ci est le retour en arrière, ou null (un retour crée une version, jamais de suppression).
+  revertedFromId        String?  @db.Uuid
   /// Minimum de retrait imposé par l'encaisseur, en FCFA : les recharges se font par lots d'au moins ce montant.
   minWithdrawalXaf      Int
   /// true = au moins une valeur n'est pas mesurée. L'administration l'affiche, et la production reste à valider.
@@ -1223,4 +1237,32 @@ model ModelEstimateCheck {
 
   @@index([providerModel, resolution, checkedAt])
   @@index([checkedAt])
+}
+
+/**
+ * Devis affiché au client, gardé côté serveur pour un temps réglable (`quoteValiditySeconds`, 10 min par
+ * défaut). Appliquer une nouvelle configuration prend effet tout de suite sur les NOUVEAUX devis ; un devis
+ * déjà affiché reste honoré pendant sa validité — à la condition absolue qu'il couvre encore le coût
+ * fournisseur, la règle « jamais sous le coût » passant avant la promesse commerciale.
+ */
+model CreationQuote {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  /// Slug du modèle et paramètres EXACTS : un devis ne vaut que pour ces paramètres.
+  modelSlug       String
+  resolution      String?
+  durationSeconds Int
+  options         Json
+  credits         Int
+  costMicroUsd    BigInt
+  pricingConfigId String?   @db.Uuid
+  expiresAt       DateTime
+  /// Date d'utilisation : un devis ne sert qu'une fois.
+  usedAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
 }

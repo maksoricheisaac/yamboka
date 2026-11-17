@@ -50,13 +50,23 @@ describe('Créations (e2e)', () => {
     (await client.get('/api/auth/me')).body.user.credits as number;
 
   describe('Réglages et idées', () => {
-    it('donne les tarifs lus en base, la valeur du crédit et le garde-fou', async () => {
+    it('donne les tarifs dérivés, la valeur du crédit, le garde-fou et le schéma du modèle', async () => {
       const { client } = await verifiedClient(app);
       const res = await client.get('/api/creations/config').expect(200);
       expect(res.body).toEqual({
         rates: { '480p': 5, '720p': 10, '1080p': 20 },
         creditValueFcfa: 10,
         guard: { credits: 100, balancePercent: 50 },
+        // Le formulaire client est généré à partir de ce schéma, lu dans le catalogue en base.
+        model: {
+          slug: 'alibaba/wan-3.0/image-to-video',
+          name: 'Wan 3.0 · image → vidéo',
+          needsPhoto: true,
+          resolutions: ['480p', '720p', '1080p'],
+          duration: { min: 2, max: 30, default: 5 },
+          formats: ['9:16', '3:4', '1:1', '4:3', '16:9'],
+          defaultFormat: '9:16',
+        },
       });
     });
 

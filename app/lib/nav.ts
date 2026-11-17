@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   ScrollText,
   Settings,
+  SlidersHorizontal,
   Sparkles,
   Tags,
   Users,
@@ -105,6 +106,7 @@ export const ADMIN_NAV: NavGroup[] = [
   {
     label: "Configuration",
     items: [
+      { title: "Calculs et modèles", href: "/admin/configuration", icon: SlidersHorizontal },
       { title: "Paramètres", href: "/admin/parametres", icon: Settings },
       { title: "Textes légaux", href: "/admin/textes-legaux", icon: FileText },
       { title: "Administrateurs", href: "/admin/administrateurs", icon: ShieldCheck },

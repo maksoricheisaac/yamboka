@@ -207,6 +207,16 @@ export class CreditPricingService {
   }
 
   /**
+   * Crédits qui couvrent STRICTEMENT le coût fournisseur, sans marge commerciale. Sert à décider si un
+   * devis déjà affiché peut encore être honoré après un changement de configuration : on tient la promesse
+   * commerciale, mais jamais au point de vendre sous le coût.
+   */
+  coverCredits(ctx: PricingContext, costMicroUsd: bigint): number {
+    const netNeeded = netNeededFcfa(costMicroUsd, ctx.rate.rate, 0);
+    return creditsToCharge(netNeeded, ctx.floor.floorScaled);
+  }
+
+  /**
    * Plancher en dessous duquel une valeur saisie à la main vend sous le coût. Sert à REFUSER une saisie
    * manuelle trop basse : aucune valeur sous ce plancher n'est acceptée.
    */

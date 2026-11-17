@@ -494,3 +494,164 @@ export interface SettingsView {
   values: Record<string, string | number | boolean>;
   email: { provider: 'console' | 'smtp' };
 }
+
+// ───────────── Configuration des calculs ─────────────
+
+/** Une version des paramètres de calcul, telle que la page de configuration la montre. */
+export interface PricingConfigRow {
+  id: string;
+  marginPercent: string;
+  fxBufferPercent: string;
+  cardFcfaPerUsd: string;
+  circuitLossPercent: string;
+  bonusValuationPercent: string;
+  withdrawalFeePercent: string;
+  momoToCardFeePercent: string;
+  topUpFeePercent: string;
+  minMarginPercent: string;
+  safetyMarginUsd: string;
+  dailyCapUsd: string;
+  dailyUserCapUsd: string;
+  minWithdrawalXaf: number;
+  minPurchaseXaf: number;
+  quoteValiditySeconds: number;
+  /** true = au moins une valeur n'est pas mesurée : la production reste à valider. */
+  provisional: boolean;
+  effectiveFrom: string;
+  note: string | null;
+  /** Version dont celle-ci est le retour en arrière, ou null. */
+  revertedFromId: string | null;
+}
+
+/** Un modèle du catalogue, vu de l'administration. */
+export interface PricingModelRow {
+  slug: string;
+  name: string;
+  mode: "TEXT_TO_VIDEO" | "IMAGE_TO_VIDEO";
+  active: boolean;
+  isDefault: boolean;
+  sortOrder: number;
+  paramCount: number;
+  resolutions: string[];
+  /** Nombre de combinaisons d'options qui changent le prix. */
+  pricedCombinations: number;
+  /** Combinaisons sans tarif : tant qu'il en reste, le modèle ne peut pas être activé. */
+  missingPrices: number;
+}
+
+/** Écart constaté entre le tarif configuré et le prix annoncé par le fournisseur. */
+export interface EstimateAlertRow {
+  providerModel: string;
+  resolution: string | null;
+  options: Record<string, unknown>;
+  configuredUsd: string;
+  observedUsd: string;
+  deviationPercent: number;
+  checkedAt: string;
+}
+
+/** Tout ce que la page « Configuration des calculs » affiche. */
+export interface PricingSections {
+  current: PricingConfigRow;
+  history: PricingConfigRow[];
+  models: PricingModelRow[];
+  packs: {
+    name: string;
+    priceFcfa: number;
+    credits: number;
+    bonusCredits: number;
+  }[];
+  paymentMethods: {
+    label: string;
+    tierCount: number;
+    firstTierPercent: string | null;
+  }[];
+  creditFloorFcfa: string;
+  floorFromPack: string;
+  floorFromMethod: string;
+  pricingRate: string;
+  rateMeasured: boolean;
+  /** true = le scénario pessimiste est appliqué (configuration provisoire). */
+  pessimisticApplied: boolean;
+  estimateAlerts: EstimateAlertRow[];
+  /** false = le fournisseur en service ne sait pas estimer (simulé) : pas de calibrage possible. */
+  estimateAvailable: boolean;
+}
+
+/** Une ligne de l'aperçu avant / après. */
+export interface PricingPreviewRow {
+  modelSlug: string;
+  modelName: string;
+  resolution: string;
+  durationSeconds: number;
+  costUsd: string;
+  before: PricingPreviewLine;
+  after: PricingPreviewLine;
+  /**
+   * Marge de la NOUVELLE grille évaluée dans le scénario pessimiste. C'est elle qui dit si la
+   * configuration vend sous le coût : une configuration trop optimiste affiche toujours une marge
+   * positive dans ses propres hypothèses.
+   */
+  afterWorstMarginFcfa: number;
+  /** Variation du prix équivalent, en % (négatif = baisse). */
+  changePercent: number;
+}
+
+export interface PricingPreviewLine {
+  costFcfa: number;
+  credits: number;
+  priceEquivalentFcfa: number;
+  /** Négatif = vente à perte : la page le montre en rouge. */
+  marginFcfa: number;
+}
+
+/** Résultat d'un aperçu : les lignes et les garde-fous déclenchés. */
+export interface PricingPreview {
+  rows: PricingPreviewRow[];
+  before: PricingConfigRow;
+  after: PricingConfigRow;
+  creditFloorBeforeFcfa: string;
+  creditFloorAfterFcfa: string;
+  pricingRateBefore: string;
+  pricingRateAfter: string;
+  /** true = au moins une ligne se vendrait sous son coût : confirmation renforcée exigée. */
+  sellsBelowCost: boolean;
+  belowCostLabels: string[];
+  /** true = un prix change de plus de 20 % : confirmation explicite exigée. */
+  bigPriceChange: boolean;
+  bigPriceChangeLabels: string[];
+  /** true = la marge passe sous le minimum : confirmation explicite exigée. */
+  underMinMargin: boolean;
+  underMinMarginLabels: string[];
+}
+
+/** Résultat d'un essai de modèle (gratuit, aucune vidéo produite). */
+export interface ModelTestResult {
+  slug: string;
+  /** `input` exact que le serveur enverrait, reconstruit depuis le catalogue. */
+  input: Record<string, unknown>;
+  schemaOk: true;
+  estimateAvailable: boolean;
+  observedUsd: string | null;
+  configuredUsd: string | null;
+  deviationPercent: number | null;
+  providerStatus: number | null;
+  error: string | null;
+}
+
+/** Une ligne du tableau de calibrage proposé par /estimate. */
+export interface CalibrationGridRow {
+  resolution: string | null;
+  options: Record<string, unknown>;
+  durationSeconds: number;
+  configuredUsdPerUnit: string;
+  observedUsdPerUnit: string | null;
+  deviationPercent: number | null;
+  error: string | null;
+}
+
+export interface CalibrationGrid {
+  slug: string;
+  rows: CalibrationGridRow[];
+  maxDeviationPercent: number;
+}

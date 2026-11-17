@@ -409,6 +409,112 @@ export class ModelCatalogService {
     return this.bySlug(slug, { requireActive: false });
   }
 
+  /**
+   * Crée ou remplace un modèle et ses paramètres. Un modèle EXISTANT garde son activation : changer son
+   * schéma ne l'allume ni ne l'éteint. Les paramètres sont remplacés en bloc (c'est un schéma, pas un
+   * historique), tandis que les TARIFS restent en ajout seul dans leurs propres tables.
+   */
+  async upsert(
+    input: {
+      slug: string;
+      name: string;
+      description?: string;
+      mode: 'TEXT_TO_VIDEO' | 'IMAGE_TO_VIDEO';
+      sortOrder: number;
+      isDefault?: boolean;
+      params: {
+        key: string;
+        label?: string;
+        type: CatalogParam['type'];
+        role: CatalogParam['role'];
+        exposure: CatalogParam['exposure'];
+        allowedValues?: unknown;
+        defaultValue?: unknown;
+        affectsPrice: boolean;
+      }[];
+    },
+    adminId: string,
+  ): Promise<CatalogModel> {
+    // Un paramètre imposé ou caché doit porter une valeur : sinon l'appel partirait incomplet.
+    for (const param of input.params) {
+      if (
+        param.exposure !== 'CLIENT' &&
+        param.role !== 'IMAGE_URL' &&
+        (param.defaultValue === undefined || param.defaultValue === null)
+      ) {
+        throw new BadRequestException({
+          code: 'PARAM_DEFAULT_REQUIRED',
+          message: `« ${param.label ?? param.key} » est imposé par la configuration : il lui faut une valeur.`,
+        });
+      }
+    }
+    const keys = input.params.map((p) => p.key);
+    if (new Set(keys).size !== keys.length) {
+      throw new BadRequestException({
+        code: 'PARAM_DUPLICATE',
+        message: 'Deux paramètres portent la même clé.',
+      });
+    }
+
+    const existing = await this.prisma.generationModel.findUnique({
+      where: { slug: input.slug },
+    });
+    await this.prisma.$transaction(async (tx) => {
+      // Un seul modèle par défaut à la fois (un index unique partiel le garantit aussi en base).
+      if (input.isDefault) {
+        await tx.generationModel.updateMany({
+          where: { isDefault: true, slug: { not: input.slug } },
+          data: { isDefault: false },
+        });
+      }
+      const data = {
+        name: input.name,
+        description: input.description ?? null,
+        mode: input.mode,
+        sortOrder: input.sortOrder,
+        isDefault: input.isDefault ?? existing?.isDefault ?? false,
+      };
+      const model = existing
+        ? await tx.generationModel.update({
+            where: { id: existing.id },
+            data,
+          })
+        : await tx.generationModel.create({
+            data: { ...data, slug: input.slug, active: false },
+          });
+      await tx.modelParam.deleteMany({ where: { modelId: model.id } });
+      await tx.modelParam.createMany({
+        data: input.params.map((p, i) => ({
+          modelId: model.id,
+          key: p.key,
+          label: p.label ?? null,
+          type: p.type,
+          role: p.role,
+          exposure: p.exposure,
+          allowedValues: (p.allowedValues ?? null) as Prisma.InputJsonValue,
+          defaultValue: (p.defaultValue ?? null) as Prisma.InputJsonValue,
+          affectsPrice: p.affectsPrice,
+          sortOrder: i,
+        })),
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: adminId,
+          action: existing ? 'catalog.model.update' : 'catalog.model.create',
+          entityType: 'GenerationModel',
+          entityId: model.id,
+          after: {
+            slug: input.slug,
+            mode: input.mode,
+            params: keys,
+          },
+        },
+      });
+    });
+    this.invalidate();
+    return this.bySlug(input.slug, { requireActive: false });
+  }
+
   /** Toutes les résolutions proposées par un modèle, dans l'ordre du catalogue. */
   resolutionsOf(model: CatalogModel): string[] {
     const param = model.params.find((p) => p.role === 'RESOLUTION');

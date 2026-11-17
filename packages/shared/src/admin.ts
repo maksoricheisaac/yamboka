@@ -301,3 +301,131 @@ export const listQuerySchema = z.object({
   to: z.iso.date().optional(),
 });
 export type ListQuery = z.infer<typeof listQuerySchema>;
+
+/** Valeur décimale positive en texte (jamais un flottant : l'argent se manipule en décimal). */
+const decimal = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(",", "."))
+  .pipe(z.string().regex(/^\d+(\.\d{1,6})?$/, "Valeur décimale invalide."));
+
+/**
+ * Brouillon de la page « Configuration des calculs ». Tous les champs sont facultatifs : ce qui n'est pas
+ * fourni garde la valeur en vigueur. Les deux confirmations ne sont jamais implicites.
+ */
+export const pricingDraftSchema = z.object({
+  // Marges et protections
+  marginPercent: decimal.optional(),
+  bonusValuationPercent: decimal.optional(),
+  fxBufferPercent: decimal.optional(),
+  safetyMarginUsd: decimal.optional(),
+  minMarginPercent: decimal.optional(),
+  // Taux et frais
+  cardFcfaPerUsd: decimal.optional(),
+  circuitLossPercent: decimal.optional(),
+  withdrawalFeePercent: decimal.optional(),
+  momoToCardFeePercent: decimal.optional(),
+  topUpFeePercent: decimal.optional(),
+  // Packs et achats
+  minWithdrawalXaf: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(10_000_000)
+    .optional(),
+  minPurchaseXaf: z.coerce.number().int().positive().max(10_000_000).optional(),
+  // Plafonds et alertes
+  dailyCapUsd: decimal.optional(),
+  dailyUserCapUsd: decimal.optional(),
+  quoteValiditySeconds: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(86_400)
+    .optional(),
+  /** Bascule « production ouverte » : à ne passer à false qu'une fois r_out mesuré. */
+  provisional: z.boolean().optional(),
+  /** Motif obligatoire : une version sans motif est inexplicable six mois plus tard. */
+  note: z.string().trim().min(3, "Indiquez le motif du changement.").max(500),
+  /** Confirmation renforcée : appliquer malgré une vente sous le coût. */
+  confirmBelowCost: z.boolean().optional(),
+  /** Confirmation : appliquer malgré une variation de prix de plus de 20 % ou une marge sous le minimum. */
+  confirmBigChange: z.boolean().optional(),
+});
+export type PricingDraftInput = z.infer<typeof pricingDraftSchema>;
+
+/** Retour à une version précédente : une nouvelle version la recopie, rien n'est supprimé. */
+export const pricingRollbackSchema = z.object({
+  versionId: z.uuid(),
+  note: z.string().trim().min(3, "Indiquez le motif du retour.").max(500),
+});
+export type PricingRollbackInput = z.infer<typeof pricingRollbackSchema>;
+
+/** Création ou modification d'un modèle du catalogue. */
+export const modelUpsertSchema = z.object({
+  slug: z
+    .string()
+    .trim()
+    .min(3)
+    .max(200)
+    .regex(
+      /^[a-z0-9][a-z0-9._/-]*$/,
+      "Le slug doit être le chemin exact du modèle chez le fournisseur.",
+    ),
+  name: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(500).optional(),
+  mode: z.enum(["TEXT_TO_VIDEO", "IMAGE_TO_VIDEO"]).default("TEXT_TO_VIDEO"),
+  sortOrder: z.coerce.number().int().min(0).max(999).default(0),
+  isDefault: z.boolean().optional(),
+  params: z
+    .array(
+      z.object({
+        key: z.string().trim().min(1).max(60),
+        label: z.string().trim().max(60).optional(),
+        type: z.enum(["STRING", "INTEGER", "BOOLEAN", "ENUM"]),
+        role: z.enum([
+          "PROMPT",
+          "DURATION",
+          "RESOLUTION",
+          "ASPECT_RATIO",
+          "IMAGE_URL",
+          "OPTION",
+        ]),
+        exposure: z
+          .enum(["CLIENT", "FIXED", "HIDDEN_DEFAULT"])
+          .default("CLIENT"),
+        /** Liste pour ENUM, { min, max } pour INTEGER, { maxLength } pour STRING. */
+        allowedValues: z.unknown().optional(),
+        defaultValue: z.unknown().optional(),
+        affectsPrice: z.boolean().default(false),
+      }),
+    )
+    .min(1, "Un modèle a au moins un paramètre."),
+});
+export type ModelUpsertInput = z.infer<typeof modelUpsertSchema>;
+
+export const modelActiveSchema = z.object({ active: z.boolean() });
+export type ModelActiveInput = z.infer<typeof modelActiveSchema>;
+
+/** Lancement du calibrage : durées à estimer (facultatif, sinon les bornes du modèle). */
+export const calibrateSchema = z.object({
+  durations: z
+    .array(z.coerce.number().int().positive().max(600))
+    .max(10)
+    .optional(),
+});
+export type CalibrateInput = z.infer<typeof calibrateSchema>;
+
+/** Application du tableau de calibrage proposé, après l'aperçu. */
+export const calibrateApplySchema = z.object({
+  rows: z
+    .array(
+      z.object({
+        resolution: z.string().trim().max(20).nullable(),
+        usdPerUnit: decimal,
+      }),
+    )
+    .min(1),
+  note: z.string().trim().max(500).optional(),
+});
+export type CalibrateApplyInput = z.infer<typeof calibrateApplySchema>;

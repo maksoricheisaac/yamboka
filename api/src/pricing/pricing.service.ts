@@ -19,14 +19,25 @@ export interface PricingConfigView {
   circuitLossPercent: string;
   /** Part du bonus de premier achat comptée dans la valeur d'un crédit, en %. */
   bonusValuationPercent: string;
+  /** Frais de chaque étape du circuit de recharge, en % (provisoires tant que r_out n'est pas mesuré). */
+  withdrawalFeePercent: string;
+  momoToCardFeePercent: string;
+  topUpFeePercent: string;
+  /** Marge nette minimale acceptée, en %. */
+  minMarginPercent: string;
   safetyMarginMicroUsd: bigint;
   dailyCapMicroUsd: bigint;
   dailyUserCapMicroUsd: bigint;
   minWithdrawalXaf: number;
+  minPurchaseXaf: number;
+  quoteValiditySeconds: number;
   /** true = au moins une valeur n'est pas mesurée : à afficher comme tel, et à ne pas activer en production. */
   provisional: boolean;
   effectiveFrom: Date;
   note: string | null;
+  /** Version dont celle-ci est le retour en arrière, ou null. */
+  revertedFromId: string | null;
+  createdAt: Date;
 }
 
 /** Tarif fournisseur retenu pour un modèle et une résolution, à une date donnée. */
@@ -49,11 +60,19 @@ export interface ConfigPatch {
   fxBufferPercent?: string | number;
   cardFcfaPerUsd?: string | number;
   circuitLossPercent?: string | number;
+  withdrawalFeePercent?: string | number;
+  momoToCardFeePercent?: string | number;
+  topUpFeePercent?: string | number;
+  minMarginPercent?: string | number;
   safetyMarginUsd?: string | number;
   dailyCapUsd?: string | number;
   dailyUserCapUsd?: string | number;
   minWithdrawalXaf?: number;
+  minPurchaseXaf?: number;
+  quoteValiditySeconds?: number;
   provisional?: boolean;
+  /** Version dont la nouvelle est le retour en arrière (trace, jamais de suppression). */
+  revertedFromId?: string | null;
 }
 
 /**
@@ -86,21 +105,7 @@ export class PricingService {
           'Aucun paramètre de tarification en vigueur : renseignez-les avant d’ouvrir la vente.',
       });
     }
-    return {
-      id: row.id,
-      marginPercent: row.marginPercent.toFixed(4),
-      fxBufferPercent: row.fxBufferPercent.toFixed(4),
-      cardFcfaPerUsd: row.cardFcfaPerUsd.toFixed(4),
-      circuitLossPercent: row.circuitLossPercent.toFixed(4),
-      bonusValuationPercent: row.bonusValuationPercent.toFixed(4),
-      safetyMarginMicroUsd: row.safetyMarginMicroUsd,
-      dailyCapMicroUsd: row.dailyCapMicroUsd,
-      dailyUserCapMicroUsd: row.dailyUserCapMicroUsd,
-      minWithdrawalXaf: row.minWithdrawalXaf,
-      provisional: row.provisional,
-      effectiveFrom: row.effectiveFrom,
-      note: row.note,
-    };
+    return toConfigView(row);
   }
 
   /** Historique complet des paramètres, du plus récent au plus ancien. */
@@ -234,8 +239,28 @@ export class PricingService {
         patch.dailyUserCapUsd,
         current.dailyUserCapMicroUsd,
       ),
+      withdrawalFeePercent: decimalOf(
+        patch.withdrawalFeePercent,
+        current.withdrawalFeePercent,
+      ),
+      momoToCardFeePercent: decimalOf(
+        patch.momoToCardFeePercent,
+        current.momoToCardFeePercent,
+      ),
+      topUpFeePercent: decimalOf(
+        patch.topUpFeePercent,
+        current.topUpFeePercent,
+      ),
+      minMarginPercent: decimalOf(
+        patch.minMarginPercent,
+        current.minMarginPercent,
+      ),
       minWithdrawalXaf: patch.minWithdrawalXaf ?? current.minWithdrawalXaf,
+      minPurchaseXaf: patch.minPurchaseXaf ?? current.minPurchaseXaf,
+      quoteValiditySeconds:
+        patch.quoteValiditySeconds ?? current.quoteValiditySeconds,
       provisional: patch.provisional ?? current.provisional,
+      revertedFromId: patch.revertedFromId ?? null,
     };
     const effectiveFrom = p.effectiveFrom ?? new Date();
 
@@ -359,21 +384,31 @@ export class PricingService {
   }
 }
 
-function toConfigView(row: {
+type ConfigRow = {
   id: string;
   marginPercent: Prisma.Decimal;
   fxBufferPercent: Prisma.Decimal;
   cardFcfaPerUsd: Prisma.Decimal;
   circuitLossPercent: Prisma.Decimal;
   bonusValuationPercent: Prisma.Decimal;
+  withdrawalFeePercent: Prisma.Decimal;
+  momoToCardFeePercent: Prisma.Decimal;
+  topUpFeePercent: Prisma.Decimal;
+  minMarginPercent: Prisma.Decimal;
   safetyMarginMicroUsd: bigint;
   dailyCapMicroUsd: bigint;
   dailyUserCapMicroUsd: bigint;
   minWithdrawalXaf: number;
+  minPurchaseXaf: number;
+  quoteValiditySeconds: number;
   provisional: boolean;
   effectiveFrom: Date;
   note: string | null;
-}): PricingConfigView {
+  revertedFromId: string | null;
+  createdAt: Date;
+};
+
+function toConfigView(row: ConfigRow): PricingConfigView {
   return {
     id: row.id,
     marginPercent: row.marginPercent.toFixed(4),
@@ -381,13 +416,21 @@ function toConfigView(row: {
     cardFcfaPerUsd: row.cardFcfaPerUsd.toFixed(4),
     circuitLossPercent: row.circuitLossPercent.toFixed(4),
     bonusValuationPercent: row.bonusValuationPercent.toFixed(4),
+    withdrawalFeePercent: row.withdrawalFeePercent.toFixed(4),
+    momoToCardFeePercent: row.momoToCardFeePercent.toFixed(4),
+    topUpFeePercent: row.topUpFeePercent.toFixed(4),
+    minMarginPercent: row.minMarginPercent.toFixed(4),
     safetyMarginMicroUsd: row.safetyMarginMicroUsd,
     dailyCapMicroUsd: row.dailyCapMicroUsd,
     dailyUserCapMicroUsd: row.dailyUserCapMicroUsd,
     minWithdrawalXaf: row.minWithdrawalXaf,
+    minPurchaseXaf: row.minPurchaseXaf,
+    quoteValiditySeconds: row.quoteValiditySeconds,
     provisional: row.provisional,
     effectiveFrom: row.effectiveFrom,
     note: row.note,
+    revertedFromId: row.revertedFromId,
+    createdAt: row.createdAt,
   };
 }
 

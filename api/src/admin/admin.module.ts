@@ -9,6 +9,7 @@ import { AdminCountriesController } from './admin-countries.controller';
 import { AdminCountriesService } from './admin-countries.service';
 import { AdminOfferService } from './admin-offer.service';
 import { AdminOpsService } from './admin-ops.service';
+import { AdminPricingService } from './admin-pricing.service';
 import { AdminSimulatorService } from './admin-simulator.service';
 import { AdminUsersService } from './admin-users.service';
 import { PublicSiteService } from './public-site.service';
@@ -27,6 +28,7 @@ import { PublicSiteService } from './public-site.service';
     AdminOfferService,
     AdminOpsService,
     AdminSimulatorService,
+    AdminPricingService,
     AdminCountriesService,
     PublicSiteService,
   ],

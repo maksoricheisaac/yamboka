@@ -2,12 +2,9 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  DEFAULT_FORMAT,
   DEFAULT_RESOLUTION,
   MAX_PROMPT_LENGTH,
   RESOLUTION_LABELS,
-  VIDEO_DURATION,
-  VIDEO_RESOLUTIONS,
   isValidDuration,
   needsConfirmation,
   videoCostCredits,
@@ -88,9 +85,18 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(initialPrompt || initialStyle?.prompt || "");
-  const [format, setFormat] = useState<CreationFormat>(initialStyle?.format ?? DEFAULT_FORMAT);
-  const [resolution, setResolution] = useState<VideoResolution>(initialStyle?.resolution ?? DEFAULT_RESOLUTION);
-  const [duration, setDuration] = useState<number>(initialStyle?.durationSeconds ?? VIDEO_DURATION.default);
+  // Le formulaire est GÉNÉRÉ depuis le schéma du modèle actif (catalogue en base) : les qualités, les
+  // bornes de durée et les formats proposés viennent de lui, jamais d'une liste écrite ici.
+  const schema = config.model;
+  const [format, setFormat] = useState<CreationFormat>(
+    initialStyle?.format ?? schema.defaultFormat,
+  );
+  const [resolution, setResolution] = useState<VideoResolution>(
+    initialStyle?.resolution ?? schema.resolutions[0] ?? DEFAULT_RESOLUTION,
+  );
+  const [duration, setDuration] = useState<number>(
+    initialStyle?.durationSeconds ?? schema.duration.default,
+  );
   // Consentement unique (RG-31), demandé à l'étape de confirmation et enregistré avec son horodatage par le serveur.
   const [confirming, setConfirming] = useState(false);
   const [consent, setConsent] = useState(false);
@@ -131,7 +137,11 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
 
   // L'idée éventuelle vient de « Idées » ou « Refaire » (adresse) : elle préremplit le formulaire, sans liste de suggestions ici.
   const idea = initialStyle;
-  const durationOk = isValidDuration(duration);
+  // Bornes du modèle ET bornes du contrat partagé : la plus restrictive des deux gagne.
+  const durationOk =
+    isValidDuration(duration) &&
+    duration >= schema.duration.min &&
+    duration <= schema.duration.max;
   // Le serveur recalcule ce coût : l'affichage et le débit utilisent la même fonction.
   const cost = durationOk ? videoCostCredits(config.rates, resolution, duration) : 0;
   const after = balance - cost;
@@ -157,9 +167,10 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
 
   function validate(): FieldErrors {
     const e: FieldErrors = {};
-    if (!photo) e.photo = "Ajoutez votre photo.";
+    if (schema.needsPhoto && !photo) e.photo = "Ajoutez votre photo.";
     if (!prompt.trim()) e.prompt = "Décrivez votre vidéo en quelques mots.";
-    if (!durationOk) e.duration = `La durée doit être comprise entre ${VIDEO_DURATION.min} et ${VIDEO_DURATION.max} secondes.`;
+    if (!durationOk)
+      e.duration = `La durée doit être comprise entre ${schema.duration.min} et ${schema.duration.max} secondes.`;
     return e;
   }
 
@@ -282,7 +293,7 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
 
               <Chip title="Format" label={formatLabel} icon={<RatioGlyph format={format} />}>
                 <div role="radiogroup" aria-label="Format" className="grid grid-cols-5 gap-1.5">
-                  {FORMATS.map((f) => (
+                  {FORMATS.filter((f) => schema.formats.includes(f.value)).map((f) => (
                     <label key={f.value} className="cursor-pointer" title={f.where}>
                       <input type="radio" name="format" value={f.value} checked={format === f.value} onChange={() => setFormat(f.value)} className="peer sr-only" />
                       <span className="flex min-h-16 flex-col items-center justify-center gap-1 rounded-lg border px-1 py-2 text-muted-foreground peer-checked:border-primary peer-checked:bg-primary/8 peer-checked:text-primary peer-focus-visible:ring-2 peer-focus-visible:ring-ring">
@@ -297,7 +308,7 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
 
               <Chip title="Qualité" label={RESOLUTION_LABELS[resolution]} icon={<Check className="size-3.5 text-primary" aria-hidden />}>
                 <div role="radiogroup" aria-label="Qualité" className="grid gap-1.5">
-                  {VIDEO_RESOLUTIONS.map((r) => (
+                  {schema.resolutions.map((r) => (
                     <label key={r} className="cursor-pointer">
                       <input type="radio" name="resolution" value={r} checked={resolution === r} onChange={() => setResolution(r)} className="peer sr-only" />
                       <span className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm peer-checked:border-primary peer-checked:bg-primary/8 peer-focus-visible:ring-2 peer-focus-visible:ring-ring">
@@ -313,8 +324,8 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
                 <input
                   type="range"
                   aria-label="Durée en secondes"
-                  min={VIDEO_DURATION.min}
-                  max={VIDEO_DURATION.max}
+                  min={schema.duration.min}
+                  max={schema.duration.max}
                   step={1}
                   value={duration}
                   onChange={(e) => {
@@ -324,9 +335,9 @@ export function Studio({ styles, config, balance, emailVerified, initialStyleId,
                   className="h-6 w-full cursor-pointer accent-primary"
                 />
                 <p className="flex justify-between text-xs text-muted-foreground">
-                  <span>{VIDEO_DURATION.min} s</span>
+                  <span>{schema.duration.min} s</span>
                   <span className="font-semibold text-foreground">{duration} s</span>
-                  <span>{VIDEO_DURATION.max} s</span>
+                  <span>{schema.duration.max} s</span>
                 </p>
               </Chip>
 
