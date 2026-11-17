@@ -11,11 +11,21 @@ import { formatFcfa } from "@/lib/format";
 const video = createColumnHelper<DataTableFeatures, VideoSimulationRow>();
 
 const videoColumns = video.columns([
+  video.accessor("modelName", {
+    id: "modelName",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Modèle" />,
+    sortFn: "text",
+    enableHiding: false,
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap font-medium" title={row.original.modelSlug}>
+        {row.original.modelName}
+      </span>
+    ),
+  }),
   video.accessor("resolution", {
     id: "resolution",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Qualité" />,
     sortFn: "text",
-    enableHiding: false,
     cell: ({ row }) => <span className="whitespace-nowrap font-medium">{row.original.resolution}</span>,
   }),
   video.accessor("durationSeconds", {
@@ -23,6 +33,14 @@ const videoColumns = video.columns([
     header: ({ column }) => <DataTableColumnHeader column={column} title="Durée" />,
     sortFn: "basic",
     cell: ({ row }) => <span className="whitespace-nowrap tabular-nums">{row.original.durationSeconds} s</span>,
+  }),
+  video.accessor("optionsLabel", {
+    id: "optionsLabel",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Options" />,
+    sortFn: "text",
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap text-muted-foreground">{row.original.optionsLabel || "—"}</span>
+    ),
   }),
   video.accessor("costUsd", {
     id: "costUsd",
@@ -40,21 +58,28 @@ const videoColumns = video.columns([
     sortFn: "basic",
     cell: ({ row }) => <span className="whitespace-nowrap tabular-nums">{formatFcfa(row.original.netNeededFcfa)}</span>,
   }),
-  video.accessor("requiredCredits", {
-    id: "requiredCredits",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Crédits requis" />,
-    sortFn: "basic",
-    cell: ({ row }) => <span className="whitespace-nowrap tabular-nums font-semibold">{row.original.requiredCredits}</span>,
-  }),
   video.accessor("chargedCredits", {
     id: "chargedCredits",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Crédits facturés" />,
     sortFn: "basic",
-    cell: ({ row }) => <span className="whitespace-nowrap tabular-nums">{row.original.chargedCredits}</span>,
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap tabular-nums">
+        {row.original.chargedCredits}
+        <span className="text-muted-foreground"> / {row.original.requiredCredits} requis</span>
+      </span>
+    ),
+  }),
+  video.accessor("priceEquivalentFcfa", {
+    id: "priceEquivalentFcfa",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Prix équivalent" />,
+    sortFn: "basic",
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap tabular-nums">{formatFcfa(row.original.priceEquivalentFcfa)}</span>
+    ),
   }),
   video.accessor("marginFcfa", {
     id: "marginFcfa",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Marge" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Marge en vigueur" />,
     sortFn: "basic",
     // Une marge négative est la seule chose qui compte vraiment sur cet écran : elle ressort en rouge.
     cell: ({ row }) => (
@@ -68,10 +93,25 @@ const videoColumns = video.columns([
     ),
   }),
   video.display({
+    id: "worstMargin",
+    header: "Marge pessimiste",
+    // C'est cette colonne qui décide si la vente peut ouvrir : le scénario le plus défavorable.
+    cell: ({ row }) => (
+      <span
+        className={`whitespace-nowrap tabular-nums ${
+          row.original.worst.marginFcfa < 0 ? "font-semibold text-destructive" : ""
+        }`}
+      >
+        {formatFcfa(row.original.worst.marginFcfa)}
+        <span className="text-muted-foreground"> · {row.original.worst.chargedCredits} cr.</span>
+      </span>
+    ),
+  }),
+  video.display({
     id: "verdict",
     header: "Verdict",
     cell: ({ row }) =>
-      row.original.belowCost ? (
+      row.original.belowCost || row.original.worst.belowCost ? (
         <Pill tone="bad">
           Sous le coût · {row.original.missingCredits} crédit{row.original.missingCredits > 1 ? "s" : ""} manquant
           {row.original.missingCredits > 1 ? "s" : ""}
@@ -88,16 +128,19 @@ export function VideoSimulationTable({ videos }: { videos: VideoSimulationRow[] 
       caption="Coût et prix de chaque vidéo"
       columns={videoColumns}
       data={videos}
-      minWidth="56rem"
+      minWidth="72rem"
       paginate={false}
       columnLabels={{
+        modelName: "Modèle",
         resolution: "Qualité",
         durationSeconds: "Durée",
+        optionsLabel: "Options",
         costUsd: "Coût fournisseur",
         netNeededFcfa: "Doit rapporter",
-        requiredCredits: "Crédits requis",
         chargedCredits: "Crédits facturés",
-        marginFcfa: "Marge",
+        priceEquivalentFcfa: "Prix équivalent",
+        marginFcfa: "Marge en vigueur",
+        worstMargin: "Marge pessimiste",
         verdict: "Verdict",
       }}
       emptyMessage="Aucune vidéo à simuler."

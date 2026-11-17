@@ -330,10 +330,18 @@ export interface TopUpRow {
   createdAt: string;
 }
 
-/** Une ligne du simulateur : une résolution et une durée, chiffrées de bout en bout. */
+/**
+ * Une ligne du simulateur : un modèle, une qualité, une durée et une combinaison d'options, chiffrée de
+ * bout en bout dans le scénario demandé ET dans le scénario pessimiste.
+ */
 export interface VideoSimulationRow {
+  /** Slug du modèle du catalogue. */
+  modelSlug: string;
+  modelName: string;
   resolution: string;
   durationSeconds: number;
+  /** Options payantes de cette ligne, en clair (« son : oui · aperçu : non »), vide si aucune. */
+  optionsLabel: string;
   /** Coût fournisseur en dollars, texte décimal. */
   costUsd: string;
   /** Ce coût valorisé en FCFA au taux retenu. */
@@ -348,8 +356,20 @@ export interface VideoSimulationRow {
   marginFcfa: number;
   belowCost: boolean;
   missingCredits: number;
+  /** Prix équivalent en FCFA de ce que le client paie (crédits facturés × plancher du crédit). */
+  priceEquivalentFcfa: number;
   /** Origine du tarif fournisseur utilisé : saisie ou estimation. */
   priceSource: 'MANUAL' | 'ESTIMATE';
+  /** Mêmes chiffres dans le SCÉNARIO PESSIMISTE : c'est lui qui décide si on peut ouvrir la vente. */
+  worst: {
+    costFcfa: number;
+    netNeededFcfa: number;
+    requiredCredits: number;
+    chargedCredits: number;
+    priceEquivalentFcfa: number;
+    marginFcfa: number;
+    belowCost: boolean;
+  };
 }
 
 /** Marge d'un pack, au moyen de paiement le moins favorable. */

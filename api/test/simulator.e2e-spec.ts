@@ -53,9 +53,10 @@ describe('Simulateur de tarification (e2e)', () => {
 
   it('chiffre chaque vidéo et désigne le pack qui contraint le plancher', async () => {
     const s = await simulate();
-    // Taux provisoire tant qu'aucune recharge n'est mesurée : 620 ÷ 0,91 × 1,02.
+    // Taux provisoire tant qu'aucune recharge n'est mesurée. Le scénario PESSIMISTE s'applique tant que
+    // la configuration est provisoire : perte de circuit plancher de 14 %, soit 620 ÷ 0,86 × 1,02.
     expect(s.rateMeasured).toBe(false);
-    expect(s.pricingRate).toBe('694.9451');
+    expect(s.pricingRate).toBe('735.3490');
     expect(s.configProvisional).toBe(true);
     // Plancher : le pack le moins favorable, bonus compté sur chaque crédit (100 % au lancement).
     expect(s.bonusValuationPercent).toBe('100.0000');
@@ -63,12 +64,14 @@ describe('Simulateur de tarification (e2e)', () => {
     expect(Number(s.creditFloorFcfa)).toBeGreaterThan(0);
 
     const light = videoOf(s, '480p', 5);
-    // 5 s × 0,05 $ = 0,25 $.
+    // 5 s × 0,05 $ = 0,25 $ → 184 F au taux retenu, × 1,10 de marge = 203 F à rapporter.
     expect(light.costUsd).toBe('0.2500');
-    expect(light.netNeededFcfa).toBe(192);
-    expect(light.requiredCredits).toBeGreaterThan(light.chargedCredits);
-    expect(light.belowCost).toBe(true);
-    expect(s.anyBelowCost).toBe(true);
+    expect(light.netNeededFcfa).toBe(203);
+    // Les crédits facturés sont DÉRIVÉS du coût : la grille ne peut plus être sous le coût.
+    expect(light.chargedCredits).toBeGreaterThanOrEqual(light.requiredCredits);
+    expect(light.belowCost).toBe(false);
+    expect(light.worst.belowCost).toBe(false);
+    expect(s.anyBelowCost).toBe(false);
   });
 
   it('un scénario ne modifie RIEN : les paramètres en vigueur sont intacts après coup', async () => {
@@ -104,18 +107,16 @@ describe('Simulateur de tarification (e2e)', () => {
     expect(starter!.netFcfa).toBeLessThanOrEqual(starter!.priceFcfa);
   });
 
-  it('relever les crédits par seconde suffit à repasser au-dessus du coût', async () => {
-    const before = await simulate();
-    const light = videoOf(before, '480p', 5);
-    const perSecond = Math.ceil(light.requiredCredits / 5);
-    await prisma.generationProduct.updateMany({
-      where: { resolution: '480p', active: true },
-      data: { creditsPerUnit: perSecond },
-    });
-    const after = await simulate();
-    const fixed = videoOf(after, '480p', 5);
-    expect(fixed.belowCost).toBe(false);
-    expect(fixed.marginFcfa).toBeGreaterThan(0);
+  it('aucune ligne du catalogue ne se vend sous son coût, dans les deux scénarios', async () => {
+    const s = await simulate();
+    expect(s.videos.length).toBeGreaterThan(0);
+    const bad = s.videos.filter(
+      (v) => v.marginFcfa < 0 || v.worst.marginFcfa < 0,
+    );
+    expect(
+      bad.map((v) => `${v.modelSlug} ${v.resolution} ${v.durationSeconds}s`),
+    ).toEqual([]);
+    expect(s.anyBelowCost).toBe(false);
   });
 
   it('accepte les durées demandées et refuse un scénario mal formé', async () => {

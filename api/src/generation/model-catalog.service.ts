@@ -11,6 +11,7 @@ import {
   PricingService,
   type ModelPriceView,
 } from '../pricing/pricing.service';
+import { DEVIATION_ALERT_PERCENT } from './estimate-threshold';
 import {
   buildModelInput,
   enumValues,
@@ -254,7 +255,51 @@ export class ModelCatalogService {
       perUnit = ceilDiv(perUnit * BigInt(rule.multiplierBp ?? 10_000), BP);
       applied.push(rule.id);
     }
+    // Contrôle /estimate : si le fournisseur s'est révélé plus cher que la configuration de plus de 5 %,
+    // les NOUVEAUX devis retiennent le plus élevé des deux. On ne vend pas au tarif d'hier quand on sait
+    // déjà qu'il est faux ; la correction du tarif lui-même reste une décision d'administrateur.
+    const observed = await this.observedOverride(
+      model.slug,
+      p.resolution,
+      p.priced,
+      at,
+    );
+    if (observed !== null) {
+      const perUnitFromObserved = ceilDiv(
+        observed,
+        BigInt(price.billableMultiplier),
+      );
+      if (perUnitFromObserved > perUnit) perUnit = perUnitFromObserved;
+    }
     return { microUsdPerUnit: perUnit, price, optionPriceIds: applied };
+  }
+
+  /**
+   * Dernier prix OBSERVÉ par /estimate pour cette combinaison, s'il dépasse le tarif configuré de plus de
+   * DEVIATION_ALERT_PERCENT. null sinon (y compris quand le fournisseur est moins cher : on ne baisse
+   * jamais un prix sur une seule observation).
+   */
+  private async observedOverride(
+    slug: string,
+    resolution: string | null,
+    priced: Record<string, unknown>,
+    at: Date,
+  ): Promise<bigint | null> {
+    const row = await this.prisma.modelEstimateCheck.findFirst({
+      where: { providerModel: slug, resolution, checkedAt: { lte: at } },
+      orderBy: { checkedAt: 'desc' },
+    });
+    if (!row) return null;
+    if (row.deviationPercent <= DEVIATION_ALERT_PERCENT) return null;
+    if (row.observedMicroUsdPerUnit <= row.configuredMicroUsdPerUnit) {
+      return null;
+    }
+    // L'observation ne vaut que pour les options exactement identiques.
+    const observedOptions = row.options as Record<string, unknown>;
+    for (const [key, value] of Object.entries(observedOptions)) {
+      if (JSON.stringify(priced[key]) !== JSON.stringify(value)) return null;
+    }
+    return row.observedMicroUsdPerUnit;
   }
 
   /**

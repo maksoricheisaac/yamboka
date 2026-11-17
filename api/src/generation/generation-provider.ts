@@ -73,4 +73,14 @@ export abstract class GenerationProvider {
 
   /** Vérifie les identifiants sans lancer de génération (donc sans coût). */
   abstract diagnose(): Promise<{ ok: boolean; detail: string }>;
+
+  /**
+   * Prix annoncé par le fournisseur pour une demande, SANS la lancer ni la payer. Sert au calibrage des
+   * tarifs et au contrôle périodique de la configuration. Absent du fournisseur simulé : l'appelant doit
+   * traiter le cas « non disponible » plutôt que de supposer un prix.
+   */
+  estimate?(
+    model: string,
+    input: Record<string, unknown>,
+  ): Promise<{ status: number; body: unknown }>;
 }

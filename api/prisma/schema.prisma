@@ -1194,3 +1194,33 @@ model ModelOptionPrice {
   @@index([providerModel, paramKey, effectiveFrom])
   @@index([effectiveFrom])
 }
+
+/**
+ * Relevé du prix annoncé par le fournisseur (POST /estimate) comparé au tarif configuré, en ajout seul.
+ * Au-delà de 5 % d'écart vers le haut, la tarification retient le PLUS ÉLEVÉ des deux pour les nouveaux
+ * devis et l'administration alerte : jamais d'application automatique d'un nouveau tarif.
+ */
+model ModelEstimateCheck {
+  id                        String   @id @default(uuid()) @db.Uuid
+  /// Slug du modèle (= GenerationModel.slug).
+  providerModel             String
+  resolution                String?
+  /// Options exactes envoyées à /estimate (celles qui changent le prix).
+  options                   Json
+  /// Tarif configuré au moment du relevé, en micro-dollars par unité facturée.
+  configuredMicroUsdPerUnit BigInt
+  /// Tarif observé, ramené à l'unité facturée.
+  observedMicroUsdPerUnit   BigInt
+  /// Écart relatif en % arrondi au-dessus (positif = le fournisseur est plus cher que la config).
+  deviationPercent          Int
+  /// Unités facturées de la demande estimée (sert à ramener le prix total à l'unité).
+  units                     Int
+  /// Réponse brute du fournisseur : sa forme n'est pas garantie par la documentation.
+  raw                       Json?
+  note                      String?
+  createdById               String?  @db.Uuid
+  checkedAt                 DateTime @default(now())
+
+  @@index([providerModel, resolution, checkedAt])
+  @@index([checkedAt])
+}

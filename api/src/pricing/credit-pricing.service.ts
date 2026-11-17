@@ -106,29 +106,27 @@ export class CreditPricingService {
     const config = await this.pricing.config(at);
     const pessimistic = scenario.pessimistic ?? config.provisional;
 
-    let circuitLossPercent = String(
-      scenario.circuitLossPercent ?? config.circuitLossPercent,
+    // Une valeur explicitement fournie par l'appelant (simulateur, aperçu) n'est JAMAIS corrigée : sans
+    // cela, un scénario ne pourrait pas explorer une hypothèse plus favorable que le plancher prudent.
+    // Le plancher pessimiste ne s'applique donc qu'aux valeurs non précisées — c'est-à-dire au chemin réel.
+    const circuitLossPercent = this.scenarioValue(
+      scenario.circuitLossPercent,
+      config.circuitLossPercent,
+      pessimistic ? PESSIMISTIC.circuitLossPercent : null,
     );
-    let fxBufferPercent = String(
-      scenario.fxBufferPercent ?? config.fxBufferPercent,
+    const fxBufferPercent = this.scenarioValue(
+      scenario.fxBufferPercent,
+      config.fxBufferPercent,
+      pessimistic ? PESSIMISTIC.fxBufferPercent : null,
     );
-    let bonusValuationPercent = String(
-      scenario.bonusValuationPercent ?? config.bonusValuationPercent,
+    const bonusValuationPercent = this.scenarioValue(
+      scenario.bonusValuationPercent,
+      config.bonusValuationPercent,
+      pessimistic ? PESSIMISTIC.bonusValuationPercent : null,
     );
     const marginPercent = String(
       scenario.marginPercent ?? config.marginPercent,
     );
-    if (pessimistic) {
-      circuitLossPercent = worstOf(
-        circuitLossPercent,
-        PESSIMISTIC.circuitLossPercent,
-      );
-      fxBufferPercent = worstOf(fxBufferPercent, PESSIMISTIC.fxBufferPercent);
-      bonusValuationPercent = worstOf(
-        bonusValuationPercent,
-        PESSIMISTIC.bonusValuationPercent,
-      );
-    }
 
     // Le taux MESURÉ prime toujours : la perte de circuit n'est qu'un provisoire, et ne s'y ajoute jamais.
     const measured = await this.providerLedger.measuredROut();
@@ -157,6 +155,21 @@ export class CreditPricingService {
       fxBufferPercent,
       pessimistic,
     };
+  }
+
+  /**
+   * Valeur retenue pour un paramètre de scénario : celle fournie si elle l'est, sinon celle en vigueur,
+   * ramenée au plancher prudent quand le scénario pessimiste s'applique.
+   */
+  private scenarioValue(
+    provided: string | number | undefined,
+    inForce: string,
+    pessimisticFloor: number | null,
+  ): string {
+    if (provided !== undefined) return String(provided);
+    return pessimisticFloor === null
+      ? inForce
+      : worstOf(inForce, pessimisticFloor);
   }
 
   /**

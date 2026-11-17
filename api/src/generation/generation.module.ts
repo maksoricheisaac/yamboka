@@ -5,6 +5,7 @@ import { PricingModule } from '../pricing/pricing.module';
 import { GenerationProvider } from './generation-provider';
 import { HiggsfieldGenerationProvider } from './higgsfield-generation.provider';
 import { MockGenerationProvider } from './mock-generation.provider';
+import { ModelCalibrationService } from './model-calibration.service';
 import { ModelCatalogService } from './model-catalog.service';
 
 /** Choisit le fournisseur d'après GENERATION_PROVIDER (mock ou higgsfield). Partagé par le script de test. */
@@ -23,12 +24,13 @@ export function createGenerationProvider(
   imports: [PricingModule],
   providers: [
     ModelCatalogService,
+    ModelCalibrationService,
     {
       provide: GenerationProvider,
       inject: [ConfigService],
       useFactory: createGenerationProvider,
     },
   ],
-  exports: [GenerationProvider, ModelCatalogService],
+  exports: [GenerationProvider, ModelCatalogService, ModelCalibrationService],
 })
 export class GenerationModule {}

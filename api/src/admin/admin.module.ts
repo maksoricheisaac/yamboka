@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CatalogModule } from '../catalog/catalog.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { CreditPricingModule } from '../pricing/credit-pricing.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { ProviderBalanceModule } from '../provider-balance/provider-balance.module';
 import { AdminController } from './admin.controller';
@@ -17,6 +18,7 @@ import { PublicSiteService } from './public-site.service';
     CatalogModule,
     PaymentsModule,
     PricingModule,
+    CreditPricingModule,
     ProviderBalanceModule,
   ],
   controllers: [AdminController, AdminCountriesController],
