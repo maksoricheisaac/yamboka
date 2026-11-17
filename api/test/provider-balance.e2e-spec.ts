@@ -143,19 +143,37 @@ describe('Solde fournisseur (e2e)', () => {
       expect(topUp.netWithdrawnXaf).toBe(15_000);
     });
 
-    it('tarife sur le taux le plus défavorable, majoré de la marge de change', async () => {
-      await ledger.recordTopUp({
-        netWithdrawnXaf: 7_000,
-        receivedUsd: '10.00',
-        cardAmountXaf: 7_100,
-        adminId,
-      }); // 700 F/$
+    it('ne tarife PAS sur un taux mesuré tant qu’il n’est pas appliqué', async () => {
       await ledger.recordTopUp({
         netWithdrawnXaf: 8_000,
         receivedUsd: '10.00',
         cardAmountXaf: 8_100,
         adminId,
+      }); // 800 F/$ mesurés, mais pas encore appliqués à la grille
+      const rate = await ledger.pricingRate();
+      expect(rate.measured).toBe(false);
+      // Toujours le provisoire : saisir une recharge ne change aucun prix sans confirmation.
+      expect(formatRate(rate.rate)).toBe('694.9451');
+      const awaiting = await ledger.topUpsAwaitingRate();
+      expect(awaiting).toHaveLength(1);
+      expect(Number(awaiting[0].rOut)).toBe(800);
+    });
+
+    it('tarife sur le taux le plus défavorable une fois les recharges appliquées', async () => {
+      const first = await ledger.recordTopUp({
+        netWithdrawnXaf: 7_000,
+        receivedUsd: '10.00',
+        cardAmountXaf: 7_100,
+        adminId,
+      }); // 700 F/$
+      const second = await ledger.recordTopUp({
+        netWithdrawnXaf: 8_000,
+        receivedUsd: '10.00',
+        cardAmountXaf: 8_100,
+        adminId,
       }); // 800 F/$
+      await ledger.applyRateToPricing(first.id);
+      await ledger.applyRateToPricing(second.id);
 
       const rate = await ledger.pricingRate();
       expect(rate.measured).toBe(true);

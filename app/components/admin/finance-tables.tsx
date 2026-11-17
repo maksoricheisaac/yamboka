@@ -5,6 +5,7 @@ import type { CalibrationRow, PayoutRow, TopUpRow } from "@yamboka/shared";
 import { DataTableColumnHeader } from "@/components/admin/data-table/data-table-column-header";
 import { DataTable } from "@/components/admin/data-table/data-table";
 import type { DataTableFeatures } from "@/components/admin/data-table/data-table-features";
+import { ApplyTopUpRateButton } from "@/components/admin/apply-topup-rate-button";
 import { Pill } from "@/components/admin/ui";
 import { formatFcfa } from "@/lib/format";
 
@@ -52,6 +53,20 @@ const topUpColumns = topUp.columns([
       ),
   }),
   topUp.display({
+    id: "rateApplied",
+    header: "Effet sur la grille",
+    // Un taux mesuré ne change aucun prix tant qu'il n'est pas appliqué : la colonne le dit, et le bouton
+    // ouvre l'aperçu avant / après avant toute application.
+    cell: ({ row }) =>
+      !row.original.measured || row.original.rOut === null ? (
+        <span className="text-muted-foreground">—</span>
+      ) : row.original.rateAppliedAt ? (
+        <Pill tone="ok">Appliqué</Pill>
+      ) : (
+        <ApplyTopUpRateButton topUpId={row.original.id} rOut={row.original.rOut} />
+      ),
+  }),
+  topUp.display({
     id: "note",
     header: "Note",
     cell: ({ row }) => <span className="text-muted-foreground">{row.original.note ?? "—"}</span>,
@@ -68,6 +83,7 @@ export function TopUpsTable({ topUps }: { topUps: TopUpRow[] }) {
       paginate={false}
       columnLabels={{
         receivedUsd: "Reçu",
+        rateApplied: "Effet sur la grille",
         netWithdrawnXaf: "Retiré (net)",
         cardAmountXaf: "Carte",
         rOut: "Taux sortant",

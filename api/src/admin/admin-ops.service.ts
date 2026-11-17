@@ -862,6 +862,7 @@ export class AdminOpsService {
       // Toujours 4 décimales, comme le taux de tarification : un même taux ne s'affiche pas de deux façons.
       rOut: r.rOut?.toFixed(4) ?? null,
       measured: r.measured,
+      rateAppliedAt: r.appliedToPricingAt?.toISOString() ?? null,
       occurredAt: r.occurredAt.toISOString(),
       note: r.note,
       createdAt: r.createdAt.toISOString(),
@@ -871,9 +872,15 @@ export class AdminOpsService {
   /**
    * Saisie d'une recharge. Passe par le journal du solde fournisseur, jamais directement par la table : le
    * mouvement en dollars et la ligne de recharge s'écrivent ensemble, avec `r_out` figé.
+   *
+   * Renvoie son identifiant et le taux sortant mesuré, SANS l'appliquer à la grille :
+   * l'administration en demande l'aperçu, puis l'applique si elle le confirme (T5).
    */
-  async addTopUp(adminId: string, input: TopUpInput): Promise<void> {
-    await this.providerLedger.recordTopUp({
+  async addTopUp(
+    adminId: string,
+    input: TopUpInput,
+  ): Promise<{ id: string; rOut: string }> {
+    return this.providerLedger.recordTopUp({
       netWithdrawnXaf: input.netWithdrawnXaf,
       receivedUsd: input.receivedUsd,
       cardAmountXaf: input.cardAmountXaf,

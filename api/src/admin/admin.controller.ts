@@ -69,6 +69,7 @@ import {
   creditAdjustSchema,
   modelActiveSchema,
   modelUpsertSchema,
+  applyTopUpRateSchema,
   pricingDraftSchema,
   pricingRollbackSchema,
   demoteAdminSchema,
@@ -431,9 +432,33 @@ export class AdminController {
   async addTopUp(
     @CurrentUser() admin: AuthUser,
     @Body(new ZodPipe(topUpSchema)) body: TopUpInput,
-  ): Promise<{ ok: true }> {
-    await this.ops.addTopUp(admin.id, body);
-    return { ok: true };
+  ): Promise<{ ok: true; topUpId: string; rOut: string }> {
+    // Le taux mesuré n'est PAS appliqué ici : l'administration en demande l'aperçu, puis le confirme.
+    const out = await this.ops.addTopUp(admin.id, body);
+    return { ok: true, topUpId: out.id, rOut: out.rOut };
+  }
+
+  @Get('finance/topups/:id/rate-preview')
+  @ApiOperation({
+    summary:
+      'Aperçu avant / après de la grille si le taux mesuré de cette recharge était appliqué. Rien n’est appliqué',
+  })
+  topUpRatePreview(@Param('id', uuid) id: string): Promise<PricingPreview> {
+    return this.pricing.topUpRatePreview(id);
+  }
+
+  @Post('finance/topups/:id/apply-rate')
+  @ApiOperation({
+    summary:
+      'Applique le taux mesuré de cette recharge à la grille, après confirmation. Idempotent',
+  })
+  applyTopUpRate(
+    @CurrentUser() admin: AuthUser,
+    @Param('id', uuid) id: string,
+    @Body(new ZodPipe(applyTopUpRateSchema)) body: { note: string },
+    @ClientIp() ip?: string,
+  ): Promise<{ applied: boolean; pricingRate: string }> {
+    return this.pricing.applyTopUpRate(admin.id, id, body.note, ip);
   }
 
   @Get('finance/simulate')

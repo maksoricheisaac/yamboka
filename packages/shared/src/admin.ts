@@ -429,3 +429,12 @@ export const calibrateApplySchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 export type CalibrateApplyInput = z.infer<typeof calibrateApplySchema>;
+
+/**
+ * Application du taux sortant mesuré d'une recharge à la grille. Le motif est obligatoire : c'est un
+ * changement de prix pour toute la plateforme, il doit rester explicable.
+ */
+export const applyTopUpRateSchema = z.object({
+  note: z.string().trim().min(3, "Indiquez le motif de l'application.").max(500),
+});
+export type ApplyTopUpRateInput = z.infer<typeof applyTopUpRateSchema>;

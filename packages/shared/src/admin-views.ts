@@ -325,6 +325,11 @@ export interface TopUpRow {
   rOut: string | null;
   /** false = saisie incomplète : l'affichage le signale « non mesuré » et la tarification ne s'y fie pas. */
   measured: boolean;
+  /**
+   * Date à laquelle le taux mesuré de cette recharge a été appliqué à la grille, ou null s'il attend
+   * encore une confirmation. Tant qu'il attend, aucun prix n'a changé.
+   */
+  rateAppliedAt: string | null;
   occurredAt: string;
   note: string | null;
   createdAt: string;

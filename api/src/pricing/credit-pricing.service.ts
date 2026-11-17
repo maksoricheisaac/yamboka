@@ -15,6 +15,7 @@ import {
   netNeededFcfa,
   provisionalROut,
   rPricing,
+  toRate,
   type PricingRate,
 } from '../billing/usd';
 import { PayinRatesService } from '../payments/payin-rates.service';
@@ -53,6 +54,13 @@ export interface PricingScenario {
   fxBufferPercent?: string | number;
   /** Force le scénario pessimiste, quel que soit `provisional`. */
   pessimistic?: boolean;
+  /**
+   * Taux sortant MESURÉ imposé (FCFA/$ en texte décimal) : sert à montrer ce que deviendrait la grille si
+   * le taux d'une recharge était appliqué, avant qu'il le soit. Il remplace le taux retenu, et comme il
+   * est mesuré, la marge de change du scénario s'y ajoute toujours mais la perte de circuit provisoire
+   * n'entre plus en jeu.
+   */
+  measuredRateOverride?: string;
   at?: Date;
 }
 
@@ -129,7 +137,9 @@ export class CreditPricingService {
     );
 
     // Le taux MESURÉ prime toujours : la perte de circuit n'est qu'un provisoire, et ne s'y ajoute jamais.
-    const measured = await this.providerLedger.measuredROut();
+    const measured = scenario.measuredRateOverride
+      ? { last: toRate(scenario.measuredRateOverride), weighted: null }
+      : await this.providerLedger.measuredROut();
     const rate = rPricing({
       lastROut: measured.last,
       weightedROut: measured.weighted,

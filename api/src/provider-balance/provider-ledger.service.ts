@@ -132,7 +132,9 @@ export class ProviderLedgerService {
         where: { provider },
         orderBy: { readAt: 'desc' },
       }),
-      this.prisma.providerTopUp.count({ where: { provider, measured: true } }),
+      this.prisma.providerTopUp.count({
+        where: { provider, measured: true, appliedToPricingAt: { not: null } },
+      }),
     ]);
     return {
       provider,
@@ -182,7 +184,9 @@ export class ProviderLedgerService {
   ): Promise<{ last: bigint | null; weighted: bigint | null }> {
     const [topUps, balance] = await Promise.all([
       this.prisma.providerTopUp.findMany({
-        where: { provider, measured: true },
+        // Seules les recharges dont le taux a été APPLIQUÉ comptent : un taux mesuré mais pas encore
+        // confirmé ne change aucun prix (voir ProviderTopUp.appliedToPricingAt).
+        where: { provider, measured: true, appliedToPricingAt: { not: null } },
         orderBy: { occurredAt: 'asc' },
         select: { amountMicroUsd: true, rOut: true },
       }),
@@ -205,6 +209,47 @@ export class ProviderLedgerService {
   }
 
   // ───────────── Recharges et calibrage ─────────────
+
+  /**
+   * Marque le taux mesuré d'une recharge comme APPLIQUÉ à la grille. Tant que ce n'est pas fait, le taux
+   * reste en attente et la tarification garde le taux provisoire : saisir une recharge ne change jamais un
+   * prix à l'insu de qui la saisit (T5). Idempotent.
+   */
+  async applyRateToPricing(
+    topUpId: string,
+  ): Promise<{ applied: boolean; rOut: string | null }> {
+    const row = await this.prisma.providerTopUp.findUnique({
+      where: { id: topUpId },
+    });
+    if (!row || !row.measured || row.rOut === null) {
+      return { applied: false, rOut: null };
+    }
+    if (row.appliedToPricingAt === null) {
+      await this.prisma.providerTopUp.update({
+        where: { id: row.id },
+        data: { appliedToPricingAt: new Date() },
+      });
+    }
+    return { applied: true, rOut: row.rOut.toString() };
+  }
+
+  /** Recharges mesurées dont le taux attend encore d'être appliqué à la grille. */
+  async topUpsAwaitingRate(
+    provider = DEFAULT_PROVIDER,
+  ): Promise<{ id: string; rOut: string; occurredAt: Date }[]> {
+    const rows = await this.prisma.providerTopUp.findMany({
+      where: { provider, measured: true, appliedToPricingAt: null },
+      orderBy: { occurredAt: 'desc' },
+      take: 20,
+    });
+    return rows
+      .filter((r) => r.rOut !== null)
+      .map((r) => ({
+        id: r.id,
+        rOut: (r.rOut as Prisma.Decimal).toString(),
+        occurredAt: r.occurredAt,
+      }));
+  }
 
   /**
    * Enregistre une recharge : la ligne de recharge (avec `r_out` figé) et le mouvement TOPUP, dans la même

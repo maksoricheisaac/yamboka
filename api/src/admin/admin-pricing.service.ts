@@ -18,6 +18,7 @@ import { ModelCalibrationService } from '../generation/model-calibration.service
 import { ModelCatalogService } from '../generation/model-catalog.service';
 import { pricedCombinations } from '../generation/model-input';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProviderLedgerService } from '../provider-balance/provider-ledger.service';
 import {
   CreditPricingService,
   type PricingContext,
@@ -59,6 +60,7 @@ export class AdminPricingService {
     private readonly catalog: ModelCatalogService,
     private readonly calibration: ModelCalibrationService,
     private readonly audit: AuditService,
+    private readonly providerLedger: ProviderLedgerService,
   ) {}
 
   // ───────────── Lecture ─────────────
@@ -142,6 +144,21 @@ export class AdminPricingService {
       this.creditPricing.context({ pessimistic: true }),
     ]);
 
+    return this.compare(beforeCtx, afterCtx, worstCtx, current, next);
+  }
+
+  /**
+   * Lignes d'aperçu entre deux contextes, et garde-fous déclenchés. Partagé par l'aperçu d'un brouillon de
+   * configuration et par l'aperçu d'un taux de recharge mesuré : un seul endroit décide de ce qui est
+   * « sous le coût » ou « trop gros changement ».
+   */
+  private async compare(
+    beforeCtx: PricingContext,
+    afterCtx: PricingContext,
+    worstCtx: PricingContext,
+    before: PricingConfigView,
+    next: Record<string, unknown> | null,
+  ): Promise<PricingPreview> {
     const rows: PricingPreviewRow[] = [];
     const models = await this.catalog.active();
     for (const model of models) {
@@ -201,7 +218,10 @@ export class AdminPricingService {
     const bigChanges = rows.filter(
       (r) => Math.abs(r.changePercent) > BIG_PRICE_CHANGE_PERCENT,
     );
-    const minMargin = Number(next.minMarginPercent);
+    // Marge minimale du brouillon s'il en fournit une, sinon celle en vigueur.
+    const minMargin = Number(
+      (next?.minMarginPercent as string | undefined) ?? before.minMarginPercent,
+    );
     const underMinMargin = rows.filter(
       (r) =>
         r.after.priceEquivalentFcfa > 0 &&
@@ -210,8 +230,8 @@ export class AdminPricingService {
 
     return {
       rows,
-      before: toRow(current),
-      after: toRow({ ...current, ...next, id: current.id }),
+      before: toRow(before),
+      after: toRow({ ...before, ...(next ?? {}), id: before.id }),
       creditFloorBeforeFcfa: formatFloor(beforeCtx.floor.floorScaled),
       creditFloorAfterFcfa: formatFloor(afterCtx.floor.floorScaled),
       pricingRateBefore: formatRate(beforeCtx.rate.rate),
@@ -338,6 +358,86 @@ export class AdminPricingService {
       ip,
     });
     return { versionId: version.id };
+  }
+
+  // ───────────── Recharges mesurées ─────────────
+
+  /**
+   * Aperçu de ce que deviendrait la grille si le taux mesuré d'une recharge était appliqué (T5).
+   *
+   * Le taux mesuré ne s'applique PAS tout seul : saisir une recharge changerait sinon tous les prix de la
+   * plateforme sans que personne ait regardé l'avant / après. On montre donc le même tableau que pour un
+   * changement de configuration, et l'application attend une confirmation.
+   */
+  async topUpRatePreview(topUpId: string): Promise<PricingPreview> {
+    const topUp = await this.prisma.providerTopUp.findUnique({
+      where: { id: topUpId },
+    });
+    if (!topUp) {
+      throw new NotFoundException({
+        code: 'TOPUP_NOT_FOUND',
+        message: 'Cette recharge n’existe pas.',
+      });
+    }
+    if (!topUp.measured || topUp.rOut === null) {
+      throw new UnprocessableEntityException({
+        code: 'TOPUP_NOT_MEASURED',
+        message:
+          'Cette recharge n’a pas de taux sortant mesuré : rien à appliquer.',
+      });
+    }
+    const current = await this.pricing.config();
+    const [beforeCtx, afterCtx, worstCtx] = await Promise.all([
+      this.creditPricing.context(),
+      // « Après » : le taux mesuré de cette recharge. La marge et le bonus restent ceux en vigueur.
+      this.creditPricing.context({
+        measuredRateOverride: topUp.rOut.toString(),
+      }),
+      this.creditPricing.context({ pessimistic: true }),
+    ]);
+    return this.compare(beforeCtx, afterCtx, worstCtx, current, null);
+  }
+
+  /**
+   * Applique le taux mesuré d'une recharge à la grille, après confirmation. Idempotent : une recharge déjà
+   * appliquée n'est pas réappliquée.
+   */
+  async applyTopUpRate(
+    adminId: string,
+    topUpId: string,
+    note: string,
+    ip?: string,
+  ): Promise<{ applied: boolean; pricingRate: string }> {
+    const topUp = await this.prisma.providerTopUp.findUnique({
+      where: { id: topUpId },
+    });
+    if (!topUp || !topUp.measured || topUp.rOut === null) {
+      throw new NotFoundException({
+        code: 'TOPUP_NOT_FOUND',
+        message: 'Recharge introuvable ou sans taux mesuré.',
+      });
+    }
+    if (topUp.appliedToPricingAt === null) {
+      await this.providerLedger.applyRateToPricing(topUp.id);
+      await this.audit.log({
+        actorId: adminId,
+        action: 'pricing.topUpRate.apply',
+        entityType: 'ProviderTopUp',
+        entityId: topUp.id,
+        after: { rOut: topUp.rOut.toString() },
+        reason: note,
+        ip,
+      });
+      this.catalog.invalidate();
+      this.logger.log(
+        `Taux mesuré ${topUp.rOut.toString()} F/$ appliqué à la grille par ${adminId} (recharge ${topUp.id}).`,
+      );
+    }
+    const ctx = await this.creditPricing.context();
+    return {
+      applied: true,
+      pricingRate: formatRate(ctx.rate.rate),
+    };
   }
 
   // ───────────── Interne ─────────────

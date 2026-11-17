@@ -1008,6 +1008,10 @@ model ProviderTopUp {
   measured           Boolean  @default(false)
   /// Date de la recharge (saisie), distincte de la date d'enregistrement.
   occurredAt         DateTime @default(now())
+  /// Date à laquelle le taux mesuré de CETTE recharge a été appliqué à la grille, ou null s'il attend
+  /// encore la confirmation d'un administrateur. Tant qu'il attend, la grille garde le taux provisoire :
+  /// saisir une recharge ne change jamais un prix à l'insu de qui la saisit.
+  appliedToPricingAt DateTime?
   note               String?
   createdById        String   @db.Uuid
   createdAt          DateTime @default(now())
@@ -1015,6 +1019,7 @@ model ProviderTopUp {
   createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([provider, occurredAt])
+  @@index([provider, appliedToPricingAt])
 }
 
 model PayoutRecord {
