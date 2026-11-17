@@ -492,6 +492,13 @@ model Payment {
   /// Constatés par la vérification du fournisseur (frais client, montant débité).
   clientFee                 Int?
   debitedAmount             Int?
+  /// Net RÉELLEMENT reçu sur le compte de l'encaisseur, en FCFA : prix affiché moins les frais observés.
+  /// C'est lui, et non le prix affiché, qui vaut quelque chose pour la plateforme.
+  netReceived               Int?
+  /// Frais observés et frais attendus, en % du prix affiché. Un écart de plus de 0,5 point déclenche une
+  /// alerte : la grille du fournisseur a changé, ou le palier appliqué n'est pas celui qu'on croyait.
+  observedFeePercent        Decimal?       @db.Decimal(7, 4)
+  expectedFeePercent        Decimal?       @db.Decimal(7, 4)
   /// Pourcentage de bonus de premier achat promis au moment de la création (figé).
   firstPurchaseBonusPercent Int?
   status                    PaymentStatus  @default(INITIATED)
@@ -522,6 +529,8 @@ model Payment {
   @@index([createdAt, id])
   @@index([gateway, createdAt])
   @@index([country, createdAt])
+  // Recalibrage des frais entrants : tous les paiements crédités d'un (pays, moyen de paiement).
+  @@index([country, methodCode, creditedAt])
   @@index([methodCode])
   /// Repérage immédiat des paiements confirmés non crédités (anomalie à régulariser).
   @@index([status, creditedAt])

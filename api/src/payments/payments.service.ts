@@ -23,6 +23,7 @@ import { CUSTOM_PURCHASE_LABEL, buildPage, clampPage } from '@yamboka/shared';
 import { randomUUID } from 'node:crypto';
 import { firstPurchaseBonusPercent } from '../billing/bonus';
 import { customAmount, isSoldAtLoss } from '../billing/custom-purchase';
+import { observedFees, type ObservedFees } from '../billing/observed-fees';
 import {
   computeSendAmount,
   FeeComputationError,
@@ -86,6 +87,13 @@ export const ANOMALY_ALERT_AFTER_MS = 30 * 60 * 1000;
 
 /** Nombre de paiements confirmés non crédités repris à chaque passage de la réconciliation. */
 const UNCREDITED_BATCH = 100;
+
+/**
+ * Dernier écart de frais d'encaissement constaté (pays, moyen, observé, attendu, date) : lu par
+ * l'administration pour en faire une alerte. Une seule ligne : seul le dernier écart importe, les
+ * paiements gardent chacun le leur.
+ */
+export const FEE_DEVIATION_KEY = 'lastFeeDeviation';
 
 /** Ce qui a déclenché une vérification : tracé dans PaymentCheck. */
 export type CheckSource =
@@ -863,20 +871,25 @@ export class PaymentsService {
     }
 
     // Écarts à surveiller (le crédit n'en dépend pas : le client a payé ce que Yamboka a demandé).
-    const snapshot = payment.feeSnapshot as { fee?: number } | null;
-    if (
-      result.clientFee != null &&
-      typeof snapshot?.fee === 'number' &&
-      result.clientFee !== snapshot.fee
-    ) {
-      this.logger.warn(
-        `Paiement ${paymentId} : frais constatés ${result.clientFee} ≠ frais calculés ${snapshot.fee}`,
-      );
-    }
     if (result.debitedAmount != null && result.debitedAmount > payment.amount) {
       this.logger.warn(
         `Paiement ${paymentId} : le client a payé ${result.debitedAmount}, plus que le prix affiché ${payment.amount}`,
       );
+    }
+    // Net RÉELLEMENT reçu et frais observés : c'est la seule mesure qui permette de recalibrer `fees.ts`.
+    const fees = observedFees({
+      displayedAmount: payment.amount,
+      expectedNet: payment.sentAmount,
+      observedFee: result.clientFee ?? null,
+    });
+    if (fees.alert) {
+      this.logger.error(
+        `Paiement ${paymentId} (${payment.country} · ${payment.methodCode ?? payment.operator}) : ` +
+          `frais observés ${fees.observedFeePercent} % contre ${fees.expectedFeePercent} % attendus ` +
+          `(+${fees.deviationPoints} point). La grille d'encaissement retenue est fausse : relevez ` +
+          `GET /pricing/my-rates/ et corrigez le palier dans la configuration.`,
+      );
+      await this.recordFeeDeviation(payment, fees);
     }
 
     await this.creditConfirmed({
@@ -885,8 +898,36 @@ export class PaymentsService {
       origin: 'AUTO',
       clientFee: result.clientFee ?? null,
       debitedAmount: result.debitedAmount ?? null,
+      fees,
     });
     return 'SUCCESS';
+  }
+
+  /**
+   * Garde la trace du dernier écart de frais constaté, pour que l'administration l'affiche comme alerte.
+   * Rien n'est corrigé automatiquement : le palier d'encaissement se relève auprès du fournisseur et se
+   * saisit dans la configuration, c'est une décision, pas une déduction.
+   */
+  private async recordFeeDeviation(
+    payment: Payment,
+    fees: ObservedFees,
+  ): Promise<void> {
+    const value = JSON.stringify({
+      paymentId: payment.id,
+      country: payment.country,
+      method: payment.methodCode ?? payment.operator,
+      observedPercent: fees.observedFeePercent,
+      expectedPercent: fees.expectedFeePercent,
+      deviationPoints: fees.deviationPoints,
+      at: new Date().toISOString(),
+    });
+    await this.prisma.setting
+      .upsert({
+        where: { key: FEE_DEVIATION_KEY },
+        update: { value },
+        create: { key: FEE_DEVIATION_KEY, value },
+      })
+      .catch(() => undefined);
   }
 
   // ───────────── Attribution des crédits d'un paiement confirmé ─────────────
@@ -912,6 +953,8 @@ export class PaymentsService {
     adminId?: string;
     clientFee?: number | null;
     debitedAmount?: number | null;
+    /** Net reçu et frais observés, enregistrés avec l'attribution. */
+    fees?: ObservedFees;
     /** Écrit dans la transaction de l'attribution : la trace et les crédits sont indissociables. */
     onCommit?: (
       tx: Prisma.TransactionClient,
@@ -967,6 +1010,13 @@ export class PaymentsService {
           ...(p.clientFee !== undefined ? { clientFee: p.clientFee } : {}),
           ...(p.debitedAmount !== undefined
             ? { debitedAmount: p.debitedAmount }
+            : {}),
+          ...(p.fees
+            ? {
+                netReceived: p.fees.netReceived,
+                observedFeePercent: p.fees.observedFeePercent,
+                expectedFeePercent: p.fees.expectedFeePercent,
+              }
             : {}),
           lastProviderStatus: { status: 'success' },
         },

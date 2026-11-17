@@ -9,7 +9,10 @@ import {
   VIDEO_DURATION,
   VIDEO_RESOLUTIONS,
 } from '@yamboka/shared';
-import { customBounds } from '../billing/custom-purchase';
+import { customBounds, minProfitableAmount } from '../billing/custom-purchase';
+import { PricingService } from '../pricing/pricing.service';
+import { PayinRatesService } from './payin-rates.service';
+import { computeSendAmount } from '../billing/fees';
 import { toPackView } from '../catalog/pack-view';
 import { VideoRatesService } from '../pricing/video-rates.service';
 import type { CreditPack } from '../generated/prisma/client';
@@ -45,6 +48,8 @@ export class PaymentOffersService {
     private readonly settings: SettingsService,
     private readonly catalog: CountryCatalogService,
     private readonly videoRates: VideoRatesService,
+    private readonly payinRates: PayinRatesService,
+    private readonly pricingVersions: PricingService,
   ) {}
 
   /** Pays ouverts à l'achat (statut ACTIVE en base, avec au moins un moyen ACTIVE utilisable). */
@@ -75,16 +80,81 @@ export class PaymentOffersService {
       : null;
   }
 
-  /** Règles de l'achat à la quantité pour un pays, ou null s'il n'est pas disponible. */
+  /**
+   * Règles de l'achat à la quantité pour un pays, ou null s'il n'est pas disponible.
+   *
+   * Le minimum annoncé n'est PAS seulement celui du pays : c'est le plus grand des trois — minimum du pays,
+   * minimum de la configuration, et montant à partir duquel la marge nette reste positive frais fixes
+   * compris. Sans cela, le client verrait un minimum que le serveur refuserait ensuite.
+   */
   async customRules(
     country: CountryConfig,
   ): Promise<CustomPurchaseRules | null> {
     const limits = await this.limitsFor(country.currency);
     const unit = await this.unitPrice(country.currency);
     if (!limits || !unit || unit <= 0) return null;
-    const { minCredits, maxCredits } = customBounds(unit, limits);
+
+    const floor = await this.profitableFloor(country, limits, unit);
+    const { minCredits, maxCredits } = customBounds(unit, {
+      min: Math.max(limits.min, floor),
+      max: limits.max,
+    });
     if (maxCredits < minCredits) return null;
     return { unitPrice: unit, minCredits, maxCredits };
+  }
+
+  /**
+   * Montant minimum rentable pour ce pays, au moyen de paiement le MOINS favorable parmi ceux ouverts.
+   * Renvoie le minimum du pays si rien ne permet de conclure (devise hors parité FCFA, aucun tarif connu) :
+   * on ne durcit pas un seuil sur une hypothèse.
+   */
+  private async profitableFloor(
+    country: CountryConfig,
+    limits: { min: number; max: number },
+    unitPrice: number,
+  ): Promise<number> {
+    const config = await this.pricingVersions.config().catch(() => null);
+    const configFloor = config?.minPurchaseXaf ?? limits.min;
+    if (!isCfa(country.currency)) return configFloor;
+
+    const fcfaPerCredit = await this.settings.get('hfCostFcfaPerCredit');
+    const circuitLossPercent = config
+      ? Number(config.circuitLossPercent)
+      : await this.settings.get('circuitLossPercent');
+
+    // Palier le moins favorable parmi les moyens ouverts du pays : c'est lui qui contraint le seuil.
+    const methods = await this.prisma.countryPaymentMethod.findMany({
+      where: { countryIso: country.iso, status: 'ACTIVE' },
+    });
+    let worstNetFor: ((amount: number) => number) | null = null;
+    let worstNetAtMax = Number.POSITIVE_INFINITY;
+    for (const row of methods) {
+      const resolved = await this.payinRates.resolve(
+        country.iso,
+        row.saspayNetwork ?? row.methodCode,
+      );
+      if (!resolved || resolved.tiers.length === 0) continue;
+      const tiers = resolved.tiers;
+      const netFor = (amount: number) =>
+        computeSendAmount(amount, tiers).sentAmount;
+      const netAtMax = netFor(limits.max);
+      if (netAtMax < worstNetAtMax) {
+        worstNetAtMax = netAtMax;
+        worstNetFor = netFor;
+      }
+    }
+    // Aucun frais connu (fournisseur simulé) : le minimum de la configuration suffit.
+    if (!worstNetFor) return configFloor;
+
+    const derived = minProfitableAmount({
+      unitPrice,
+      fcfaPerCredit,
+      circuitLossPercent,
+      netFor: worstNetFor,
+      hardFloor: Math.max(limits.min, configFloor),
+      ceiling: limits.max,
+    });
+    return Math.max(configFloor, derived ?? configFloor);
   }
 
   /**

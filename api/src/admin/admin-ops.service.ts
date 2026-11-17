@@ -52,6 +52,7 @@ import {
   microUsdToFcfa,
   toMicroUsd,
 } from '../billing/usd';
+import { FEE_DEVIATION_KEY } from '../payments/payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProviderLedgerService } from '../provider-balance/provider-ledger.service';
 import {
@@ -345,6 +346,37 @@ export class AdminOpsService {
         message: `Solde Higgsfield estimé bas : ${stats.providerBalance.estimatedBalanceUsd} $ (seuil ${balanceAlert} $). Rechargez puis saisissez la recharge.`,
         href: '/admin/finances',
       });
+    }
+    // Frais d'encaissement observés au-dessus de ce qu'on attendait : la grille retenue est fausse, et
+    // tout le plancher de valeur du crédit en dépend.
+    const feeDeviation = await this.prisma.setting.findUnique({
+      where: { key: FEE_DEVIATION_KEY },
+    });
+    if (typeof feeDeviation?.value === 'string' && feeDeviation.value) {
+      const d = parseFeeDeviation(feeDeviation.value);
+      if (d) {
+        alerts.push({
+          key: 'fee-deviation',
+          level: 'critical',
+          message: `Frais d'encaissement plus élevés que prévu sur ${d.country} · ${d.method} : ${d.observedPercent} % observés contre ${d.expectedPercent} % attendus (+${d.deviationPoints} point). Relevez la grille du compte chez l'encaisseur et corrigez le palier.`,
+          href: '/admin/configuration',
+        });
+      }
+    }
+    // Un modèle dont le fournisseur refuse les paramètres : le catalogue n'est pas à jour.
+    const rejection = await this.prisma.setting.findUnique({
+      where: { key: 'lastModelRejection' },
+    });
+    if (typeof rejection?.value === 'string' && rejection.value) {
+      const r = parseModelRejection(rejection.value);
+      if (r) {
+        alerts.push({
+          key: 'model-rejection',
+          level: 'critical',
+          message: `Le fournisseur a refusé les paramètres du modèle ${r.slug} : ${r.message}. Testez le modèle et corrigez son schéma — il n'a PAS été désactivé automatiquement.`,
+          href: '/admin/configuration',
+        });
+      }
     }
     if (maintenance) {
       alerts.push({
@@ -1500,5 +1532,50 @@ function paymentIssue(
       return 'Réponse illisible du fournisseur à la dernière tentative';
     default:
       return null;
+  }
+}
+
+/** Dernier écart de frais, tel que PaymentsService l'enregistre. null si la trace est illisible. */
+function parseFeeDeviation(raw: string): {
+  country: string;
+  method: string;
+  observedPercent: string;
+  expectedPercent: string;
+  deviationPoints: number;
+} | null {
+  try {
+    const d = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof d.country !== 'string' || typeof d.method !== 'string') {
+      return null;
+    }
+    return {
+      country: d.country,
+      method: d.method,
+      observedPercent:
+        typeof d.observedPercent === 'string' ? d.observedPercent : '?',
+      expectedPercent:
+        typeof d.expectedPercent === 'string' ? d.expectedPercent : '?',
+      deviationPoints:
+        typeof d.deviationPoints === 'number' ? d.deviationPoints : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Dernier refus de paramètres par le fournisseur, tel que CreationsService l'enregistre. */
+function parseModelRejection(
+  raw: string,
+): { slug: string; message: string } | null {
+  try {
+    const d = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof d.slug !== 'string') return null;
+    return {
+      slug: d.slug,
+      message:
+        typeof d.message === 'string' ? d.message : 'raison non précisée',
+    };
+  } catch {
+    return null;
   }
 }
