@@ -183,12 +183,87 @@ export const legalPublishSchema = z.object({
 });
 export type LegalPublishInput = z.infer<typeof legalPublishSchema>;
 
+/**
+ * Saisie d'une recharge du fournisseur. Les dollars arrivent en TEXTE décimal, jamais en nombre flottant :
+ * c'est la mesure dont dépend `r_out`, donc tout l'équilibre de la plateforme.
+ */
 export const topUpSchema = z.object({
-  amountUsd: z.number().positive().max(1_000_000),
-  amountXaf: z.number().int().positive().max(1_000_000_000),
+  /** Dollars réellement arrivés sur le compte fournisseur, lus dans sa console (« 20 », « 20.50 »). */
+  receivedUsd: z
+    .string()
+    .trim()
+    // La virgule décimale est acceptée à la saisie puis normalisée : le montant reste une chaîne, jamais un flottant.
+    .transform((v) => v.replace(',', '.'))
+    .pipe(
+      z
+        .string()
+        .regex(/^\d+(\.\d{1,6})?$/, 'Montant en dollars invalide (ex. 20.50).'),
+    ),
+  /** FCFA NETS sortis du portefeuille SasPay pour cette recharge (après frais de retrait). */
+  netWithdrawnXaf: z.number().int().positive().max(1_000_000_000),
+  /** FCFA débités de la carte. */
+  cardAmountXaf: z.number().int().positive().max(1_000_000_000),
+  /** Frais étape par étape, pour retrouver d'où vient la perte. */
+  steps: z
+    .array(
+      z.object({
+        step: z.string().trim().min(1).max(40),
+        amountXaf: z.number().int().min(0).max(1_000_000_000).optional(),
+        feeXaf: z.number().int().min(0).max(1_000_000_000).optional(),
+        note: z.string().trim().max(200).optional(),
+      }),
+    )
+    .max(10)
+    .optional(),
+  occurredAt: z.iso.date().optional(),
   note: z.string().trim().max(300).optional(),
 });
 export type TopUpInput = z.infer<typeof topUpSchema>;
+
+/**
+ * Scénario de simulation : chaque champ absent prend la valeur EN VIGUEUR. Les pourcentages arrivent en texte
+ * décimal, jamais en flottant.
+ */
+export const simulationSchema = z.object({
+  marginPercent: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,4})?$/)
+    .optional(),
+  circuitLossPercent: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,4})?$/)
+    .optional(),
+  bonusValuationPercent: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,4})?$/)
+    .optional(),
+  /** Durées à simuler, en secondes, séparées par des virgules (« 5,10,30 »). */
+  durations: z
+    .string()
+    .trim()
+    .regex(/^\d{1,3}(,\d{1,3})*$/)
+    .optional(),
+});
+export type SimulationInput = z.infer<typeof simulationSchema>;
+
+/** Saisie du solde lu dans la console du fournisseur (calibrage) : la seule mesure vraie du solde. */
+export const calibrationSchema = z.object({
+  readUsd: z
+    .string()
+    .trim()
+    .transform((v) => v.replace(',', '.'))
+    .pipe(
+      z
+        .string()
+        .regex(/^\d+(\.\d{1,6})?$/, 'Solde en dollars invalide (ex. 18.40).'),
+    ),
+  readAt: z.iso.date().optional(),
+  note: z.string().trim().max(300).optional(),
+});
+export type CalibrationInput = z.infer<typeof calibrationSchema>;
 
 export const payoutSchema = z.object({
   amountXaf: z.number().int().positive().max(1_000_000_000),

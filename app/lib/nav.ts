@@ -1,6 +1,7 @@
 import {
   Activity,
   Boxes,
+  Calculator,
   Clapperboard,
   Coins,
   History,
@@ -98,6 +99,7 @@ export const ADMIN_NAV: NavGroup[] = [
       { title: "Paiements", href: "/admin/paiements", icon: CreditCard },
       { title: "Pays et paiements", href: "/admin/pays", icon: Globe },
       { title: "Synthèse financière", href: "/admin/finances", icon: LineChart },
+      { title: "Simulateur", href: "/admin/simulateur", icon: Calculator },
     ],
   },
   {

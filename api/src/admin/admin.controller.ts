@@ -45,15 +45,22 @@ import type {
   SettingsView,
   TopUpInput,
   TopUpRow,
+  CalibrationInput,
+  CalibrationRow,
+  SimulationInput,
+  SimulationView,
+  ProviderBalanceRow,
   UserStatusActionInput,
 } from '@yamboka/shared';
 import {
+  calibrationSchema,
   creditAdjustSchema,
   demoteAdminSchema,
   paymentSettleSchema,
   legalPublishSchema,
   listQuerySchema,
   packCreateSchema,
+  simulationSchema,
   packUpdateSchema,
   payoutSchema,
   productUpdateSchema,
@@ -70,6 +77,7 @@ import type { AuthUser } from '../common/decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { AdminOfferService } from './admin-offer.service';
 import { AdminOpsService } from './admin-ops.service';
+import { AdminSimulatorService } from './admin-simulator.service';
 import { AdminUsersService } from './admin-users.service';
 
 const query = new ZodPipe(listQuerySchema);
@@ -96,6 +104,7 @@ const statsQuery = new ZodPipe(
     to: z.iso.date().optional(),
   }),
 );
+const simulationQuery = new ZodPipe(simulationSchema);
 const periodQuery = new ZodPipe(
   z.object({ from: z.iso.date().optional(), to: z.iso.date().optional() }),
 );
@@ -113,6 +122,7 @@ export class AdminController {
     private readonly users: AdminUsersService,
     private readonly offer: AdminOfferService,
     private readonly ops: AdminOpsService,
+    private readonly simulator: AdminSimulatorService,
   ) {}
 
   @Get('ping')
@@ -391,13 +401,56 @@ export class AdminController {
   }
 
   @Post('finance/topups')
+  @ApiOperation({
+    summary:
+      'Saisie d’une recharge du fournisseur : écrit le mouvement en dollars et fige le taux sortant mesuré',
+  })
   async addTopUp(
     @CurrentUser() admin: AuthUser,
     @Body(new ZodPipe(topUpSchema)) body: TopUpInput,
-    @ClientIp() ip?: string,
   ): Promise<{ ok: true }> {
-    await this.ops.addTopUp(admin.id, body, ip);
+    await this.ops.addTopUp(admin.id, body);
     return { ok: true };
+  }
+
+  @Get('finance/simulate')
+  @ApiOperation({
+    summary:
+      'Simulateur : coût, net attendu et crédits à facturer par vidéo, pour un scénario donné (lecture seule, rien n’est enregistré)',
+  })
+  simulate(
+    @Query(simulationQuery) q: SimulationInput,
+  ): Promise<SimulationView> {
+    return this.simulator.simulate({
+      ...q,
+      durations: q.durations?.split(',').map(Number),
+    });
+  }
+
+  @Get('finance/provider-balance')
+  @ApiOperation({
+    summary:
+      'Solde prépayé du fournisseur tel que le journal le connaît, et taux retenu pour tarifer',
+  })
+  providerBalance(): Promise<ProviderBalanceRow> {
+    return this.ops.providerBalance();
+  }
+
+  @Get('finance/calibrations')
+  listCalibrations(): Promise<CalibrationRow[]> {
+    return this.ops.listCalibrations();
+  }
+
+  @Post('finance/calibrations')
+  @ApiOperation({
+    summary:
+      'Recalage du solde sur la valeur lue dans la console du fournisseur : enregistre l’écart constaté',
+  })
+  addCalibration(
+    @CurrentUser() admin: AuthUser,
+    @Body(new ZodPipe(calibrationSchema)) body: CalibrationInput,
+  ): Promise<{ deltaUsd: string; estimatedUsd: string }> {
+    return this.ops.addCalibration(admin.id, body);
   }
 
   @Get('finance/payouts')

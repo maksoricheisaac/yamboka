@@ -305,15 +305,116 @@ export interface FinanceSummary {
   topUpsXaf: number;
   payoutsXaf: number;
   payoutCommissionXaf: number;
+  /** Crédits offerts sur la période (bonus de premier achat) : jamais payés par le client. */
+  bonusCreditsGranted: number;
+  /** Ce que ces crédits offerts coûteront chez le fournisseur, valorisé au taux sortant retenu. */
+  bonusCostFcfa: number;
+  /** Part du net encaissé que représente le coût du bonus (information). */
+  bonusCostPercentOfCollected: number;
 }
 
 export interface TopUpRow {
   id: string;
-  amountUsd: number;
-  amountXaf: number;
-  fxRate: number;
+  /** Dollars arrivés chez le fournisseur, en texte décimal. */
+  receivedUsd: string;
+  /** FCFA nets sortis de SasPay, ou null pour une recharge saisie avant la mesure de `r_out`. */
+  netWithdrawnXaf: number | null;
+  /** FCFA débités de la carte. */
+  cardAmountXaf: number;
+  /** Taux sortant mesuré (FCFA/$), en texte décimal, ou null si la recharge n'est pas mesurée. */
+  rOut: string | null;
+  /** false = saisie incomplète : l'affichage le signale « non mesuré » et la tarification ne s'y fie pas. */
+  measured: boolean;
+  occurredAt: string;
   note: string | null;
   createdAt: string;
+}
+
+/** Une ligne du simulateur : une résolution et une durée, chiffrées de bout en bout. */
+export interface VideoSimulationRow {
+  resolution: string;
+  durationSeconds: number;
+  /** Coût fournisseur en dollars, texte décimal. */
+  costUsd: string;
+  /** Ce coût valorisé en FCFA au taux retenu. */
+  costFcfa: number;
+  /** Ce que la vidéo doit rapporter net, marge comprise. */
+  netNeededFcfa: number;
+  /** Crédits qu'il FAUDRAIT facturer pour ne pas vendre sous le coût. */
+  requiredCredits: number;
+  /** Crédits que la grille facture aujourd'hui. */
+  chargedCredits: number;
+  /** Écart en FCFA entre ce que les crédits facturés rapportent et le coût. Négatif = vente à perte. */
+  marginFcfa: number;
+  belowCost: boolean;
+  missingCredits: number;
+  /** Origine du tarif fournisseur utilisé : saisie ou estimation. */
+  priceSource: 'MANUAL' | 'ESTIMATE';
+}
+
+/** Marge d'un pack, au moyen de paiement le moins favorable. */
+export interface PackMarginRow {
+  name: string;
+  priceFcfa: number;
+  credits: number;
+  bonusCredits: number;
+  /** Net réellement reçu après frais d'encaissement. */
+  netFcfa: number;
+  /** Crédits comptés dans la valeur du crédit (bonus valorisé selon le réglage). */
+  valuedCredits: number;
+  /** FCFA nets par crédit pour ce pack, texte décimal. */
+  fcfaPerCredit: string;
+  /** Ce que les crédits offerts coûteront en FCFA (coût fournisseur estimé). */
+  bonusCostFcfa: number;
+}
+
+/** Résultat complet du simulateur, pour un scénario donné. */
+export interface SimulationView {
+  /** Taux sortant retenu (FCFA/$), texte décimal. */
+  pricingRate: string;
+  /** false = taux provisoire (aucune recharge mesurée). */
+  rateMeasured: boolean;
+  marginPercent: string;
+  circuitLossPercent: string;
+  bonusValuationPercent: string;
+  fxBufferPercent: string;
+  /** true = les paramètres en vigueur ne reposent pas encore sur des mesures. */
+  configProvisional: boolean;
+  /** Valeur plancher d'un crédit (FCFA nets), texte décimal. */
+  creditFloorFcfa: string;
+  floorFromPack: string;
+  floorFromMethod: string;
+  floorNetFcfa: number;
+  floorCredits: number;
+  videos: VideoSimulationRow[];
+  packs: PackMarginRow[];
+  /** true = au moins une vidéo du catalogue se vend sous son coût. */
+  anyBelowCost: boolean;
+}
+
+/** Une lecture du solde dans la console du fournisseur, avec l'écart constaté avec l'estimation. */
+export interface CalibrationRow {
+  id: string;
+  readUsd: string;
+  estimatedUsd: string;
+  /** Négatif = on avait dépensé plus que ce que le journal savait. */
+  deltaUsd: string;
+  readAt: string;
+  note: string | null;
+  createdAt: string;
+}
+
+/** Solde prépayé du fournisseur tel que le journal le connaît. */
+export interface ProviderBalanceRow {
+  balanceUsd: string;
+  /** Part du solde engagée par des créations en cours. */
+  reservedUsd: string;
+  /** Taux sortant retenu pour tarifer (FCFA/$), en texte décimal. */
+  pricingRate: string;
+  /** false = aucune recharge mesurée : le taux affiché est provisoire. */
+  measured: boolean;
+  lastCalibrationAt: string | null;
+  lastCalibrationDeltaUsd: string | null;
 }
 
 export interface PayoutRow {
