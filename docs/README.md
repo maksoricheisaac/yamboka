@@ -83,6 +83,14 @@ Voir [docs/dev/credits-et-paiements.md](docs/dev/credits-et-paiements.md) (regis
 
 Comptabilité en dollars du compte prépayé du fournisseur, taux sortant mesuré et tarifs versionnés : [docs/dev/solde-fournisseur.md](docs/dev/solde-fournisseur.md).
 
+Catalogue de modèles, tarification dérivée et configuration des calculs : aucun slug, paramètre, tarif,
+marge, taux ni plafond n'est écrit dans le code. Tout vient de la base, et une version appliquée dans
+l'administration (« Calculs et modèles ») prend effet sans redéploiement.
+
+**Avant d'ouvrir la vente** : [docs/dev/mise-en-route.md](docs/dev/mise-en-route.md) — les mesures à faire
+sur le réel (`r_out`, solde de départ, frais entrants, prix `/estimate`) et les paramètres à basculer de
+« provisoire » à mesuré, dans l'ordre.
+
 SasPay : [docs/dev/saspay.md](docs/dev/saspay.md). Pays et moyens de paiement administrables : [docs/dev/catalogue-international.md](docs/dev/catalogue-international.md). Pagination serveur : [docs/dev/pagination.md](docs/dev/pagination.md).
 
 ## Base de données

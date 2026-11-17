@@ -5,7 +5,7 @@ import type {
   SimulationView,
 } from '@yamboka/shared';
 import { FLOOR_DECIMALS, formatFloor } from '../billing/floor';
-import { formatMicroUsd, formatRate, microUsdToFcfa } from '../billing/usd';
+import { formatMicroUsd, formatRate } from '../billing/usd';
 import { ModelCatalogService } from '../generation/model-catalog.service';
 import {
   pricedCombinations,
@@ -208,32 +208,30 @@ export class AdminSimulatorService {
           netFcfa: c.netFcfa,
           valuedCredits: c.credits,
           fcfaPerCredit: formatFloor(c.floorScaled),
-          bonusCostFcfa: microUsdToFcfa(
-            this.bonusMicroUsd(
-              pack?.bonusCredits ?? 0,
-              ctx.floor.floorScaled,
-              ctx.marginPercent,
-            ),
-            ctx.rate.rate,
+          bonusCostFcfa: this.bonusCostFcfa(
+            pack?.bonusCredits ?? 0,
+            ctx.floor.floorScaled,
+            ctx.marginPercent,
           ),
         };
       });
   }
 
   /**
-   * Coût fournisseur approché des crédits offerts : ce qu'ils permettent de consommer. Un crédit « vaut »
-   * le plancher en FCFA, dont il faut retirer la marge pour retrouver la part de coût fournisseur.
-   * Approché et volontairement prudent : il sert à chiffrer ce que le bonus coûte.
+   * Ce que les crédits offerts coûteront, EN FCFA. Un crédit « vaut » le plancher en FCFA ; en retirant la
+   * marge commerciale de cette valeur, on retrouve la part qui part chez le fournisseur. Approché et
+   * volontairement prudent : il sert à chiffrer ce que le bonus coûte, pas à le facturer.
    */
-  private bonusMicroUsd(
+  private bonusCostFcfa(
     bonusCredits: number,
     floorScaled: bigint,
     marginPercent: string | number,
-  ): bigint {
-    if (bonusCredits <= 0) return 0n;
-    const fcfa = (BigInt(bonusCredits) * floorScaled) / FLOOR_SCALE;
+  ): number {
+    if (bonusCredits <= 0) return 0;
+    const broughtFcfa = (BigInt(bonusCredits) * floorScaled) / FLOOR_SCALE;
     const margin = BigInt(Math.round(Number(marginPercent) * 100));
-    const costFcfa = (fcfa * 10_000n) / (10_000n + margin);
-    return costFcfa > 0n ? costFcfa : 0n;
+    // valeur ÷ (1 + marge) = part de coût fournisseur.
+    const costFcfa = (broughtFcfa * 10_000n) / (10_000n + margin);
+    return Number(costFcfa);
   }
 }
