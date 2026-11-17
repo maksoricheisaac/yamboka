@@ -5,11 +5,25 @@ import { ceilDiv, toScaled } from './decimal';
  * Fonctions pures. Format des paliers = celui de GET /pricing/my-rates/ (`tiers`), en pourcentage « humain » :
  * percent 2.5 = 2,5 %.
  *
- *   frais(A) = min(cap, max(floor, A × percent + fixed))   — arrondi à l'entier supérieur
+ *   frais(A) = min(cap, max(floor, A × percent ÷ (100 − percent) + fixed))   — arrondi à l'entier SUPÉRIEUR
  *   montant envoyé = le plus grand A entier tel que A + frais(A) ≤ prix affiché
  *
- * Hypothèses à confirmer en bac à sable (la doc ne les précise pas) : bornes de palier inclusives, frais arrondis
- * par excès (le client ne paie jamais plus que le prix affiché).
+ * POURQUOI LE POURCENTAGE S'APPLIQUE AU MONTANT DÉBITÉ, pas au montant reçu. Mesure réelle du 1er nov. 2026
+ * (paiement MTN Congo, palier 5,7 % ADD_ON) : montant envoyé 473 F, frais facturés 28 F, client débité 501 F.
+ * Appliquer 5,7 % au montant envoyé donne 26,96 → 27 F, soit 500 F débités : la prédiction était en dessous de
+ * la réalité, et le client a payé 1 F de plus que le prix affiché. En revanche 501 × 5,7 % = 28,56 → 28 F, et
+ * 501 − 28 = 473 : le pourcentage porte bien sur le montant DÉBITÉ. On résout donc T − T × p = A, c'est-à-dire
+ * frais = A × p ÷ (1 − p), et on arrondit AU-DESSUS.
+ *
+ * Conséquence voulue : la prévision majore toujours les frais réels (29 F prévus contre 28 F facturés dans la
+ * mesure ci-dessus), donc le client ne paie JAMAIS plus que le prix affiché. Le surcoût pour Yamboka est de
+ * l'ordre de 2 F pour 500 F. L'écart entre prévu et constaté est surveillé sur chaque paiement (alerte au-delà
+ * de 0,5 point) : c'est lui qui dira si ce modèle doit encore être corrigé.
+ *
+ * SasPay n'expose AUCUN calcul de frais exact avant paiement : seulement la grille `/pricing/my-rates/` (dont
+ * la formule n'est pas documentée) et, après coup, `client_fee` / `debited_amount` sur la transaction.
+ *
+ * Hypothèse restante, à confirmer en bac à sable : bornes de palier inclusives.
  */
 
 export interface FeeTier {
@@ -67,10 +81,18 @@ function parseTier(tier: FeeTier): ParsedTier {
   }
   const opt = (v?: string | number | null) =>
     v === undefined || v === null ? null : toScaled(v, MONEY_DECIMALS);
+  const percent = toScaled(tier.percent, PERCENT_DECIMALS);
+  // 100 % ou plus : aucun montant envoyé ne pourrait couvrir les frais, et la division serait impossible.
+  if (percent >= FEE_SCALE) {
+    throw new FeeComputationError(
+      'INVALID_PRICE',
+      `Taux de frais impossible : ${String(tier.percent)} %`,
+    );
+  }
   return {
     min: parseMoneyToInt(tier.minAmount),
     max: tier.maxAmount === null ? null : parseMoneyToInt(tier.maxAmount),
-    percent: toScaled(tier.percent, PERCENT_DECIMALS),
+    percent,
     fixed: opt(tier.fixed) ?? 0n,
     floor: opt(tier.floorAmount),
     cap: opt(tier.capAmount),
@@ -78,8 +100,11 @@ function parseTier(tier: FeeTier): ParsedTier {
 }
 
 function feeOf(amount: bigint, t: ParsedTier): bigint {
-  // Tout est ramené à l'échelle 10^6 (millionièmes de FCFA).
-  let fee = amount * t.percent + t.fixed * MONEY_TO_FEE_SCALE;
+  // Tout est ramené à l'échelle 10^6 (millionièmes de FCFA). `t.percent` à cette échelle vaut déjà p (5,7 % →
+  // 57 000 ÷ 10^6 = 0,057), donc le dénominateur de A × p ÷ (1 − p) s'écrit FEE_SCALE − t.percent.
+  let fee =
+    (amount * t.percent * FEE_SCALE) / (FEE_SCALE - t.percent) +
+    t.fixed * MONEY_TO_FEE_SCALE;
   if (t.floor !== null && fee < t.floor * MONEY_TO_FEE_SCALE)
     fee = t.floor * MONEY_TO_FEE_SCALE;
   if (t.cap !== null && fee > t.cap * MONEY_TO_FEE_SCALE)

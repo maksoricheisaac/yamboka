@@ -34,28 +34,46 @@ function bruteForce(price: number, tiers: FeeTier[]): number | null {
 }
 
 describe('computeSendAmount : taux simple', () => {
-  it('10 000 FCFA à 5,7 % → on envoie 9 460, le client paie exactement 10 000', () => {
+  it('10 000 FCFA à 5,7 % → on envoie 9 430, le client paie exactement 10 000', () => {
+    // Les frais portent sur le montant DÉBITÉ : 9 430 ÷ (1 − 0,057) = 10 000, donc 570 de frais.
     const r = computeSendAmount(10_000, flat(5.7));
     expect(r).toEqual({
-      sentAmount: 9460,
-      fee: 540,
+      sentAmount: 9430,
+      fee: 570,
       total: 10_000,
-      absorbed: 540,
+      absorbed: 570,
     });
   });
 
-  it('5 000 FCFA à 5,7 % → 4 730', () => {
-    expect(computeSendAmount(5000, flat(5.7)).sentAmount).toBe(4730);
+  it('5 000 FCFA à 5,7 % → 4 715', () => {
+    expect(computeSendAmount(5000, flat(5.7)).sentAmount).toBe(4715);
   });
 
-  it('25 000 FCFA à 5,7 % → 23 651 (frais arrondis par excès : jamais plus que le prix affiché)', () => {
+  it('reproduit la mesure réelle du 1er nov. 2026 sans jamais sous-estimer', () => {
+    // Mesure : 473 envoyés, 28 facturés, 501 débités pour 500 affichés — le modèle précédent prévoyait 27.
+    // Le pourcentage porte sur le débité : nos frais prévus majorent donc toujours les frais réels.
+    expect(computeFee(473, flat(5.7))).toBe(29);
+    expect(computeFee(473, flat(5.7))).toBeGreaterThanOrEqual(28);
+    // Et pour 500 F affichés, on n'envoie plus que 471 : le client paie 500, jamais 501.
+    const r = computeSendAmount(500, flat(5.7));
+    expect(r).toMatchObject({ sentAmount: 471, total: 500 });
+  });
+
+  it('25 000 FCFA à 5,7 % → 23 575 (frais arrondis par excès : jamais plus que le prix affiché)', () => {
     const r = computeSendAmount(25_000, flat(5.7));
-    expect(r.sentAmount).toBe(23_651);
+    expect(r.sentAmount).toBe(23_575);
     expect(r.total).toBe(25_000);
   });
 
   it('accepte un pourcentage en chaîne comme dans la réponse SasPay', () => {
-    expect(computeSendAmount(10_000, flat('5.700')).sentAmount).toBe(9460);
+    expect(computeSendAmount(10_000, flat('5.700')).sentAmount).toBe(9430);
+  });
+
+  it('refuse un taux de 100 % ou plus au lieu de diviser par zéro', () => {
+    expect(codeOf(() => computeFee(1000, flat(100)))).toBe('INVALID_PRICE');
+    expect(codeOf(() => computeSendAmount(1000, flat(150)))).toBe(
+      'INVALID_PRICE',
+    );
   });
 
   it('le client ne paie jamais plus que le prix, et un FCFA de plus dépasserait', () => {
@@ -92,9 +110,9 @@ describe('computeSendAmount : plancher, plafond et frais fixes', () => {
     expect(r).toMatchObject({ sentAmount: 9900, fee: 100, total: 10_000 });
   });
 
-  it('frais fixes : 10 000 FCFA à 1 % + 25 → envoi 9 876', () => {
+  it('frais fixes : 10 000 FCFA à 1 % + 25 → envoi 9 875', () => {
     const r = computeSendAmount(10_000, flat(1, { fixed: '25.00' }));
-    expect(r).toMatchObject({ sentAmount: 9876, total: 10_000 });
+    expect(r).toMatchObject({ sentAmount: 9875, total: 10_000 });
   });
 
   it('plancher et plafond ensemble', () => {
@@ -117,14 +135,14 @@ describe('computeSendAmount : paliers', () => {
   ];
 
   it('retient le meilleur palier : au-dessus de la frontière, le taux réduit s’applique', () => {
-    // palier 1 : 4 952 + 248 = 5 200 ; palier 2 : 5 098 + 102 = 5 200 → 5 098 est plus grand
+    // palier 1 : 4 940 + 260 = 5 200 ; palier 2 : 5 096 + 104 = 5 200 → 5 096 est plus grand
     const r = computeSendAmount(5200, tiers);
-    expect(r.sentAmount).toBe(5098);
-    expect(r.fee).toBe(102);
+    expect(r.sentAmount).toBe(5096);
+    expect(r.fee).toBe(104);
   });
 
   it('sous la frontière, seul le premier palier convient', () => {
-    expect(computeSendAmount(4000, tiers).sentAmount).toBe(3809); // 3 809 + 191 = 4 000
+    expect(computeSendAmount(4000, tiers).sentAmount).toBe(3800); // 3 800 + 200 = 4 000
   });
 
   it('un prix pile à la frontière ne dépasse jamais le prix affiché', () => {
@@ -136,8 +154,9 @@ describe('computeSendAmount : paliers', () => {
   });
 
   it('computeFee choisit le palier qui couvre le montant', () => {
-    expect(computeFee(5000, tiers)).toBe(250);
-    expect(computeFee(5001, tiers)).toBe(101);
+    // 5 000 ÷ (1 − 5 %) − 5 000 = 263,16 → 264 ; 5 001 ÷ (1 − 2 %) − 5 001 = 102,06 → 103.
+    expect(computeFee(5000, tiers)).toBe(264);
+    expect(computeFee(5001, tiers)).toBe(103);
   });
 
   it('aucun palier ne couvre le montant', () => {
