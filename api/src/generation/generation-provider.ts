@@ -41,8 +41,14 @@ export interface GenerationStatusResult {
 export class GenerationUnavailableError extends Error {}
 /** Identifiants refusés ou compte sans droit d'accès : inutile de réessayer tant que rien n'est corrigé. */
 export class GenerationAuthError extends Error {}
-/** Le fournisseur a refusé la demande (paramètres invalides, crédit insuffisant chez lui…). */
+/** Le fournisseur a refusé la demande (paramètres invalides, contenu non conforme…). */
 export class GenerationRejectedError extends Error {}
+/**
+ * Le compte prépayé du fournisseur est à sec (Higgsfield : 403 « not_enough_credits »). Rien ne sera généré
+ * tant que le solde n'est pas rechargé : distinct d'identifiants refusés (GenerationAuthError), qui demande
+ * une correction de configuration, et d'un refus de la demande elle-même (GenerationRejectedError).
+ */
+export class GenerationProviderOutOfCreditsError extends Error {}
 
 export abstract class GenerationProvider {
   /** Nom du fournisseur (« mock » ou « higgsfield »). */
