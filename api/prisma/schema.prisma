@@ -181,20 +181,21 @@ model User {
   emailTokens      EmailToken[]
   legalAcceptances LegalAcceptance[]
   lots             CreditLot[]
-  ledger           CreditLedger[]     @relation("LedgerOwner")
-  ledgerCreated    CreditLedger[]     @relation("LedgerCreator")
+  ledger           CreditLedger[]               @relation("LedgerOwner")
+  ledgerCreated    CreditLedger[]               @relation("LedgerCreator")
   payments         Payment[]
-  paymentsSettled  Payment[]          @relation("PaymentCreditedBy")
+  paymentsSettled  Payment[]                    @relation("PaymentCreditedBy")
   paymentChecks    PaymentCheck[]
   generations      Generation[]
   mediaFiles       MediaFile[]
-  reportsFiled     Report[]           @relation("ReportReporter")
-  reportsHandled   Report[]           @relation("ReportHandler")
-  moderationTarget ModerationAction[] @relation("ModerationTarget")
-  moderationActor  ModerationAction[] @relation("ModerationActor")
+  reportsFiled     Report[]                     @relation("ReportReporter")
+  reportsHandled   Report[]                     @relation("ReportHandler")
+  moderationTarget ModerationAction[]           @relation("ModerationTarget")
+  moderationActor  ModerationAction[]           @relation("ModerationActor")
   notifications    Notification[]
   auditLogs        AuditLog[]
   topUps           ProviderTopUp[]
+  calibrations     ProviderBalanceCalibration[]
   payouts          PayoutRecord[]
   settingsUpdated  Setting[]
 
@@ -704,6 +705,18 @@ model Generation {
   options           Json?
   billableSeconds   Int?
   creditsCost       Int
+  /// Coût fournisseur FIGÉ à la création, en micro-dollars. Jamais recalculé : un changement de tarif ne
+  /// réécrit pas ce qui a été engagé. null = création antérieure au journal en dollars.
+  costMicroUsd      BigInt?
+  /// Taux sortant (FCFA/$) retenu au moment de la création, figé.
+  pricingRate       Decimal?         @db.Decimal(12, 4)
+  /// Marge commerciale appliquée (%), figée.
+  marginPercent     Decimal?         @db.Decimal(7, 4)
+  /// Valeur FCFA de la création au moment où elle a été faite (coût × taux × marge), figée.
+  priceFcfa         Int?
+  /// Lignes de tarif et de paramètres utilisées (sans clé étrangère : ces tables sont en ajout seul).
+  modelPriceId      String?          @db.Uuid
+  pricingConfigId   String?          @db.Uuid
   providerRequestId String?
   providerStatusUrl String?
   errorMessage      String?
@@ -808,6 +821,140 @@ model ModerationAction {
 
 // ───────────── Finances ─────────────
 
+enum ModelPriceSource {
+  /// Saisi par un administrateur (relevé de la grille publique du fournisseur, essai réel).
+  MANUAL
+  /// Obtenu du point d'estimation du fournisseur (POST /estimate/{modèle}).
+  ESTIMATE
+}
+
+/**
+ * Paramètres de tarification, VERSIONNÉS : une ligne par changement, jamais de mise à jour. Le prix d'une
+ * génération se calcule avec la ligne en vigueur à sa date, donc un changement ne réécrit jamais le passé.
+ */
+model PricingConfig {
+  id                    String   @id @default(uuid()) @db.Uuid
+  /// Marge commerciale appliquée au coût fournisseur, en % « humain » (10 = 10 %).
+  marginPercent         Decimal  @db.Decimal(7, 4)
+  /// Marge de sécurité sur le change ajoutée au taux sortant mesuré, en %.
+  fxBufferPercent       Decimal  @db.Decimal(7, 4)
+  /// Taux carte FCFA/$ et perte de circuit estimée : servent SEULEMENT tant qu'aucune recharge n'est mesurée.
+  cardFcfaPerUsd        Decimal  @db.Decimal(12, 4)
+  circuitLossPercent    Decimal  @db.Decimal(7, 4)
+  /// Dollars gardés en permanence sur le compte fournisseur, en micro-dollars (jamais engagés).
+  safetyMarginMicroUsd  BigInt
+  /// Plafonds quotidiens de dépense fournisseur, en micro-dollars : tous utilisateurs, puis par utilisateur.
+  dailyCapMicroUsd      BigInt
+  dailyUserCapMicroUsd  BigInt
+  /// Part du bonus de premier achat comptée dans la valeur d'un crédit, en % : 100 au lancement (prudent, le
+  /// bonus compte sur chaque crédit), à abaisser plus tard vers la part réellement observée sur les ventes.
+  bonusValuationPercent Decimal  @default(100) @db.Decimal(7, 4)
+  /// Minimum de retrait imposé par l'encaisseur, en FCFA : les recharges se font par lots d'au moins ce montant.
+  minWithdrawalXaf      Int
+  /// true = au moins une valeur n'est pas mesurée. L'administration l'affiche, et la production reste à valider.
+  provisional           Boolean  @default(true)
+  /// Date d'entrée en vigueur : la ligne retenue est la plus récente dont la date est passée.
+  effectiveFrom         DateTime
+  note                  String?
+  createdById           String?  @db.Uuid
+  createdAt             DateTime @default(now())
+
+  @@index([effectiveFrom])
+}
+
+/**
+ * Tarif fournisseur d'un modèle à une date, en ajout seul : un changement AJOUTE une ligne, on ne modifie
+ * jamais l'ancienne. Le prix est en micro-dollars entiers par unité facturée (seconde pour la vidéo).
+ */
+model ModelPrice {
+  id                 String           @id @default(uuid()) @db.Uuid
+  /// Chemin du modèle chez le fournisseur (= GenerationProduct.providerModel).
+  providerModel      String
+  /// Résolution facturée séparément (« 480p »), ou null si le tarif ne dépend pas de la résolution.
+  resolution         String?
+  /// Format facturé séparément, ou null (Wan 3.0 : le format ne change pas le prix).
+  format             String?
+  billingUnit        BillingUnit      @default(SECOND)
+  /// Prix fournisseur par unité facturée, en micro-dollars (0,05 $/s → 50000).
+  microUsdPerUnit    BigInt
+  /// Unités facturées par unité produite (une sortie + une entrée = 2).
+  billableMultiplier Int              @default(1)
+  minSeconds         Int?
+  maxSeconds         Int?
+  source             ModelPriceSource
+  effectiveFrom      DateTime
+  note               String?
+  createdById        String?          @db.Uuid
+  createdAt          DateTime         @default(now())
+
+  @@index([providerModel, resolution, effectiveFrom])
+  @@index([effectiveFrom])
+}
+
+/// Nature d'un mouvement du solde prépayé du fournisseur de génération. Le solde n'est JAMAIS écrit :
+/// il est toujours la somme des mouvements (RG-02 appliqué aux dollars).
+enum ProviderLedgerType {
+  /// Recharge du compte fournisseur (+). Porte le taux r_out mesuré pour cette recharge.
+  TOPUP
+  /// Réservation à la soumission d'une génération (−) : l'argent est engagé avant d'être dépensé.
+  GENERATION_RESERVE
+  /// Génération réussie : la réservation devient définitive. Montant 0 (le débit a eu lieu à la réservation).
+  GENERATION_CAPTURE
+  /// Génération échouée : la réservation est restituée (+). Le fournisseur ne facture pas un échec.
+  GENERATION_RELEASE
+  /// Recalage sur le solde lu dans la console du fournisseur (±) : seule écriture qui corrige une dérive.
+  CALIBRATION
+  /// Correction manuelle motivée (±), hors recalage.
+  ADJUSTMENT
+}
+
+/// Journal du solde prépayé du fournisseur, en ajout seul, en MICRO-dollars entiers (1 $ = 1 000 000).
+/// Volontairement sans clé étrangère entrante, comme CreditLedger : aucune table ne le référence.
+model ProviderLedger {
+  id             String             @id @default(uuid()) @db.Uuid
+  provider       String             @default("higgsfield")
+  type           ProviderLedgerType
+  /// Montant SIGNÉ en micro-dollars. Entier : aucun flottant ne touche l'argent.
+  amountMicroUsd BigInt
+  /// Référence déterministe et unique (« topup:<id> », « hfreserve:<generationId> », « calib:<id> ») :
+  /// un même événement rejoué n'écrit qu'un mouvement.
+  reference      String             @unique
+  generationId   String?            @db.Uuid
+  /// Recharge d'origine, pour un mouvement TOPUP (sans clé étrangère : ProviderLedger ne référence rien).
+  topUpId        String?            @db.Uuid
+  /// Taux FCFA/$ attaché au mouvement : r_out mesuré pour une recharge, r_pricing figé pour une génération.
+  fcfaPerUsd     Decimal?           @db.Decimal(12, 4)
+  note           String?
+  createdById    String?            @db.Uuid
+  createdAt      DateTime           @default(now())
+
+  @@index([provider, createdAt])
+  @@index([type, createdAt])
+  @@index([generationId])
+}
+
+/// Solde lu à la main dans la console du fournisseur (Billing) : la seule mesure vraie, l'API ne l'expose pas.
+/// On enregistre l'écart avec l'estimation au moment de la lecture ; le recalage est un mouvement CALIBRATION.
+model ProviderBalanceCalibration {
+  id                String   @id @default(uuid()) @db.Uuid
+  provider          String   @default("higgsfield")
+  /// Solde lu dans la console, en micro-dollars.
+  readMicroUsd      BigInt
+  /// Solde estimé par le journal à l'instant de la lecture (figé : jamais recalculé).
+  estimatedMicroUsd BigInt
+  /// readMicroUsd − estimatedMicroUsd : négatif = on a dépensé plus que ce que le journal savait.
+  deltaMicroUsd     BigInt
+  /// Date de la lecture dans la console, distincte de la date d'enregistrement.
+  readAt            DateTime @default(now())
+  note              String?
+  createdById       String   @db.Uuid
+  createdAt         DateTime @default(now())
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+}
+
+/// Recharge du compte fournisseur, avec le détail des frais de chaque étape (SasPay → MoMo → carte → dollars).
+/// C'est la seule source de `r_out` : FCFA NETS retirés de SasPay ÷ dollars arrivés chez le fournisseur.
 model ProviderTopUp {
   id                 String   @id @default(uuid()) @db.Uuid
   provider           String   @default("higgsfield")
@@ -818,6 +965,16 @@ model ProviderTopUp {
   saspayWithdrawnXaf Int?
   /// Taux effectif FCFA/$ constaté (calculé à la saisie).
   fxRate             Decimal  @db.Decimal(10, 4)
+  /// Dollars RÉELLEMENT arrivés chez le fournisseur, en micro-dollars entiers : source de vérité du calcul.
+  amountMicroUsd     BigInt?
+  /// FCFA NETS sortis du portefeuille SasPay (après frais de retrait) : numérateur de r_out.
+  netWithdrawnXaf    Int?
+  /// Frais étape par étape : [{ step, amountXaf, feeXaf, note }]. Saisi une fois, jamais réécrit.
+  feeSteps           Json?
+  /// r_out = netWithdrawnXaf ÷ (amountMicroUsd / 1e6), figé à la saisie et jamais recalculé.
+  rOut               Decimal? @db.Decimal(12, 4)
+  /// false = saisie incomplète (une étape estimée) : l'administration l'affiche « non mesuré » et ne s'y fie pas.
+  measured           Boolean  @default(false)
   /// Date de la recharge (saisie), distincte de la date d'enregistrement.
   occurredAt         DateTime @default(now())
   note               String?
@@ -825,6 +982,8 @@ model ProviderTopUp {
   createdAt          DateTime @default(now())
 
   createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([provider, occurredAt])
 }
 
 model PayoutRecord {
