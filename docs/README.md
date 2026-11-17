@@ -81,6 +81,8 @@ Voir [docs/dev/interface-connectee.md](docs/dev/interface-connectee.md) (barre l
 
 Voir [docs/dev/credits-et-paiements.md](docs/dev/credits-et-paiements.md) (registre, paiement simulé, scénarios de test, tâches asynchrones, fournisseur).
 
+Comptabilité en dollars du compte prépayé du fournisseur, taux sortant mesuré et tarifs versionnés : [docs/dev/solde-fournisseur.md](docs/dev/solde-fournisseur.md).
+
 SasPay : [docs/dev/saspay.md](docs/dev/saspay.md). Pays et moyens de paiement administrables : [docs/dev/catalogue-international.md](docs/dev/catalogue-international.md). Pagination serveur : [docs/dev/pagination.md](docs/dev/pagination.md).
 
 ## Base de données

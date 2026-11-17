@@ -43,10 +43,16 @@ describe('File de tâches BullMQ (e2e, Redis requis)', () => {
     }
   });
 
+  /**
+   * Attend un état, SANS affamer le worker : un sondage trop serré (toutes les 150 ms, avec une requête en
+   * base à chaque tour) monopolise la boucle d'évènements du processus de test, et BullMQ finit par considérer
+   * la tâche comme bloquée (son renouvellement de verrou passe après 30 s par défaut). On sonde donc deux fois
+   * par seconde et on patiente au-delà de ce délai de 30 s.
+   */
   async function until<T>(
     read: () => Promise<T>,
     done: (v: T) => boolean,
-    ms = 15_000,
+    ms = 40_000,
   ): Promise<T> {
     const deadline = Date.now() + ms;
     for (;;) {
@@ -56,7 +62,7 @@ describe('File de tâches BullMQ (e2e, Redis requis)', () => {
         throw new Error(
           `Délai dépassé ; dernière valeur : ${JSON.stringify(value)}`,
         );
-      await new Promise((r) => setTimeout(r, 150));
+      await new Promise((r) => setTimeout(r, 500));
     }
   }
 

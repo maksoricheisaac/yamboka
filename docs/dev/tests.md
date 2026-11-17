@@ -24,6 +24,21 @@ Le mode de confirmation de connexion (`loginOtpMode`) est simulé par un espion 
 Les tests d'intégration recréent la base `yamboka_test` à chaque exécution (suppression, création, migrations, seed). Le registre de crédits est volontairement impossible à vider (trigger), d'où une base neuve plutôt qu'un nettoyage. **Garde-fou** : `resetDatabase` refuse toute base dont le nom ne finit pas par `_test` ou `_e2e`.
 
 PostgreSQL **et Redis** doivent tourner : `docker compose --env-file .env.local -f docker/docker-compose.local.yml up -d`.
+Redis doit être **joignable depuis l'hôte** (`127.0.0.1:6380`) : les tests de file s'y connectent sur la base 15.
+Si le conteneur a été démarré avant l'ajout du mappage de port, `docker ps` montre `6379/tcp` sans adresse et les
+cinq tests BullMQ échouent ; `docker compose … up -d` le recrée avec le bon port.
+
+**Deux tests de file échouent encore** (`la tâche de rattrapage…`, `la tâche d'expiration…`), de façon
+reproductible et pour une raison extérieure au code de production : `pg` crée ses sockets avec un
+`require('net')` paresseux (`pg/lib/stream.js`, `getStream`), et sous Jest avec `--experimental-vm-modules` ce
+require renvoie `undefined` quand le pool ouvre une connexion depuis un worker BullMQ — la tâche échoue sur
+« Cannot read properties of undefined (reading 'Socket') ». Fournir une fabrique de socket au pool a été
+essayé : l'option arrive bien jusqu'à `PrismaPg`, mais `pg` appelle quand même `getStream`. À traiter à part
+(piste : un pool externe pré-connecté, ou l'abandon de `--experimental-vm-modules` pour cette suite).
+
+Le parallélisme est **figé à deux workers** (`maxWorkers` dans `test/jest-e2e.json`). Au-delà, les suites qui
+partagent la base `yamboka_test` se gênent (une suite SasPay échoue par interférence). Les suites qui écrivent
+un état global ont leur propre base : `yamboka_admin_test`, `yamboka_provider_test`, `yamboka_pricing_test`…
 
 ## Tests de navigateur (Playwright)
 

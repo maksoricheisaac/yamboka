@@ -377,6 +377,40 @@ export class PaymentsService {
   }
 
   /**
+   * Tarif d'encaissement applicable à un pays et un réseau : surcharge administrateur active si elle existe,
+   * sinon la grille du compte chez le fournisseur. null quand le fournisseur ne facture rien (simulé).
+   * Public : le simulateur d'administration en a besoin pour chiffrer le net réellement reçu.
+   */
+  async resolvePayinTiers(
+    countryIso: string,
+    network: string,
+  ): Promise<{ tiers: FeeTier[]; source: 'override' | 'provider' } | null> {
+    const override = await this.prisma.feeRateOverride.findFirst({
+      where: { country: countryIso, network, active: true },
+    });
+    if (override) {
+      return {
+        source: 'override',
+        tiers: [
+          {
+            minAmount: 0,
+            maxAmount: null,
+            percent: override.percent.toString(),
+            fixed: override.fixed.toString(),
+            floorAmount: override.floorAmount?.toString() ?? null,
+            capAmount: override.capAmount?.toString() ?? null,
+            feeChargeMode: 'ADD_ON',
+          },
+        ],
+      };
+    }
+    const provider = this.providers.forCountry();
+    if (!provider.chargesFees) return null;
+    const tiers = await provider.getPayinTiers(countryIso, network);
+    return tiers ? { source: 'provider', tiers } : null;
+  }
+
+  /**
    * Montant à envoyer au fournisseur : le plus grand A tel que A + frais(A) ≤ prix affiché (les frais sont absorbés
    * par Yamboka). Tarif : surcharge administrateur active, sinon tarif du compte chez le fournisseur.
    * Renvoie null quand le fournisseur ne facture rien (simulé) : on envoie alors le prix affiché.
@@ -392,30 +426,10 @@ export class PaymentsService {
     feeSnapshot: Prisma.InputJsonValue;
   } | null> {
     if (!provider.chargesFees) return null;
-    const override = await this.prisma.feeRateOverride.findFirst({
-      where: { country: countryIso, network, active: true },
-    });
-    let tiers: FeeTier[] | null;
-    let source: 'override' | 'provider';
     try {
-      if (override) {
-        source = 'override';
-        tiers = [
-          {
-            minAmount: 0,
-            maxAmount: null,
-            percent: override.percent.toString(),
-            fixed: override.fixed.toString(),
-            floorAmount: override.floorAmount?.toString() ?? null,
-            capAmount: override.capAmount?.toString() ?? null,
-            feeChargeMode: 'ADD_ON',
-          },
-        ];
-      } else {
-        source = 'provider';
-        tiers = await provider.getPayinTiers(countryIso, network);
-      }
-      if (!tiers) return null;
+      const resolved = await this.resolvePayinTiers(countryIso, network);
+      if (!resolved) return null;
+      const { tiers, source } = resolved;
       const computed = computeSendAmount(price, tiers);
       return {
         sentAmount: computed.sentAmount,
