@@ -11,7 +11,8 @@ import {
   computeMargin,
   quoteCredits,
 } from './pricing';
-import { loadVideoRates, toPackView } from './pack-view';
+import { toPackView } from './pack-view';
+import { VideoRatesService } from '../pricing/video-rates.service';
 
 export function toPricing(p: GenerationProduct): ProductPricing {
   return {
@@ -32,6 +33,7 @@ export class CatalogService {
     private readonly prisma: PrismaService,
     private readonly credits: CreditsService,
     private readonly settings: SettingsService,
+    private readonly videoRates: VideoRatesService,
   ) {}
 
   /** `publicOnly` : catalogue des pages publiques (packs actifs ET publiés, trois au maximum). */
@@ -46,7 +48,7 @@ export class CatalogService {
         orderBy: { sortOrder: 'asc' },
         ...(publicOnly ? { take: 3 } : {}),
       }),
-      loadVideoRates(this.prisma),
+      this.videoRates.rates(),
     ]);
     return packs.map((p) => toPackView(p, rates));
   }

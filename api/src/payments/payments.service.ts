@@ -43,6 +43,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { JobQueue } from '../queue/job-queue';
 import { SettingsService } from '../settings/settings.service';
+import { PayinRatesService } from './payin-rates.service';
 import { CountryCatalogService } from './catalog/country-catalog.service';
 import { MockPaymentProvider } from './mock-payment.provider';
 import {
@@ -133,6 +134,7 @@ export class PaymentsService {
     private readonly email: EmailService,
     private readonly audit: AuditService,
     private readonly config: ConfigService<Env, true>,
+    private readonly payinRates: PayinRatesService,
   ) {}
 
   // ───────────── Création ─────────────
@@ -377,37 +379,14 @@ export class PaymentsService {
   }
 
   /**
-   * Tarif d'encaissement applicable à un pays et un réseau : surcharge administrateur active si elle existe,
-   * sinon la grille du compte chez le fournisseur. null quand le fournisseur ne facture rien (simulé).
-   * Public : le simulateur d'administration en a besoin pour chiffrer le net réellement reçu.
+   * Tarif d'encaissement applicable à un pays et un réseau. Délègue à PayinRatesService : la règle est
+   * définie une seule fois, et la tarification dérivée lit la même.
    */
   async resolvePayinTiers(
     countryIso: string,
     network: string,
   ): Promise<{ tiers: FeeTier[]; source: 'override' | 'provider' } | null> {
-    const override = await this.prisma.feeRateOverride.findFirst({
-      where: { country: countryIso, network, active: true },
-    });
-    if (override) {
-      return {
-        source: 'override',
-        tiers: [
-          {
-            minAmount: 0,
-            maxAmount: null,
-            percent: override.percent.toString(),
-            fixed: override.fixed.toString(),
-            floorAmount: override.floorAmount?.toString() ?? null,
-            capAmount: override.capAmount?.toString() ?? null,
-            feeChargeMode: 'ADD_ON',
-          },
-        ],
-      };
-    }
-    const provider = this.providers.forCountry();
-    if (!provider.chargesFees) return null;
-    const tiers = await provider.getPayinTiers(countryIso, network);
-    return tiers ? { source: 'provider', tiers } : null;
+    return this.payinRates.resolve(countryIso, network);
   }
 
   /**

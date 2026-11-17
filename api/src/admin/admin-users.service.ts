@@ -128,7 +128,7 @@ export class AdminUsersService {
         generations: {
           orderBy: { createdAt: 'desc' },
           take: 20,
-          include: { product: true },
+          include: { product: true, model: true },
         },
         ledger: { orderBy: { createdAt: 'desc' }, take: 30 },
         moderationTarget: {
@@ -178,7 +178,7 @@ export class AdminUsersService {
         id: g.id,
         status: g.status,
         creditsCost: g.creditsCost,
-        product: g.product.name,
+        product: g.model?.name ?? g.product?.name ?? g.modelSlug ?? '—',
         createdAt: g.createdAt.toISOString(),
       })),
       ledger: u.ledger.map((l) => ({

@@ -697,7 +697,14 @@ model CreditLedger {
 model Generation {
   id                String           @id @default(uuid()) @db.Uuid
   userId            String           @db.Uuid
-  productId         String           @db.Uuid
+  /// Hérité : produit de l'ancien catalogue. Conservé pour l'historique, plus jamais lu pour une
+  /// nouvelle création (le catalogue GenerationModel fait foi). Nullable depuis le catalogue unique.
+  productId         String?          @db.Uuid
+  /// Modèle du catalogue utilisé, et son slug FIGÉ au moment de la soumission (le catalogue peut changer).
+  modelId           String?          @db.Uuid
+  modelSlug         String?
+  /// `input` EXACT envoyé au fournisseur, figé (aucun secret : les identifiants ne sont pas dans l'input).
+  providerInput     Json?
   presetId          String?          @db.Uuid
   status            GenerationStatus @default(PENDING)
   prompt            String?
@@ -738,7 +745,8 @@ model Generation {
   completedAt       DateTime?
 
   user        User               @relation(fields: [userId], references: [id], onDelete: Restrict)
-  product     GenerationProduct  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product     GenerationProduct? @relation(fields: [productId], references: [id], onDelete: Restrict)
+  model       GenerationModel?   @relation(fields: [modelId], references: [id], onDelete: Restrict)
   preset      Preset?            @relation(fields: [presetId], references: [id], onDelete: SetNull)
   media       MediaFile[]
   ledger      CreditLedger[]
@@ -1048,4 +1056,141 @@ model AuditLog {
   @@index([actorId, createdAt])
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+// ───────────── Catalogue de modèles ─────────────
+
+/// Mode d'un modèle de génération : ce qu'il prend en entrée. Le catalogue en gère plusieurs, mais seuls les
+/// modes effectivement implémentés côté parcours client peuvent être activés.
+enum GenerationMode {
+  /// Un texte seul produit la vidéo.
+  TEXT_TO_VIDEO
+  /// Une photo (première image) et un texte produisent la vidéo.
+  IMAGE_TO_VIDEO
+}
+
+/// Type d'une valeur de paramètre, pour valider ce que le client envoie.
+enum ModelParamType {
+  STRING
+  INTEGER
+  BOOLEAN
+  ENUM
+}
+
+/// Rôle d'un paramètre dans le calcul et dans le formulaire. Le serveur sait ainsi lequel porte la durée, la
+/// résolution, etc., sans connaître les noms exacts du fournisseur.
+enum ModelParamRole {
+  PROMPT
+  DURATION
+  RESOLUTION
+  ASPECT_RATIO
+  /// URL de l'image d'entrée, déposée par le serveur (modes image → vidéo). Jamais saisie par le client.
+  IMAGE_URL
+  OPTION
+}
+
+/// Qui décide de la valeur d'un paramètre.
+enum ModelParamExposure {
+  /// Le client choisit, dans les valeurs autorisées.
+  CLIENT
+  /// Valeur imposée par la configuration : une valeur envoyée par le client est refusée.
+  FIXED
+  /// Valeur par défaut envoyée au fournisseur, jamais montrée ni acceptée du client.
+  HIDDEN_DEFAULT
+}
+
+/// Comment une option payante modifie le tarif de base.
+enum ModelOptionPriceKind {
+  /// Supplément en micro-dollars, par unité facturée.
+  SURCHARGE
+  /// Multiplicateur du tarif, en points de base (10000 = ×1).
+  MULTIPLIER
+}
+
+/**
+ * Modèle du catalogue : tout ce que le serveur doit savoir pour appeler le fournisseur et facturer, SANS
+ * aucun nom de modèle en dur dans le code. Un appel fournisseur, c'est toujours (slug, input) : le slug est
+ * ici, l'`input` est reconstruit à partir de ModelParam. Les identifiants d'API viennent de l'environnement,
+ * jamais du catalogue.
+ */
+model GenerationModel {
+  id          String         @id @default(uuid()) @db.Uuid
+  /// Chemin exact chez le fournisseur (« alibaba/wan-3.0-prime/text-to-video »).
+  slug        String         @unique
+  /// Nom affiché au client et à l'administration.
+  name        String
+  description String?
+  mode        GenerationMode @default(TEXT_TO_VIDEO)
+  /// Un modèle inactif est refusé immédiatement : aucun devis, aucune génération.
+  active      Boolean        @default(false)
+  /// Modèle retenu quand le client n'en choisit pas (un seul à la fois).
+  isDefault   Boolean        @default(false)
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  params      ModelParam[]
+  generations Generation[]
+
+  @@index([active, sortOrder])
+}
+
+/**
+ * Un paramètre de l'`input` envoyé au fournisseur : sa clé EXACTE, son type, son rôle, qui le choisit, les
+ * valeurs autorisées et s'il change le prix. Le serveur reconstruit l'`input` à partir de ces lignes et
+ * refuse toute clé ou valeur absente du catalogue.
+ */
+model ModelParam {
+  id            String             @id @default(uuid()) @db.Uuid
+  modelId       String             @db.Uuid
+  /// Clé exacte attendue par le fournisseur (« aspect_ratio », « generate_audio »).
+  key           String
+  /// Libellé montré au client dans le formulaire généré, ou null (la clé sert alors de libellé).
+  label         String?
+  type          ModelParamType
+  role          ModelParamRole
+  exposure      ModelParamExposure @default(CLIENT)
+  /// Valeurs autorisées : liste pour ENUM (["480p","720p"]), bornes pour INTEGER ({"min":2,"max":30}),
+  /// longueur maximale pour STRING ({"maxLength":600}). null = aucune contrainte au-delà du type.
+  allowedValues Json?
+  /// Valeur envoyée quand le client n'en fournit pas (obligatoire pour FIXED et HIDDEN_DEFAULT).
+  defaultValue  Json?
+  /// Vrai si la valeur de ce paramètre entre dans le calcul du coût fournisseur.
+  affectsPrice  Boolean            @default(false)
+  sortOrder     Int                @default(0)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  model GenerationModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([modelId, key])
+  @@index([modelId, sortOrder])
+}
+
+/**
+ * Règle de prix d'une option payante, en ajout seul comme ModelPrice : « generate_audio = true ajoute
+ * 0,01 $ par seconde », « draft = true multiplie par 0,5 ». Le coût d'une génération reçoit les options
+ * RÉELLEMENT envoyées, donc une option non choisie ne se facture pas.
+ */
+model ModelOptionPrice {
+  id              String               @id @default(uuid()) @db.Uuid
+  /// Slug du modèle concerné (= GenerationModel.slug), sans clé étrangère : table en ajout seul.
+  providerModel   String
+  /// Clé du paramètre concerné (= ModelParam.key).
+  paramKey        String
+  /// Valeur qui déclenche la règle, au format JSON (true, "draft", "1080p").
+  triggerValue    Json
+  kind            ModelOptionPriceKind
+  /// Supplément par unité facturée, en micro-dollars (kind = SURCHARGE).
+  microUsdPerUnit BigInt?
+  /// Multiplicateur en points de base, 10000 = ×1 (kind = MULTIPLIER).
+  multiplierBp    Int?
+  source          ModelPriceSource
+  effectiveFrom   DateTime
+  note            String?
+  createdById     String?              @db.Uuid
+  createdAt       DateTime             @default(now())
+
+  @@index([providerModel, paramKey, effectiveFrom])
+  @@index([effectiveFrom])
 }

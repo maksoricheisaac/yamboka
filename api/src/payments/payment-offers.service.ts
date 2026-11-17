@@ -10,7 +10,8 @@ import {
   VIDEO_RESOLUTIONS,
 } from '@yamboka/shared';
 import { customBounds } from '../billing/custom-purchase';
-import { loadVideoRates, toPackView } from '../catalog/pack-view';
+import { toPackView } from '../catalog/pack-view';
+import { VideoRatesService } from '../pricing/video-rates.service';
 import type { CreditPack } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -43,6 +44,7 @@ export class PaymentOffersService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly catalog: CountryCatalogService,
+    private readonly videoRates: VideoRatesService,
   ) {}
 
   /** Pays ouverts à l'achat (statut ACTIVE en base, avec au moins un moyen ACTIVE utilisable). */
@@ -121,7 +123,7 @@ export class PaymentOffersService {
   async countries(): Promise<PaymentCountryView[]> {
     const [enabled, rates, soon] = await Promise.all([
       this.enabledCountries(),
-      loadVideoRates(this.prisma),
+      this.videoRates.rates(),
       this.catalog.comingSoon(),
     ]);
     const out: PaymentCountryView[] = [];
@@ -174,7 +176,7 @@ export class PaymentOffersService {
   /** Tarification publique complète. */
   async pricing(): Promise<PricingView> {
     const [rates, countries, soon] = await Promise.all([
-      loadVideoRates(this.prisma),
+      this.videoRates.rates(),
       this.countries(),
       this.catalog.comingSoon(),
     ]);

@@ -54,7 +54,7 @@ describe('Créations (e2e)', () => {
       const { client } = await verifiedClient(app);
       const res = await client.get('/api/creations/config').expect(200);
       expect(res.body).toEqual({
-        rates: { '480p': 4, '720p': 8, '1080p': 16 },
+        rates: { '480p': 5, '720p': 10, '1080p': 20 },
         creditValueFcfa: 10,
         guard: { credits: 100, balancePercent: 50 },
       });
@@ -90,12 +90,12 @@ describe('Créations (e2e)', () => {
 
   describe('Coût : calculé par le serveur', () => {
     it.each([
-      ['480p', 2, 8],
-      ['480p', 5, 20],
-      ['720p', 5, 40],
-      ['1080p', 11, 176],
-      ['1080p', 30, 480],
-      ['720p', 2, 16],
+      ['480p', 2, 10],
+      ['480p', 5, 25],
+      ['720p', 5, 50],
+      ['1080p', 11, 220],
+      ['1080p', 30, 600],
+      ['720p', 2, 20],
     ])(
       '%s, %i s : %i crédits débités, rendu cohérent avec la fonction partagée',
       async (resolution, seconds, expected) => {
@@ -116,7 +116,10 @@ describe('Créations (e2e)', () => {
           include: { product: true },
         });
         expect(row.billableSeconds).toBe(seconds);
-        expect(row.product.resolution).toBe(resolution);
+        // La résolution retenue est désormais celle figée dans les options de la création (catalogue).
+        expect(
+          (row.options as { resolution?: string } | null)?.resolution,
+        ).toBe(resolution);
       },
     );
 
@@ -127,8 +130,8 @@ describe('Créations (e2e)', () => {
         client,
         body({ credits: '1', creditsCost: '1', cost: '1' }),
       ).expect(201);
-      expect(res.body.creation.credits).toBe(20);
-      expect(await balance(client)).toBe(80);
+      expect(res.body.creation.credits).toBe(25);
+      expect(await balance(client)).toBe(75);
     });
 
     it('le format ne change pas le prix', async () => {
@@ -136,7 +139,7 @@ describe('Créations (e2e)', () => {
       await addLot(app, userId, 200);
       for (const format of ['9:16', '3:4', '1:1', '4:3', '16:9']) {
         const res = await send(client, body({ format })).expect(201);
-        expect(res.body.creation).toMatchObject({ credits: 20 });
+        expect(res.body.creation).toMatchObject({ credits: 25 });
         expect(res.body.creation.options.format).toBe(format);
       }
     });
@@ -164,7 +167,7 @@ describe('Créations (e2e)', () => {
       ).expect(201);
       const id = res.body.creation.id;
       expect(res.body.creation).toMatchObject({
-        credits: 20,
+        credits: 25,
         status: 'COMPLETED',
         styleName: null,
         styleId: null,
@@ -175,15 +178,15 @@ describe('Créations (e2e)', () => {
         },
         prompt: 'Pub pour 15 000 FCFA, tél. +242 06 000 00 00',
       });
-      expect(await balance(client)).toBe(40);
+      expect(await balance(client)).toBe(35);
 
       const ledger = await prisma.creditLedger.findMany({
         where: { generationId: id },
       });
       expect(ledger.map((l) => l.type).sort()).toEqual(['CAPTURE', 'RESERVE']);
       expect(await lotsMatchLedger(app, userId)).toEqual({
-        ledger: 40,
-        lots: 40,
+        ledger: 35,
+        lots: 35,
       });
 
       const file = await client

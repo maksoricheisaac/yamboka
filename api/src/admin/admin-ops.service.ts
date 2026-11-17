@@ -997,6 +997,8 @@ export class AdminOpsService {
         createdAt: true,
         user: { select: { email: true } },
         product: { select: { name: true } },
+        model: { select: { name: true } },
+        modelSlug: true,
         preset: { select: { name: true } },
       },
     });
@@ -1004,7 +1006,7 @@ export class AdminOpsService {
       rows.map((g) => ({
         id: g.id,
         user: { id: g.userId, email: g.user.email },
-        product: g.product.name,
+        product: g.model?.name ?? g.product?.name ?? g.modelSlug ?? '—',
         preset: g.preset?.name ?? null,
         status: g.status,
         creditsCost: g.creditsCost,

@@ -200,7 +200,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       const { client, userId, creation } = await create(fun(), 60);
       expect(creation).toMatchObject({
         status: 'COMPLETED',
-        credits: 20,
+        credits: 25,
         simulated: false,
       });
       expect(provider.submitted[0].model).toBe(
@@ -232,10 +232,10 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       expect(media.sizeBytes).toBe(mp4.length);
       expect((await storage.get(media.key)).equals(mp4)).toBe(true);
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await balance(client)).toBe(40);
+      expect(await balance(client)).toBe(35);
       expect(await lotsMatchLedger(app, userId)).toEqual({
-        ledger: 40,
-        lots: 40,
+        ledger: 35,
+        lots: 35,
       });
     });
 
@@ -258,7 +258,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       ).not.toBe('COMPLETED');
       expect(await outputs(creation.id)).toBe(0);
       expect(await ledgerTypes(creation.id)).toEqual(['RESERVE']);
-      expect(await balance(client)).toBe(40);
+      expect(await balance(client)).toBe(35);
     });
 
     it.each([
@@ -361,7 +361,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       provider.submitError = new GenerationUnavailableError('panne');
       const { client, userId, creation } = await create(fun(), 60);
       expect(creation.status).toBe('PENDING');
-      expect(await balance(client)).toBe(40); // réservé, pas encore consommé
+      expect(await balance(client)).toBe(35); // réservé, pas encore consommé
       provider.submitError = null;
       completeWith(mp4, 'video/mp4');
       await creations.advance(creation.id);
@@ -373,8 +373,8 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       expect(provider.submitted).toHaveLength(1);
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
       expect(await lotsMatchLedger(app, userId)).toEqual({
-        ledger: 40,
-        lots: 40,
+        ledger: 35,
+        lots: 35,
       });
     });
 
@@ -384,7 +384,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       await creations.advance(creation.id);
       await creations.advance(creation.id);
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await balance(client)).toBe(40);
+      expect(await balance(client)).toBe(35);
     });
 
     it('délai dépassé alors que les crédits sont déjà consommés : jamais remboursée à tort, la création se termine', async () => {
@@ -401,21 +401,21 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
         .creation;
       expect(after.status).toBe('COMPLETED');
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await balance(client)).toBe(40);
+      expect(await balance(client)).toBe(35);
     });
 
-    it('1080p, 30 s, 3:4 : tout part au fournisseur tel que choisi, et 480 crédits sont réservés', async () => {
+    it('1080p, 30 s, 3:4 : tout part au fournisseur tel que choisi, et 600 crédits sont réservés', async () => {
       const { client, creation } = await create(
         fun({ resolution: '1080p', durationSeconds: '30', format: '3:4' }),
         600,
       );
-      expect(creation.credits).toBe(480);
+      expect(creation.credits).toBe(600);
       expect(provider.submitted[0].input).toMatchObject({
         duration: 30,
         resolution: '1080p',
         aspect_ratio: '3:4',
       });
-      expect(await balance(client)).toBe(120);
+      expect(await balance(client)).toBe(0);
     });
   });
 
@@ -453,8 +453,9 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       expect(row.marginPercent?.toFixed(4)).toBe('10.0000');
       expect(row.modelPriceId).not.toBeNull();
       expect(row.pricingConfigId).not.toBeNull();
-      // Valeur FCFA attendue : 0,25 $ × taux provisoire 694,9451 × 1,10 = 191,11 → 192 F.
-      expect(row.priceFcfa).toBe(192);
+      // Valeur FCFA attendue dans le scénario pessimiste : taux provisoire 620 ÷ (1 − 14 %) × 1,02 =
+      // 735,3488 F/$ ; 0,25 $ → 184 F (arrondi au-dessus), × 1,10 de marge = 202,4 → 203 F.
+      expect(row.priceFcfa).toBe(203);
 
       expect(await movements(creation.id)).toEqual([
         'GENERATION_CAPTURE',

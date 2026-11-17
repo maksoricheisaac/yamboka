@@ -15,7 +15,6 @@ import type {
   CreationPage,
   CreationStatus,
   CreationView,
-  CreditRates,
   ReportCreationInput,
   StyleView,
   SuggestionAudience,
@@ -26,7 +25,6 @@ import {
   clampPage,
   DEFAULT_RESOLUTION,
   MAX_UPLOAD_BYTES,
-  VIDEO_RESOLUTIONS,
   videoCostCredits,
 } from '@yamboka/shared';
 import { randomUUID } from 'node:crypto';
@@ -42,15 +40,17 @@ import {
   GenerationRejectedError,
   GenerationUnavailableError,
 } from '../generation/generation-provider';
-import { WAN_MODEL, modelSpecOf } from '../generation/models';
-import type {
-  GenerationProduct,
-  MediaFile,
-  Prisma,
-} from '../generated/prisma/client';
+import { ModelCatalogService } from '../generation/model-catalog.service';
+import type { CatalogModel } from '../generation/model-input';
+import type { MediaFile, Prisma } from '../generated/prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  CreditPricingService,
+  type PricingContext,
+} from '../pricing/credit-pricing.service';
 import { PricingService } from '../pricing/pricing.service';
+import { VideoRatesService } from '../pricing/video-rates.service';
 import { ProviderLedgerService } from '../provider-balance/provider-ledger.service';
 import { SettingsService } from '../settings/settings.service';
 import { StorageDriver } from '../storage/storage-driver';
@@ -79,6 +79,8 @@ const PROMPT_TEMPLATE =
  * repasse, et l'administration le signale comme alerte critique.
  */
 const PROVIDER_OUT_OF_CREDITS_KEY = 'providerOutOfCreditsAt';
+/** Dernier refus de paramètres par le fournisseur (slug, message, date) : alerte de l'administration. */
+const MODEL_REJECTION_KEY = 'lastModelRejection';
 
 /** Au-delà, une création sans réponse du fournisseur est annulée et remboursée. */
 const GENERATION_TIMEOUT_MS = 60 * 60_000;
@@ -111,6 +113,7 @@ const FAILURE_MESSAGES: Record<FailureCode, string> = {
 type GenerationRow = Prisma.GenerationGetPayload<{
   include: {
     product: true;
+    model: true;
     preset: { include: { media: true } };
     media: true;
   };
@@ -118,6 +121,7 @@ type GenerationRow = Prisma.GenerationGetPayload<{
 
 const INCLUDE = {
   product: true,
+  model: true,
   preset: { include: { media: true } },
   media: true,
 } as const;
@@ -150,41 +154,24 @@ export class CreationsService {
     private readonly notifications: NotificationsService,
     private readonly pricing: PricingService,
     private readonly providerLedger: ProviderLedgerService,
+    private readonly catalog: ModelCatalogService,
+    private readonly creditPricing: CreditPricingService,
+    private readonly videoRates: VideoRatesService,
   ) {}
 
   // ───────────── Idées et réglages ─────────────
 
-  /** Produits vidéo actifs du modèle unique, un par résolution. */
-  private async videoProducts(): Promise<
-    Map<VideoResolution, GenerationProduct>
-  > {
-    const rows = await this.prisma.generationProduct.findMany({
-      where: { active: true, providerModel: WAN_MODEL, billingUnit: 'SECOND' },
-    });
-    const out = new Map<VideoResolution, GenerationProduct>();
-    for (const r of rows) {
-      if (
-        (VIDEO_RESOLUTIONS as readonly string[]).includes(r.resolution ?? '')
-      ) {
-        out.set(r.resolution as VideoResolution, r);
-      }
-    }
-    return out;
-  }
-
-  /** Tarifs, valeur du crédit et garde-fou : lus en base (modifiables dans l'administration), jamais en dur. */
+  /** Tarifs, valeur du crédit et garde-fou : tout vient du catalogue et de la configuration, jamais du code. */
   async config(): Promise<CreationConfig> {
-    const [products, creditValueFcfa, credits, balancePercent] =
+    const [model, ctx, creditValueFcfa, credits, balancePercent] =
       await Promise.all([
-        this.videoProducts(),
+        this.catalog.defaultModel(),
+        this.creditPricing.context(),
         this.credits.creditValue(),
         this.settings.get('generationConfirmCredits'),
         this.settings.get('generationConfirmBalancePercent'),
       ]);
-    const rates = {} as CreditRates;
-    for (const r of VIDEO_RESOLUTIONS) {
-      rates[r] = products.get(r)?.creditsPerUnit ?? 0;
-    }
+    const rates = await this.videoRates.ratesOf(model, ctx);
     return { rates, creditValueFcfa, guard: { credits, balancePercent } };
   }
 
@@ -293,16 +280,9 @@ export class CreationsService {
       });
     }
 
-    const products = await this.videoProducts();
-    const product = products.get(input.resolution);
-    if (!product || !modelSpecOf(product.providerModel)) {
-      if (this.provider.name !== 'mock' || !product) {
-        throw new BadRequestException({
-          code: 'STYLE_UNAVAILABLE',
-          message: 'Cette qualité n’est pas disponible pour le moment.',
-        });
-      }
-    }
+    // Modèle du catalogue : celui par défaut tant qu'il n'y en a qu'un actif. Un modèle désactivé est
+    // refusé ici, avant toute réservation.
+    const model = await this.catalog.defaultModel();
     const preset = input.styleId ? await this.loadStyle(input.styleId) : null;
     if (input.styleId && !preset) {
       throw new BadRequestException({
@@ -311,11 +291,14 @@ export class CreationsService {
       });
     }
 
-    // Coût : recalculé ICI avec la même fonction que l'affichage, à partir des tarifs en base. Rien ne vient du client.
-    const rates = {} as CreditRates;
-    for (const r of VIDEO_RESOLUTIONS) {
-      rates[r] = products.get(r)?.creditsPerUnit ?? 0;
-    }
+    // L'`input` est RECONSTRUIT depuis le catalogue : tout ce que le client a envoyé est validé contre les
+    // valeurs autorisées, et une clé hors catalogue est refusée. Rien n'est relayé tel quel.
+    const clientValues = this.clientValuesOf(model, input);
+    const built = this.catalog.build(model, clientValues);
+
+    // Coût : recalculé ICI avec la MÊME fonction que l'affichage et que le simulateur. Rien ne vient du client.
+    const ctx = await this.creditPricing.context();
+    const rates = await this.videoRates.ratesOf(model, ctx);
     const cost = videoCostCredits(
       rates,
       input.resolution,
@@ -336,14 +319,14 @@ export class CreationsService {
       );
     }
 
-    // Coût FOURNISSEUR de cette création, figé maintenant : tarif en vigueur à cette seconde, taux sortant du
-    // moment, marge du moment. Plus rien ne se recalculera après coup, même si un tarif change demain.
-    const billing = await this.freezeProviderCost(
-      userId,
-      product.providerModel,
-      input.resolution,
-      input.durationSeconds,
-    );
+    // Coût FOURNISSEUR de cette création, figé maintenant : tarif en vigueur à cette seconde, options
+    // réellement envoyées, taux sortant et marge du moment. Plus rien ne se recalculera après coup.
+    const billing = await this.freezeProviderCost(userId, model, {
+      priced: built.priced,
+      resolution: built.resolution ?? input.resolution,
+      durationSeconds: built.durationSeconds ?? input.durationSeconds,
+      ctx,
+    });
 
     const options: CreationOptions = {
       prompt: input.prompt,
@@ -361,7 +344,8 @@ export class CreationsService {
           data: {
             id: generationId,
             userId,
-            productId: product.id,
+            modelId: model.id,
+            modelSlug: model.slug,
             presetId: preset?.id ?? null,
             creditsCost: cost,
             billableSeconds: input.durationSeconds,
@@ -419,17 +403,46 @@ export class CreationsService {
   }
 
   /**
-   * Fige ce que coûte une création chez le fournisseur et vérifie qu'on peut se le permettre :
-   * tarif en vigueur, taux sortant, marge, puis plafonds de dépense du jour (global et par utilisateur).
+   * Valeurs que le CLIENT a le droit de choisir, traduites vers les clés exactes du modèle. Le parcours
+   * connaît des rôles (durée, qualité, format, description) ; le catalogue connaît les clés du fournisseur.
+   * C'est la seule jointure entre les deux, et elle ne porte aucun nom de modèle.
+   */
+  private clientValuesOf(
+    model: CatalogModel,
+    input: CreateCreationInput,
+  ): Record<string, unknown> {
+    const values: Record<string, unknown> = {};
+    const put = (
+      role: Parameters<typeof this.catalog.keyOfRole>[1],
+      v: unknown,
+    ) => {
+      const param = model.params.find((x) => x.role === role);
+      // Un paramètre imposé par la configuration n'est jamais renseigné depuis le client.
+      if (param && param.exposure === 'CLIENT') values[param.key] = v;
+    };
+    put('PROMPT', input.prompt);
+    put('DURATION', input.durationSeconds);
+    put('RESOLUTION', input.resolution);
+    put('ASPECT_RATIO', input.format);
+    return values;
+  }
+
+  /**
+   * Fige ce que coûte une création chez le fournisseur et vérifie qu'on peut se le permettre : tarif en
+   * vigueur, options RÉELLEMENT envoyées, taux sortant, marge, puis plafonds de dépense du jour.
    *
    * Renvoie null avec le fournisseur SIMULÉ : aucun dollar réel n'est dépensé, donc rien n'est engagé.
    * Les refus arrivent AVANT toute réservation de crédits.
    */
   private async freezeProviderCost(
     userId: string,
-    providerModel: string,
-    resolution: string,
-    durationSeconds: number,
+    model: CatalogModel,
+    p: {
+      priced: Record<string, unknown>;
+      resolution: string | null;
+      durationSeconds: number;
+      ctx: PricingContext;
+    },
   ): Promise<{
     costMicroUsd: bigint;
     rateText: string;
@@ -441,15 +454,14 @@ export class CreationsService {
   } | null> {
     if (this.provider.name === 'mock') return null;
 
-    const at = new Date();
-    const [config, price, rate] = await Promise.all([
-      this.pricing.config(at),
-      this.pricing.modelPrice({ providerModel, resolution, at }),
-      this.providerLedger.pricingRate(),
-    ]);
-    const costMicroUsd = this.pricing.providerCostMicroUsd(price, {
-      durationSeconds,
+    const { ctx } = p;
+    const cost = await this.catalog.cost(model, {
+      priced: p.priced,
+      resolution: p.resolution,
+      durationSeconds: p.durationSeconds,
+      at: ctx.at,
     });
+    const costMicroUsd = cost.microUsd;
 
     // Plafonds quotidiens : filet contre une fuite (boucle, abus) qui viderait le compte prépayé en une nuit.
     const since = startOfToday();
@@ -457,9 +469,9 @@ export class CreationsService {
       this.providerLedger.spentSince(since),
       this.providerLedger.spentSince(since, { userId }),
     ]);
-    if (spentAll + costMicroUsd > config.dailyCapMicroUsd) {
+    if (spentAll + costMicroUsd > ctx.config.dailyCapMicroUsd) {
       this.logger.error(
-        `Plafond quotidien de dépense fournisseur atteint (${formatMicroUsd(config.dailyCapMicroUsd)} $) : créations refusées.`,
+        `Plafond quotidien de dépense fournisseur atteint (${formatMicroUsd(ctx.config.dailyCapMicroUsd)} $) : créations refusées.`,
       );
       throw new ServiceUnavailableException({
         code: 'GENERATION_UNAVAILABLE',
@@ -467,7 +479,7 @@ export class CreationsService {
           'La création est momentanément indisponible. Réessaie un peu plus tard.',
       });
     }
-    if (spentUser + costMicroUsd > config.dailyUserCapMicroUsd) {
+    if (spentUser + costMicroUsd > ctx.config.dailyUserCapMicroUsd) {
       throw new HttpException(
         {
           code: 'DAILY_LIMIT_REACHED',
@@ -480,12 +492,12 @@ export class CreationsService {
 
     return {
       costMicroUsd,
-      rateText: formatRate(rate.rate),
-      marginPercent: config.marginPercent,
-      priceFcfa: netNeededFcfa(costMicroUsd, rate.rate, config.marginPercent),
-      modelPriceId: price.id,
-      pricingConfigId: config.id,
-      safetyMarginMicroUsd: config.safetyMarginMicroUsd,
+      rateText: formatRate(ctx.rate.rate),
+      marginPercent: ctx.marginPercent,
+      priceFcfa: netNeededFcfa(costMicroUsd, ctx.rate.rate, ctx.marginPercent),
+      modelPriceId: cost.modelPriceId,
+      pricingConfigId: ctx.config.id,
+      safetyMarginMicroUsd: ctx.config.safetyMarginMicroUsd,
     };
   }
 
@@ -802,57 +814,121 @@ export class CreationsService {
   }
 
   private async submit(g: GenerationRow): Promise<void> {
-    const inputMedia = g.media.find((m) => m.role === 'INPUT_IMAGE');
-    if (!inputMedia)
-      return void (await this.fail(g, 'Photo introuvable.', 'BAD_RESULT'));
     const options = (g.options as unknown as CreationOptions | null) ?? {
       format: '9:16',
     };
-    const spec = modelSpecOf(g.product.providerModel);
     const mock = this.provider.name === 'mock';
-    if (!spec && !mock) {
+    // Le slug figé sur la génération fait foi : le catalogue a pu changer depuis la réservation.
+    const slug =
+      g.modelSlug ?? g.model?.slug ?? g.product?.providerModel ?? null;
+    if (!slug) {
+      return void (await this.fail(g, 'Modèle introuvable.', 'UNSUPPORTED'));
+    }
+    let model: CatalogModel;
+    try {
+      model = await this.catalog.bySlug(slug, { requireActive: false });
+    } catch {
       return void (await this.fail(
         g,
-        `Modèle non géré : ${g.product.providerModel}`,
+        `Modèle non géré : ${slug}`,
         'UNSUPPORTED',
       ));
     }
-    const imageUrl = await this.provider.uploadInput(
-      await this.storage.get(inputMedia.key),
-      inputMedia.mimeType,
-    );
 
-    // Paramètres exacts du modèle (registre vérifié auprès de l'API). Le simulé n'en a pas besoin.
-    const built = spec
-      ? spec.build({
+    // Photo d'entrée : exigée seulement par les modes qui la consomment.
+    const needsImage = this.catalog.keyOfRole(model, 'IMAGE_URL') !== null;
+    let imageUrl: string | undefined;
+    if (needsImage) {
+      const inputMedia = g.media.find((m) => m.role === 'INPUT_IMAGE');
+      if (!inputMedia)
+        return void (await this.fail(g, 'Photo introuvable.', 'BAD_RESULT'));
+      imageUrl = await this.provider.uploadInput(
+        await this.storage.get(inputMedia.key),
+        inputMedia.mimeType,
+      );
+    }
+
+    // `input` reconstruit à partir du catalogue, avec les choix figés de la création.
+    let built;
+    try {
+      built = this.catalog.build(
+        model,
+        this.clientValuesOf(model, {
+          prompt: g.prompt ?? '',
+          durationSeconds: g.billableSeconds ?? options.durationSeconds ?? 5,
+          resolution: options.resolution ?? DEFAULT_RESOLUTION,
+          format: options.format,
+        } as CreateCreationInput),
+        {
           prompt: this.composePrompt(g.prompt),
           imageUrl,
-          format: options.format,
-          resolution:
-            options.resolution ?? g.product.resolution ?? DEFAULT_RESOLUTION,
-          durationSeconds: g.billableSeconds ?? options.durationSeconds ?? 5,
-          audio: true,
-        })
-      : {};
-    // Seul le simulé lit le texte (marqueur d'échec de test) : un vrai modèle ne reçoit que ses paramètres documentés.
-    const input = mock ? { ...built, prompt: g.prompt ?? '' } : built;
+        },
+      );
+    } catch (e) {
+      return void (await this.fail(
+        g,
+        `Paramètres refusés par le catalogue : ${(e as Error).message}`,
+        'UNSUPPORTED',
+      ));
+    }
+    // Seul le simulé lit le texte brut (marqueur d'échec de test) : un vrai modèle ne reçoit que ses paramètres.
+    const input = mock
+      ? { ...built.input, prompt: g.prompt ?? '' }
+      : built.input;
 
-    const result = await this.provider.submit({
-      model: g.product.providerModel,
-      input,
-      idempotencyKey: g.id,
-    });
+    let result;
+    try {
+      result = await this.provider.submit({
+        model: slug,
+        input,
+        idempotencyKey: g.id,
+      });
+    } catch (e) {
+      // Erreur de paramètre côté fournisseur : on journalise le corps de la réponse et on alerte, mais on
+      // ne désactive JAMAIS le modèle tout seul (un faux positif couperait la production).
+      if (e instanceof GenerationRejectedError) {
+        this.logger.error(
+          `Appel refusé par le fournisseur — modèle ${slug}, input ${JSON.stringify(input)} : ${e.message}`,
+        );
+        await this.recordModelRejection(slug, e.message);
+      }
+      throw e;
+    }
     await this.prisma.generation.updateMany({
       where: { id: g.id, status: 'PENDING' },
       data: {
         status: 'SUBMITTED',
         providerRequestId: result.requestId,
         providerStatusUrl: result.statusUrl,
+        providerInput: input as unknown as Prisma.InputJsonValue,
         submittedAt: new Date(),
       },
     });
     // Une soumission acceptée prouve que le solde fournisseur est revenu : le verrou se lève de lui-même.
     await this.clearProviderCreditBlock();
+  }
+
+  /**
+   * Dernier refus de paramètres par le fournisseur, gardé pour l'administration (alerte). Le modèle n'est
+   * JAMAIS désactivé automatiquement : un refus isolé ne prouve pas que le catalogue est faux, et couper la
+   * production sur un faux positif coûte plus cher que l'alerte.
+   */
+  private async recordModelRejection(
+    slug: string,
+    message: string,
+  ): Promise<void> {
+    const value = JSON.stringify({
+      slug,
+      message: message.slice(0, 500),
+      at: new Date().toISOString(),
+    });
+    await this.prisma.setting
+      .upsert({
+        where: { key: MODEL_REJECTION_KEY },
+        update: { value },
+        create: { key: MODEL_REJECTION_KEY, value },
+      })
+      .catch(() => undefined);
   }
 
   /** Date de détection du solde fournisseur épuisé, ou null si la production est ouverte. */
