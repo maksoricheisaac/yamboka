@@ -5,6 +5,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import type {
+  AdminModelDetail,
   PricingConfigRow,
   PricingDraftInput,
   PricingPreview,
@@ -116,6 +117,66 @@ export class AdminPricingService {
       pessimisticApplied: ctx.pessimistic,
       estimateAlerts: alerts,
       estimateAvailable: this.calibration.available,
+    };
+  }
+
+  /**
+   * Détail complet d'un modèle, pour le formulaire d'édition : son schéma, ses tarifs et ses règles
+   * d'option EN VIGUEUR, et les combinaisons qui lui manquent encore pour pouvoir s'activer.
+   */
+  async modelDetail(slug: string): Promise<AdminModelDetail> {
+    const model = await this.catalog.bySlug(slug, { requireActive: false });
+    const [prices, optionPrices, missing] = await Promise.all([
+      this.pricing.currentModelPrices(model.slug),
+      this.pricing.currentOptionPrices(model.slug),
+      this.catalog.missingPrices(model),
+    ]);
+    return {
+      slug: model.slug,
+      name: model.name,
+      description: model.description,
+      mode: model.mode,
+      active: model.active,
+      isDefault: model.isDefault,
+      sortOrder: model.sortOrder,
+      params: model.params.map((p) => ({
+        key: p.key,
+        label: p.label,
+        type: p.type,
+        role: p.role,
+        exposure: p.exposure,
+        allowedValues: p.allowedValues,
+        defaultValue: p.defaultValue,
+        affectsPrice: p.affectsPrice,
+        sortOrder: p.sortOrder,
+      })),
+      prices: prices.map((p) => ({
+        id: p.id,
+        resolution: p.resolution,
+        usdPerUnit: formatMicroUsd(p.microUsdPerUnit, 6),
+        billingUnit: p.billingUnit,
+        billableMultiplier: p.billableMultiplier,
+        minSeconds: p.minSeconds,
+        maxSeconds: p.maxSeconds,
+        source: p.source,
+        effectiveFrom: p.effectiveFrom.toISOString(),
+      })),
+      optionPrices: optionPrices.map((o) => ({
+        id: o.id,
+        paramKey: o.paramKey,
+        triggerValue: o.triggerValue,
+        kind: o.kind,
+        usdPerUnit:
+          o.microUsdPerUnit === null
+            ? null
+            : formatMicroUsd(o.microUsdPerUnit, 6),
+        // Points de base → facteur « humain » (15000 → « 1.5 »).
+        multiplier:
+          o.multiplierBp === null ? null : (o.multiplierBp / 10_000).toFixed(4),
+        source: o.source,
+        effectiveFrom: o.effectiveFrom.toISOString(),
+      })),
+      missingPrices: missing,
     };
   }
 

@@ -217,6 +217,206 @@ describe('Configuration des calculs (e2e)', () => {
     expect(await prisma.pricingConfig.count()).toBe(countBefore + 1);
   });
 
+  describe('Catalogue : ajouter un modèle sans toucher au code ni au seed', () => {
+    const SLUG = 'bytedance/seedance-2.5/text-to-video';
+
+    /** Schéma d'un modèle texte → vidéo avec une option payante, tel que le formulaire l'envoie. */
+    const schema = (over: Record<string, unknown> = {}) => ({
+      slug: SLUG,
+      name: 'Seedance 2.5 · texte → vidéo',
+      description: 'Ajouté depuis l’administration.',
+      mode: 'TEXT_TO_VIDEO',
+      sortOrder: 5,
+      params: [
+        {
+          key: 'prompt',
+          label: 'Description',
+          type: 'STRING',
+          role: 'PROMPT',
+          exposure: 'CLIENT',
+          allowedValues: { maxLength: 600 },
+          affectsPrice: false,
+        },
+        {
+          key: 'duration',
+          label: 'Durée',
+          type: 'INTEGER',
+          role: 'DURATION',
+          exposure: 'CLIENT',
+          allowedValues: { min: 4, max: 12 },
+          defaultValue: 4,
+          affectsPrice: true,
+        },
+        {
+          key: 'resolution',
+          label: 'Qualité',
+          type: 'ENUM',
+          role: 'RESOLUTION',
+          exposure: 'CLIENT',
+          allowedValues: ['720p', '1080p'],
+          defaultValue: '720p',
+          affectsPrice: true,
+        },
+        {
+          key: 'draft',
+          label: 'Aperçu rapide',
+          type: 'BOOLEAN',
+          role: 'OPTION',
+          exposure: 'CLIENT',
+          defaultValue: false,
+          affectsPrice: true,
+        },
+        {
+          key: 'output_format',
+          label: 'Format de fichier',
+          type: 'ENUM',
+          role: 'OPTION',
+          exposure: 'HIDDEN_DEFAULT',
+          allowedValues: ['mp4'],
+          defaultValue: 'mp4',
+          affectsPrice: false,
+        },
+      ],
+      ...over,
+    });
+
+    const price = (resolution: string, usdPerUnit: string) =>
+      admin.post(`/api/admin/models/prices?slug=${encodeURIComponent(SLUG)}`, {
+        resolution,
+        usdPerUnit,
+        billingUnit: 'SECOND',
+        billableMultiplier: 1,
+        minSeconds: 4,
+        maxSeconds: 12,
+      });
+
+    it('crée le modèle, inactif, avec son schéma', async () => {
+      const res = await admin.post('/api/admin/models', schema()).expect(201);
+      expect(res.body).toEqual({ slug: SLUG, active: false });
+
+      const detail = (
+        await admin
+          .get(`/api/admin/models/detail?slug=${encodeURIComponent(SLUG)}`)
+          .expect(200)
+      ).body;
+      expect(detail.mode).toBe('TEXT_TO_VIDEO');
+      expect(detail.params.map((p: { key: string }) => p.key)).toEqual([
+        'prompt',
+        'duration',
+        'resolution',
+        'draft',
+        'output_format',
+      ]);
+      // 2 qualités × 2 valeurs de draft = 4 combinaisons payantes, aucune tarifée.
+      expect(detail.prices).toEqual([]);
+      expect(detail.missingPrices).toHaveLength(4);
+    });
+
+    it('refuse un paramètre imposé sans valeur par défaut', async () => {
+      const bad = schema({
+        params: [
+          ...schema().params.slice(0, 4),
+          {
+            key: 'bitrate_mode',
+            type: 'ENUM',
+            role: 'OPTION',
+            exposure: 'FIXED',
+            allowedValues: ['standard', 'high'],
+            affectsPrice: false,
+          },
+        ],
+      });
+      const res = await admin.post('/api/admin/models', bad).expect(400);
+      expect(res.body.code).toBe('PARAM_DEFAULT_REQUIRED');
+    });
+
+    it('refuse l’activation tant qu’une combinaison autorisée n’a pas de tarif', async () => {
+      const res = await admin
+        .post(`/api/admin/models/active?slug=${encodeURIComponent(SLUG)}`, {
+          active: true,
+        })
+        .expect(400);
+      expect(res.body.code).toBe('MODEL_PRICE_INCOMPLETE');
+    });
+
+    it('accepte les tarifs et la règle d’option, puis l’activation', async () => {
+      await price('720p', '0.08').expect(201);
+      await price('1080p', '0.16').expect(201);
+      // L'aperçu rapide coûte moitié prix : un multiplicateur, pas un supplément.
+      await admin
+        .post(
+          `/api/admin/models/option-prices?slug=${encodeURIComponent(SLUG)}`,
+          {
+            paramKey: 'draft',
+            triggerValue: true,
+            kind: 'MULTIPLIER',
+            multiplier: '0.5',
+          },
+        )
+        .expect(201);
+
+      const detail = (
+        await admin
+          .get(`/api/admin/models/detail?slug=${encodeURIComponent(SLUG)}`)
+          .expect(200)
+      ).body;
+      expect(detail.prices).toHaveLength(2);
+      expect(detail.optionPrices).toHaveLength(1);
+      expect(detail.optionPrices[0].multiplier).toBe('0.5000');
+      expect(detail.missingPrices).toEqual([]);
+
+      const activated = await admin
+        .post(`/api/admin/models/active?slug=${encodeURIComponent(SLUG)}`, {
+          active: true,
+        })
+        .expect(200);
+      expect(activated.body).toEqual({ slug: SLUG, active: true });
+    });
+
+    it('le nouveau modèle est tarifé comme les autres, sans une ligne de code', async () => {
+      const s = await sections();
+      const added = s.models.find((m) => m.slug === SLUG);
+      expect(added).toBeDefined();
+      expect(added!.active).toBe(true);
+      expect(added!.missingPrices).toBe(0);
+
+      // Il apparaît dans l'aperçu, avec ses propres qualités et son option à moitié prix.
+      const p = await preview({ note: 'Vérification du nouveau modèle' });
+      const rows = p.rows.filter((r) => r.modelSlug === SLUG);
+      expect(rows.length).toBeGreaterThan(0);
+      expect(new Set(rows.map((r) => r.resolution))).toEqual(
+        new Set(['720p', '1080p']),
+      );
+      // Aucune ligne du nouveau modèle ne se vend sous son coût.
+      expect(rows.filter((r) => r.afterWorstMarginFcfa < 0)).toEqual([]);
+    });
+
+    it('un refus de tarif négatif ne crée aucune version', async () => {
+      const before = await prisma.modelPrice.count({
+        where: { providerModel: SLUG },
+      });
+      await price('720p', '-1').expect(400);
+      expect(
+        await prisma.modelPrice.count({ where: { providerModel: SLUG } }),
+      ).toBe(before);
+    });
+
+    it('modifier le schéma ne touche ni aux tarifs ni à l’activation', async () => {
+      await admin
+        .post('/api/admin/models', schema({ name: 'Seedance 2.5 (révisé)' }))
+        .expect(201);
+      const detail = (
+        await admin
+          .get(`/api/admin/models/detail?slug=${encodeURIComponent(SLUG)}`)
+          .expect(200)
+      ).body;
+      expect(detail.name).toBe('Seedance 2.5 (révisé)');
+      expect(detail.active).toBe(true);
+      expect(detail.prices).toHaveLength(2);
+      expect(detail.optionPrices).toHaveLength(1);
+    });
+  });
+
   it('écrit une trace d’audit à chaque application', async () => {
     const logs = await prisma.auditLog.findMany({
       where: { action: { in: ['pricing.apply', 'pricing.rollback'] } },

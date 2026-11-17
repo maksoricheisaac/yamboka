@@ -61,6 +61,9 @@ import type {
   CalibrateInput,
   CalibrateApplyInput,
   CalibrationGrid,
+  AdminModelDetail,
+  ModelPriceInput,
+  ModelOptionPriceInput,
 } from '@yamboka/shared';
 import {
   calibrateApplySchema,
@@ -68,6 +71,8 @@ import {
   calibrationSchema,
   creditAdjustSchema,
   modelActiveSchema,
+  modelOptionPriceSchema,
+  modelPriceSchema,
   modelUpsertSchema,
   applyTopUpRateSchema,
   pricingDraftSchema,
@@ -93,6 +98,7 @@ import { formatMicroUsd } from '../billing/usd';
 import { ClientIp, CurrentUser, Roles } from '../common/decorators';
 import { ModelCalibrationService } from '../generation/model-calibration.service';
 import { ModelCatalogService } from '../generation/model-catalog.service';
+import { PricingService } from '../pricing/pricing.service';
 import type { AuthUser } from '../common/decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { AdminOfferService } from './admin-offer.service';
@@ -147,6 +153,7 @@ export class AdminController {
     private readonly pricing: AdminPricingService,
     private readonly catalog: ModelCatalogService,
     private readonly calibration: ModelCalibrationService,
+    private readonly pricingVersions: PricingService,
   ) {}
 
   @Get('ping')
@@ -583,6 +590,66 @@ export class AdminController {
     return this.catalog
       .upsert(body, admin.id)
       .then((m) => ({ slug: m.slug, active: m.active }));
+  }
+
+  @Get('models/detail')
+  @ApiOperation({
+    summary:
+      'Détail d’un modèle pour l’édition : schéma des paramètres, tarifs et règles d’option en vigueur, combinaisons sans tarif',
+  })
+  modelDetail(@Query('slug') slug: string): Promise<AdminModelDetail> {
+    return this.pricing.modelDetail(slug);
+  }
+
+  @Post('models/prices')
+  @ApiOperation({
+    summary:
+      'Tarif de base d’un modèle pour une résolution, saisi à la main. Ajoute une version datée (source MANUAL)',
+  })
+  async addModelPrice(
+    @CurrentUser() admin: AuthUser,
+    @Query('slug') slug: string,
+    @Body(new ZodPipe(modelPriceSchema)) body: ModelPriceInput,
+  ): Promise<{ ok: true }> {
+    await this.pricingVersions.addModelPrice({
+      providerModel: slug,
+      resolution: body.resolution,
+      billingUnit: body.billingUnit,
+      usdPerUnit: body.usdPerUnit,
+      billableMultiplier: body.billableMultiplier,
+      minSeconds: body.minSeconds,
+      maxSeconds: body.maxSeconds,
+      source: 'MANUAL',
+      note: body.note,
+      adminId: admin.id,
+    });
+    this.catalog.invalidate();
+    return { ok: true };
+  }
+
+  @Post('models/option-prices')
+  @ApiOperation({
+    summary:
+      'Règle de prix d’une option payante : supplément par unité facturée, ou multiplicateur du tarif. Ajoute une version datée',
+  })
+  async addModelOptionPrice(
+    @CurrentUser() admin: AuthUser,
+    @Query('slug') slug: string,
+    @Body(new ZodPipe(modelOptionPriceSchema)) body: ModelOptionPriceInput,
+  ): Promise<{ ok: true }> {
+    await this.pricingVersions.addModelOptionPrice({
+      providerModel: slug,
+      paramKey: body.paramKey,
+      triggerValue: body.triggerValue,
+      kind: body.kind,
+      usdPerUnit: body.usdPerUnit,
+      multiplier: body.multiplier,
+      source: 'MANUAL',
+      note: body.note,
+      adminId: admin.id,
+    });
+    this.catalog.invalidate();
+    return { ok: true };
   }
 
   @Post('models/active')

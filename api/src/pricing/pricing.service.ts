@@ -54,6 +54,18 @@ export interface ModelPriceView {
   effectiveFrom: Date;
 }
 
+/** Règle de prix d'une option, telle qu'elle est enregistrée. */
+export interface ModelOptionPriceView {
+  id: string;
+  paramKey: string;
+  triggerValue: unknown;
+  kind: 'SURCHARGE' | 'MULTIPLIER';
+  microUsdPerUnit: bigint | null;
+  multiplierBp: number | null;
+  source: 'MANUAL' | 'ESTIMATE';
+  effectiveFrom: Date;
+}
+
 export interface ConfigPatch {
   marginPercent?: string | number;
   bonusValuationPercent?: string | number;
@@ -371,6 +383,133 @@ export class PricingService {
   }
 
   /**
+   * Nouvelle règle de prix d'une option payante : ajoute une ligne datée, comme ModelPrice. Un supplément
+   * s'exprime en micro-dollars par unité facturée ; un multiplicateur en points de base (10000 = ×1).
+   */
+  async addModelOptionPrice(p: {
+    providerModel: string;
+    paramKey: string;
+    triggerValue: unknown;
+    kind: 'SURCHARGE' | 'MULTIPLIER';
+    usdPerUnit?: string | number;
+    /** Facteur « humain » : 1,5 pour +50 %. Converti en points de base. */
+    multiplier?: string | number;
+    source?: 'MANUAL' | 'ESTIMATE';
+    effectiveFrom?: Date;
+    note?: string;
+    adminId?: string;
+  }): Promise<ModelOptionPriceView> {
+    const isSurcharge = p.kind === 'SURCHARGE';
+    const microUsdPerUnit = isSurcharge ? toMicroUsd(p.usdPerUnit ?? 0) : null;
+    const multiplierBp = isSurcharge
+      ? null
+      : Math.round(Number(p.multiplier) * 10_000);
+
+    if (isSurcharge && (microUsdPerUnit === null || microUsdPerUnit < 0n)) {
+      throw new BadRequestException({
+        code: 'INVALID_AMOUNT',
+        message: 'Un supplément ne peut pas être négatif.',
+      });
+    }
+    if (
+      !isSurcharge &&
+      (multiplierBp === null ||
+        !Number.isFinite(multiplierBp) ||
+        multiplierBp <= 0)
+    ) {
+      throw new BadRequestException({
+        code: 'INVALID_AMOUNT',
+        message: 'Le multiplicateur doit être supérieur à zéro.',
+      });
+    }
+
+    const effectiveFrom = p.effectiveFrom ?? new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const row = await tx.modelOptionPrice.create({
+        data: {
+          providerModel: p.providerModel,
+          paramKey: p.paramKey,
+          triggerValue: p.triggerValue as Prisma.InputJsonValue,
+          kind: p.kind,
+          microUsdPerUnit,
+          multiplierBp,
+          source: p.source ?? 'MANUAL',
+          effectiveFrom,
+          note: p.note,
+          createdById: p.adminId,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: p.adminId,
+          action: 'pricing.modelOptionPrice',
+          entityType: 'ModelOptionPrice',
+          entityId: row.id,
+          after: {
+            providerModel: p.providerModel,
+            paramKey: p.paramKey,
+            triggerValue: JSON.stringify(p.triggerValue),
+            kind: p.kind,
+            usdPerUnit:
+              microUsdPerUnit === null
+                ? null
+                : formatMicroUsd(microUsdPerUnit, 6),
+            multiplierBp,
+            effectiveFrom: effectiveFrom.toISOString(),
+          },
+          reason: p.note,
+        },
+      });
+      return toOptionPriceView(row);
+    });
+  }
+
+  /**
+   * Règles d'option EN VIGUEUR pour un modèle : la plus récente par (paramètre, valeur). Les versions
+   * antérieures restent en base, elles ne sont simplement plus celles qui s'appliquent.
+   */
+  async currentOptionPrices(
+    providerModel: string,
+    at: Date = new Date(),
+  ): Promise<ModelOptionPriceView[]> {
+    const rows = await this.prisma.modelOptionPrice.findMany({
+      where: { providerModel, effectiveFrom: { lte: at } },
+      orderBy: [{ effectiveFrom: 'desc' }, { createdAt: 'desc' }],
+    });
+    const seen = new Set<string>();
+    const kept: ModelOptionPriceView[] = [];
+    for (const r of rows) {
+      const key = `${r.paramKey}=${JSON.stringify(r.triggerValue)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      kept.push(toOptionPriceView(r));
+    }
+    return kept;
+  }
+
+  /**
+   * Tarifs de base EN VIGUEUR d'un modèle : la version la plus récente de chaque résolution.
+   */
+  async currentModelPrices(
+    providerModel: string,
+    at: Date = new Date(),
+  ): Promise<ModelPriceView[]> {
+    const rows = await this.prisma.modelPrice.findMany({
+      where: { providerModel, effectiveFrom: { lte: at } },
+      orderBy: [{ effectiveFrom: 'desc' }, { createdAt: 'desc' }],
+    });
+    const seen = new Set<string>();
+    const kept: ModelPriceView[] = [];
+    for (const r of rows) {
+      const key = r.resolution ?? '';
+      if (seen.has(key)) continue;
+      seen.add(key);
+      kept.push(toPriceView(r));
+    }
+    return kept;
+  }
+
+  /**
    * Écart relatif entre un tarif observé et le tarif en vigueur, en pourcentage arrondi au-dessus : sert à
    * alerter quand l'estimation du fournisseur s'éloigne de la config (seuil de 5 %).
    */
@@ -484,4 +623,26 @@ function microOf(value: string | number | undefined, fallback: bigint): bigint {
 /** Dollars entiers d'un montant en micro-dollars, arrondis au-dessus (usage interne, lisibilité). */
 export function ceilUsd(microUsd: bigint): number {
   return Number(ceilDiv(microUsd, MICRO_PER_USD));
+}
+
+function toOptionPriceView(row: {
+  id: string;
+  paramKey: string;
+  triggerValue: unknown;
+  kind: 'SURCHARGE' | 'MULTIPLIER';
+  microUsdPerUnit: bigint | null;
+  multiplierBp: number | null;
+  source: 'MANUAL' | 'ESTIMATE';
+  effectiveFrom: Date;
+}): ModelOptionPriceView {
+  return {
+    id: row.id,
+    paramKey: row.paramKey,
+    triggerValue: row.triggerValue,
+    kind: row.kind,
+    microUsdPerUnit: row.microUsdPerUnit,
+    multiplierBp: row.multiplierBp,
+    source: row.source,
+    effectiveFrom: row.effectiveFrom,
+  };
 }

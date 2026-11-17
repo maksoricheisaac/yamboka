@@ -660,3 +660,72 @@ export interface CalibrationGrid {
   rows: CalibrationGridRow[];
   maxDeviationPercent: number;
 }
+
+// ───────────── Catalogue : édition d'un modèle ─────────────
+
+/** Un paramètre de l'`input` d'un modèle, tel que le formulaire d'administration l'édite. */
+export interface AdminModelParam {
+  key: string;
+  label: string | null;
+  type: "STRING" | "INTEGER" | "BOOLEAN" | "ENUM";
+  role:
+    | "PROMPT"
+    | "DURATION"
+    | "RESOLUTION"
+    | "ASPECT_RATIO"
+    | "IMAGE_URL"
+    | "OPTION";
+  exposure: "CLIENT" | "FIXED" | "HIDDEN_DEFAULT";
+  /** Liste pour ENUM, { min, max } pour INTEGER, { maxLength } pour STRING, ou null. */
+  allowedValues: unknown;
+  defaultValue: unknown;
+  affectsPrice: boolean;
+  sortOrder: number;
+}
+
+/** Une version de tarif de base, par résolution. En ajout seul : la plus récente est celle qui s'applique. */
+export interface AdminModelPriceRow {
+  id: string;
+  resolution: string | null;
+  /** Prix fournisseur par unité facturée, en dollars, texte décimal. */
+  usdPerUnit: string;
+  billingUnit: "SECOND" | "IMAGE";
+  billableMultiplier: number;
+  minSeconds: number | null;
+  maxSeconds: number | null;
+  source: "MANUAL" | "ESTIMATE";
+  effectiveFrom: string;
+}
+
+/** Une règle de prix d'option (supplément ou multiplicateur), en ajout seul. */
+export interface AdminModelOptionPriceRow {
+  id: string;
+  paramKey: string;
+  /** Valeur qui déclenche la règle, telle quelle (true, "high", "1080p"). */
+  triggerValue: unknown;
+  kind: "SURCHARGE" | "MULTIPLIER";
+  /** Supplément par unité facturée, en dollars, ou null pour un multiplicateur. */
+  usdPerUnit: string | null;
+  /** Multiplicateur (1,5 pour +50 %), ou null pour un supplément. */
+  multiplier: string | null;
+  source: "MANUAL" | "ESTIMATE";
+  effectiveFrom: string;
+}
+
+/** Tout ce qu'il faut pour éditer un modèle : son schéma, ses tarifs et ce qui lui manque pour s'activer. */
+export interface AdminModelDetail {
+  slug: string;
+  name: string;
+  description: string | null;
+  mode: "TEXT_TO_VIDEO" | "IMAGE_TO_VIDEO";
+  active: boolean;
+  isDefault: boolean;
+  sortOrder: number;
+  params: AdminModelParam[];
+  /** Tarifs en vigueur, un par résolution (la version la plus récente de chacune). */
+  prices: AdminModelPriceRow[];
+  /** Règles d'option en vigueur, une par (paramètre, valeur). */
+  optionPrices: AdminModelOptionPriceRow[];
+  /** Combinaisons autorisées encore sans tarif : tant qu'il en reste, le modèle ne peut pas être activé. */
+  missingPrices: Record<string, unknown>[];
+}

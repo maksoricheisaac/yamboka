@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { CalibrationGrid, ModelTestResult, PricingSections } from "@yamboka/shared";
+import { ModelFormDialog } from "@/components/admin/model-form";
 import { Pill } from "@/components/admin/ui";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -90,6 +91,15 @@ export function ModelCatalogPanel({ sections }: { sections: PricingSections }) {
           <AlertDescription>{msg.text}</AlertDescription>
         </Alert>
       )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Ajouter ou modifier un modèle ne demande aucune intervention dans le code : tout est en base.
+        </p>
+        <ModelFormDialog
+          trigger={<Button type="button">Ajouter un modèle</Button>}
+        />
+      </div>
+
       {!sections.estimateAvailable && (
         <p className="text-sm text-muted-foreground">
           Le fournisseur en service ne sait pas estimer un prix (fournisseur simulé) : le test vérifie le
@@ -135,6 +145,14 @@ export function ModelCatalogPanel({ sections }: { sections: PricingSections }) {
                   {m.isDefault && <Pill tone="info">Par défaut</Pill>}
                 </TableCell>
                 <TableCell className="space-x-2 whitespace-nowrap text-right">
+                  <ModelFormDialog
+                    slug={m.slug}
+                    trigger={
+                      <Button type="button" size="sm" variant="outline">
+                        Modifier
+                      </Button>
+                    }
+                  />
                   <Button
                     type="button"
                     size="sm"

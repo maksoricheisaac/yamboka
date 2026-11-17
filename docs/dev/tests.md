@@ -9,13 +9,14 @@
 
 ## Bases de données de test
 
-Trois suites modifient des données **globales** (paramètres, packs, absence d'administrateur) : elles utilisent leur **propre base** pour ne pas perturber les suites exécutées en parallèle. Le module `test/isolate-*-db.ts`, importé **avant** les helpers, redirige `DATABASE_URL` :
+Plusieurs suites modifient des données **globales** (paramètres, packs, bonus, absence d'administrateur) : elles utilisent leur **propre base** pour ne pas perturber les suites exécutées en parallèle. Le module `test/isolate-*-db.ts`, importé **avant** les helpers, redirige `DATABASE_URL` :
 
 | Suite | Base | Particularité |
 |---|---|---|
 | `admin.e2e-spec.ts` | `yamboka_admin_test` | migrée et seedée (administrateur de test) |
 | `setup.e2e-spec.ts` | `yamboka_setup_test` | **vierge** (migrations seules, ni seed ni administrateur) : c'est le seul moyen de tester le Setup Wizard |
 | `otp.e2e-spec.ts` | `yamboka_test` | rétablit le délai de renvoi (60 s) et le plafond horaire (5) que les autres suites désactivent |
+| `payments.e2e-spec.ts` | `yamboka_payments_test` | modifie le bonus de premier achat d'un pack et le réglage global `firstPurchaseBonusEnabled`, qui entrent dans la **valeur plancher du crédit** : pendant cette fenêtre, une suite partageant la base lirait des tarifs différents |
 
 Le mode de confirmation de connexion (`loginOtpMode`) est simulé par un espion sur `SettingsService` propre au processus de la suite : le réglage n'est jamais modifié en base partagée.
 

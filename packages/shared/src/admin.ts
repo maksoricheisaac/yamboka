@@ -438,3 +438,52 @@ export const applyTopUpRateSchema = z.object({
   note: z.string().trim().min(3, "Indiquez le motif de l'application.").max(500),
 });
 export type ApplyTopUpRateInput = z.infer<typeof applyTopUpRateSchema>;
+
+/**
+ * Tarif de base d'un modèle pour une résolution, saisi à la main. En ajout seul : enregistrer AJOUTE une
+ * version datée, l'ancienne reste lisible et les générations passées gardent la leur.
+ */
+export const modelPriceSchema = z.object({
+  /** null = tarif unique du modèle, quelle que soit la résolution. */
+  resolution: z.string().trim().max(20).nullable().default(null),
+  usdPerUnit: decimal,
+  billingUnit: z.enum(["SECOND", "IMAGE"]).default("SECOND"),
+  /** Unités facturées par unité produite (une sortie + une entrée = 2). */
+  billableMultiplier: z.coerce.number().int().min(1).max(10).default(1),
+  minSeconds: z.coerce.number().int().min(1).max(600).nullable().default(null),
+  maxSeconds: z.coerce.number().int().min(1).max(600).nullable().default(null),
+  note: z.string().trim().max(500).optional(),
+});
+export type ModelPriceInput = z.infer<typeof modelPriceSchema>;
+
+/**
+ * Règle de prix d'une option payante : un supplément par unité facturée, ou un multiplicateur du tarif.
+ * `triggerValue` est la valeur EXACTE qui déclenche la règle, au même type que le paramètre.
+ */
+export const modelOptionPriceSchema = z
+  .object({
+    paramKey: z.string().trim().min(1).max(60),
+    triggerValue: z.union([z.string(), z.number(), z.boolean()]),
+    kind: z.enum(["SURCHARGE", "MULTIPLIER"]),
+    /** Supplément en dollars par unité facturée (kind = SURCHARGE). */
+    usdPerUnit: decimal.optional(),
+    /** Multiplicateur du tarif, 1.5 pour +50 % (kind = MULTIPLIER). */
+    multiplier: decimal.optional(),
+    note: z.string().trim().max(500).optional(),
+  })
+  .refine(
+    (v) =>
+      v.kind === "SURCHARGE"
+        ? v.usdPerUnit !== undefined && v.multiplier === undefined
+        : v.multiplier !== undefined && v.usdPerUnit === undefined,
+    {
+      message:
+        "Un supplément demande un montant en dollars ; un multiplicateur demande un facteur. Pas les deux.",
+      path: ["kind"],
+    },
+  )
+  .refine((v) => v.kind !== "MULTIPLIER" || Number(v.multiplier) > 0, {
+    message: "Le multiplicateur doit être supérieur à zéro.",
+    path: ["multiplier"],
+  });
+export type ModelOptionPriceInput = z.infer<typeof modelOptionPriceSchema>;
