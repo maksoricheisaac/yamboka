@@ -1,0 +1,2 @@
+-- Rien à défaire : cette migration ajoute une version de paramètres. Revenir en arrière consiste à ajouter
+-- une nouvelle version avec les anciens plafonds (la table est en ajout seul, par conception).

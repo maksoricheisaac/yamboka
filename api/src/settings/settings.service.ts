@@ -14,6 +14,16 @@ export const SETTING_DEFAULTS = {
   circuitLossPercent: 9,
   /** Coût fournisseur d'un crédit, en FCFA : 1 crédit = 2,5 FCFA de coût Higgsfield. Le taux FCFA/$ est usdToXafRate. */
   hfCostFcfaPerCredit: 2.5,
+  /**
+   * Marge de sécurité sur le change appliquée au taux SORTANT mesuré (`r_out`), en % : couvre la dérive entre
+   * deux recharges. Ne remplace jamais une mesure, elle la majore.
+   */
+  fxBufferPercent: 2,
+  /**
+   * Minimum de retrait imposé par SasPay, en FCFA : les recharges du fournisseur se font par lots d'au moins
+   * ce montant. NON MESURÉ tant qu'un retrait réel n'a pas été fait.
+   */
+  minWithdrawalXaf: 2500,
   firstPurchaseBonusEnabled: true,
   /** Bonus de premier achat par défaut (%), remplacé par CreditPack.firstPurchaseBonusPercent quand il est défini. */
   firstPurchaseBonusDefaultPercent: 20,
