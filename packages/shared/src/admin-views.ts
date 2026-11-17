@@ -305,15 +305,141 @@ export interface FinanceSummary {
   topUpsXaf: number;
   payoutsXaf: number;
   payoutCommissionXaf: number;
+  /** Crédits offerts sur la période (bonus de premier achat) : jamais payés par le client. */
+  bonusCreditsGranted: number;
+  /** Ce que ces crédits offerts coûteront chez le fournisseur, valorisé au taux sortant retenu. */
+  bonusCostFcfa: number;
+  /** Part du net encaissé que représente le coût du bonus (information). */
+  bonusCostPercentOfCollected: number;
 }
 
 export interface TopUpRow {
   id: string;
-  amountUsd: number;
-  amountXaf: number;
-  fxRate: number;
+  /** Dollars arrivés chez le fournisseur, en texte décimal. */
+  receivedUsd: string;
+  /** FCFA nets sortis de SasPay, ou null pour une recharge saisie avant la mesure de `r_out`. */
+  netWithdrawnXaf: number | null;
+  /** FCFA débités de la carte. */
+  cardAmountXaf: number;
+  /** Taux sortant mesuré (FCFA/$), en texte décimal, ou null si la recharge n'est pas mesurée. */
+  rOut: string | null;
+  /** false = saisie incomplète : l'affichage le signale « non mesuré » et la tarification ne s'y fie pas. */
+  measured: boolean;
+  /**
+   * Date à laquelle le taux mesuré de cette recharge a été appliqué à la grille, ou null s'il attend
+   * encore une confirmation. Tant qu'il attend, aucun prix n'a changé.
+   */
+  rateAppliedAt: string | null;
+  occurredAt: string;
   note: string | null;
   createdAt: string;
+}
+
+/**
+ * Une ligne du simulateur : un modèle, une qualité, une durée et une combinaison d'options, chiffrée de
+ * bout en bout dans le scénario demandé ET dans le scénario pessimiste.
+ */
+export interface VideoSimulationRow {
+  /** Slug du modèle du catalogue. */
+  modelSlug: string;
+  modelName: string;
+  resolution: string;
+  durationSeconds: number;
+  /** Options payantes de cette ligne, en clair (« son : oui · aperçu : non »), vide si aucune. */
+  optionsLabel: string;
+  /** Coût fournisseur en dollars, texte décimal. */
+  costUsd: string;
+  /** Ce coût valorisé en FCFA au taux retenu. */
+  costFcfa: number;
+  /** Ce que la vidéo doit rapporter net, marge comprise. */
+  netNeededFcfa: number;
+  /** Crédits qu'il FAUDRAIT facturer pour ne pas vendre sous le coût. */
+  requiredCredits: number;
+  /** Crédits que la grille facture aujourd'hui. */
+  chargedCredits: number;
+  /** Écart en FCFA entre ce que les crédits facturés rapportent et le coût. Négatif = vente à perte. */
+  marginFcfa: number;
+  belowCost: boolean;
+  missingCredits: number;
+  /** Prix équivalent en FCFA de ce que le client paie (crédits facturés × plancher du crédit). */
+  priceEquivalentFcfa: number;
+  /** Origine du tarif fournisseur utilisé : saisie ou estimation. */
+  priceSource: 'MANUAL' | 'ESTIMATE';
+  /** Mêmes chiffres dans le SCÉNARIO PESSIMISTE : c'est lui qui décide si on peut ouvrir la vente. */
+  worst: {
+    costFcfa: number;
+    netNeededFcfa: number;
+    requiredCredits: number;
+    chargedCredits: number;
+    priceEquivalentFcfa: number;
+    marginFcfa: number;
+    belowCost: boolean;
+  };
+}
+
+/** Marge d'un pack, au moyen de paiement le moins favorable. */
+export interface PackMarginRow {
+  name: string;
+  priceFcfa: number;
+  credits: number;
+  bonusCredits: number;
+  /** Net réellement reçu après frais d'encaissement. */
+  netFcfa: number;
+  /** Crédits comptés dans la valeur du crédit (bonus valorisé selon le réglage). */
+  valuedCredits: number;
+  /** FCFA nets par crédit pour ce pack, texte décimal. */
+  fcfaPerCredit: string;
+  /** Ce que les crédits offerts coûteront en FCFA (coût fournisseur estimé). */
+  bonusCostFcfa: number;
+}
+
+/** Résultat complet du simulateur, pour un scénario donné. */
+export interface SimulationView {
+  /** Taux sortant retenu (FCFA/$), texte décimal. */
+  pricingRate: string;
+  /** false = taux provisoire (aucune recharge mesurée). */
+  rateMeasured: boolean;
+  marginPercent: string;
+  circuitLossPercent: string;
+  bonusValuationPercent: string;
+  fxBufferPercent: string;
+  /** true = les paramètres en vigueur ne reposent pas encore sur des mesures. */
+  configProvisional: boolean;
+  /** Valeur plancher d'un crédit (FCFA nets), texte décimal. */
+  creditFloorFcfa: string;
+  floorFromPack: string;
+  floorFromMethod: string;
+  floorNetFcfa: number;
+  floorCredits: number;
+  videos: VideoSimulationRow[];
+  packs: PackMarginRow[];
+  /** true = au moins une vidéo du catalogue se vend sous son coût. */
+  anyBelowCost: boolean;
+}
+
+/** Une lecture du solde dans la console du fournisseur, avec l'écart constaté avec l'estimation. */
+export interface CalibrationRow {
+  id: string;
+  readUsd: string;
+  estimatedUsd: string;
+  /** Négatif = on avait dépensé plus que ce que le journal savait. */
+  deltaUsd: string;
+  readAt: string;
+  note: string | null;
+  createdAt: string;
+}
+
+/** Solde prépayé du fournisseur tel que le journal le connaît. */
+export interface ProviderBalanceRow {
+  balanceUsd: string;
+  /** Part du solde engagée par des créations en cours. */
+  reservedUsd: string;
+  /** Taux sortant retenu pour tarifer (FCFA/$), en texte décimal. */
+  pricingRate: string;
+  /** false = aucune recharge mesurée : le taux affiché est provisoire. */
+  measured: boolean;
+  lastCalibrationAt: string | null;
+  lastCalibrationDeltaUsd: string | null;
 }
 
 export interface PayoutRow {
@@ -372,4 +498,234 @@ export interface LegalVersionRow {
 export interface SettingsView {
   values: Record<string, string | number | boolean>;
   email: { provider: 'console' | 'smtp' };
+}
+
+// ───────────── Configuration des calculs ─────────────
+
+/** Une version des paramètres de calcul, telle que la page de configuration la montre. */
+export interface PricingConfigRow {
+  id: string;
+  marginPercent: string;
+  fxBufferPercent: string;
+  cardFcfaPerUsd: string;
+  circuitLossPercent: string;
+  bonusValuationPercent: string;
+  withdrawalFeePercent: string;
+  momoToCardFeePercent: string;
+  topUpFeePercent: string;
+  minMarginPercent: string;
+  safetyMarginUsd: string;
+  dailyCapUsd: string;
+  dailyUserCapUsd: string;
+  minWithdrawalXaf: number;
+  minPurchaseXaf: number;
+  quoteValiditySeconds: number;
+  /** true = au moins une valeur n'est pas mesurée : la production reste à valider. */
+  provisional: boolean;
+  effectiveFrom: string;
+  note: string | null;
+  /** Version dont celle-ci est le retour en arrière, ou null. */
+  revertedFromId: string | null;
+}
+
+/** Un modèle du catalogue, vu de l'administration. */
+export interface PricingModelRow {
+  slug: string;
+  name: string;
+  mode: "TEXT_TO_VIDEO" | "IMAGE_TO_VIDEO";
+  active: boolean;
+  isDefault: boolean;
+  sortOrder: number;
+  paramCount: number;
+  resolutions: string[];
+  /** Nombre de combinaisons d'options qui changent le prix. */
+  pricedCombinations: number;
+  /** Combinaisons sans tarif : tant qu'il en reste, le modèle ne peut pas être activé. */
+  missingPrices: number;
+}
+
+/** Écart constaté entre le tarif configuré et le prix annoncé par le fournisseur. */
+export interface EstimateAlertRow {
+  providerModel: string;
+  resolution: string | null;
+  options: Record<string, unknown>;
+  configuredUsd: string;
+  observedUsd: string;
+  deviationPercent: number;
+  checkedAt: string;
+}
+
+/** Tout ce que la page « Configuration des calculs » affiche. */
+export interface PricingSections {
+  current: PricingConfigRow;
+  history: PricingConfigRow[];
+  models: PricingModelRow[];
+  packs: {
+    name: string;
+    priceFcfa: number;
+    credits: number;
+    bonusCredits: number;
+  }[];
+  paymentMethods: {
+    label: string;
+    tierCount: number;
+    firstTierPercent: string | null;
+  }[];
+  creditFloorFcfa: string;
+  floorFromPack: string;
+  floorFromMethod: string;
+  pricingRate: string;
+  rateMeasured: boolean;
+  /** true = le scénario pessimiste est appliqué (configuration provisoire). */
+  pessimisticApplied: boolean;
+  estimateAlerts: EstimateAlertRow[];
+  /** false = le fournisseur en service ne sait pas estimer (simulé) : pas de calibrage possible. */
+  estimateAvailable: boolean;
+}
+
+/** Une ligne de l'aperçu avant / après. */
+export interface PricingPreviewRow {
+  modelSlug: string;
+  modelName: string;
+  resolution: string;
+  durationSeconds: number;
+  costUsd: string;
+  before: PricingPreviewLine;
+  after: PricingPreviewLine;
+  /**
+   * Marge de la NOUVELLE grille évaluée dans le scénario pessimiste. C'est elle qui dit si la
+   * configuration vend sous le coût : une configuration trop optimiste affiche toujours une marge
+   * positive dans ses propres hypothèses.
+   */
+  afterWorstMarginFcfa: number;
+  /** Variation du prix équivalent, en % (négatif = baisse). */
+  changePercent: number;
+}
+
+export interface PricingPreviewLine {
+  costFcfa: number;
+  credits: number;
+  priceEquivalentFcfa: number;
+  /** Négatif = vente à perte : la page le montre en rouge. */
+  marginFcfa: number;
+}
+
+/** Résultat d'un aperçu : les lignes et les garde-fous déclenchés. */
+export interface PricingPreview {
+  rows: PricingPreviewRow[];
+  before: PricingConfigRow;
+  after: PricingConfigRow;
+  creditFloorBeforeFcfa: string;
+  creditFloorAfterFcfa: string;
+  pricingRateBefore: string;
+  pricingRateAfter: string;
+  /** true = au moins une ligne se vendrait sous son coût : confirmation renforcée exigée. */
+  sellsBelowCost: boolean;
+  belowCostLabels: string[];
+  /** true = un prix change de plus de 20 % : confirmation explicite exigée. */
+  bigPriceChange: boolean;
+  bigPriceChangeLabels: string[];
+  /** true = la marge passe sous le minimum : confirmation explicite exigée. */
+  underMinMargin: boolean;
+  underMinMarginLabels: string[];
+}
+
+/** Résultat d'un essai de modèle (gratuit, aucune vidéo produite). */
+export interface ModelTestResult {
+  slug: string;
+  /** `input` exact que le serveur enverrait, reconstruit depuis le catalogue. */
+  input: Record<string, unknown>;
+  schemaOk: true;
+  estimateAvailable: boolean;
+  observedUsd: string | null;
+  configuredUsd: string | null;
+  deviationPercent: number | null;
+  providerStatus: number | null;
+  error: string | null;
+}
+
+/** Une ligne du tableau de calibrage proposé par /estimate. */
+export interface CalibrationGridRow {
+  resolution: string | null;
+  options: Record<string, unknown>;
+  durationSeconds: number;
+  configuredUsdPerUnit: string;
+  observedUsdPerUnit: string | null;
+  deviationPercent: number | null;
+  error: string | null;
+}
+
+export interface CalibrationGrid {
+  slug: string;
+  rows: CalibrationGridRow[];
+  maxDeviationPercent: number;
+}
+
+// ───────────── Catalogue : édition d'un modèle ─────────────
+
+/** Un paramètre de l'`input` d'un modèle, tel que le formulaire d'administration l'édite. */
+export interface AdminModelParam {
+  key: string;
+  label: string | null;
+  type: "STRING" | "INTEGER" | "BOOLEAN" | "ENUM";
+  role:
+    | "PROMPT"
+    | "DURATION"
+    | "RESOLUTION"
+    | "ASPECT_RATIO"
+    | "IMAGE_URL"
+    | "OPTION";
+  exposure: "CLIENT" | "FIXED" | "HIDDEN_DEFAULT";
+  /** Liste pour ENUM, { min, max } pour INTEGER, { maxLength } pour STRING, ou null. */
+  allowedValues: unknown;
+  defaultValue: unknown;
+  affectsPrice: boolean;
+  sortOrder: number;
+}
+
+/** Une version de tarif de base, par résolution. En ajout seul : la plus récente est celle qui s'applique. */
+export interface AdminModelPriceRow {
+  id: string;
+  resolution: string | null;
+  /** Prix fournisseur par unité facturée, en dollars, texte décimal. */
+  usdPerUnit: string;
+  billingUnit: "SECOND" | "IMAGE";
+  billableMultiplier: number;
+  minSeconds: number | null;
+  maxSeconds: number | null;
+  source: "MANUAL" | "ESTIMATE";
+  effectiveFrom: string;
+}
+
+/** Une règle de prix d'option (supplément ou multiplicateur), en ajout seul. */
+export interface AdminModelOptionPriceRow {
+  id: string;
+  paramKey: string;
+  /** Valeur qui déclenche la règle, telle quelle (true, "high", "1080p"). */
+  triggerValue: unknown;
+  kind: "SURCHARGE" | "MULTIPLIER";
+  /** Supplément par unité facturée, en dollars, ou null pour un multiplicateur. */
+  usdPerUnit: string | null;
+  /** Multiplicateur (1,5 pour +50 %), ou null pour un supplément. */
+  multiplier: string | null;
+  source: "MANUAL" | "ESTIMATE";
+  effectiveFrom: string;
+}
+
+/** Tout ce qu'il faut pour éditer un modèle : son schéma, ses tarifs et ce qui lui manque pour s'activer. */
+export interface AdminModelDetail {
+  slug: string;
+  name: string;
+  description: string | null;
+  mode: "TEXT_TO_VIDEO" | "IMAGE_TO_VIDEO";
+  active: boolean;
+  isDefault: boolean;
+  sortOrder: number;
+  params: AdminModelParam[];
+  /** Tarifs en vigueur, un par résolution (la version la plus récente de chacune). */
+  prices: AdminModelPriceRow[];
+  /** Règles d'option en vigueur, une par (paramètre, valeur). */
+  optionPrices: AdminModelOptionPriceRow[];
+  /** Combinaisons autorisées encore sans tarif : tant qu'il en reste, le modèle ne peut pas être activé. */
+  missingPrices: Record<string, unknown>[];
 }

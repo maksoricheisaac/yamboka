@@ -183,12 +183,87 @@ export const legalPublishSchema = z.object({
 });
 export type LegalPublishInput = z.infer<typeof legalPublishSchema>;
 
+/**
+ * Saisie d'une recharge du fournisseur. Les dollars arrivent en TEXTE décimal, jamais en nombre flottant :
+ * c'est la mesure dont dépend `r_out`, donc tout l'équilibre de la plateforme.
+ */
 export const topUpSchema = z.object({
-  amountUsd: z.number().positive().max(1_000_000),
-  amountXaf: z.number().int().positive().max(1_000_000_000),
+  /** Dollars réellement arrivés sur le compte fournisseur, lus dans sa console (« 20 », « 20.50 »). */
+  receivedUsd: z
+    .string()
+    .trim()
+    // La virgule décimale est acceptée à la saisie puis normalisée : le montant reste une chaîne, jamais un flottant.
+    .transform((v) => v.replace(',', '.'))
+    .pipe(
+      z
+        .string()
+        .regex(/^\d+(\.\d{1,6})?$/, 'Montant en dollars invalide (ex. 20.50).'),
+    ),
+  /** FCFA NETS sortis du portefeuille SasPay pour cette recharge (après frais de retrait). */
+  netWithdrawnXaf: z.number().int().positive().max(1_000_000_000),
+  /** FCFA débités de la carte. */
+  cardAmountXaf: z.number().int().positive().max(1_000_000_000),
+  /** Frais étape par étape, pour retrouver d'où vient la perte. */
+  steps: z
+    .array(
+      z.object({
+        step: z.string().trim().min(1).max(40),
+        amountXaf: z.number().int().min(0).max(1_000_000_000).optional(),
+        feeXaf: z.number().int().min(0).max(1_000_000_000).optional(),
+        note: z.string().trim().max(200).optional(),
+      }),
+    )
+    .max(10)
+    .optional(),
+  occurredAt: z.iso.date().optional(),
   note: z.string().trim().max(300).optional(),
 });
 export type TopUpInput = z.infer<typeof topUpSchema>;
+
+/**
+ * Scénario de simulation : chaque champ absent prend la valeur EN VIGUEUR. Les pourcentages arrivent en texte
+ * décimal, jamais en flottant.
+ */
+export const simulationSchema = z.object({
+  marginPercent: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,4})?$/)
+    .optional(),
+  circuitLossPercent: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,4})?$/)
+    .optional(),
+  bonusValuationPercent: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,4})?$/)
+    .optional(),
+  /** Durées à simuler, en secondes, séparées par des virgules (« 5,10,30 »). */
+  durations: z
+    .string()
+    .trim()
+    .regex(/^\d{1,3}(,\d{1,3})*$/)
+    .optional(),
+});
+export type SimulationInput = z.infer<typeof simulationSchema>;
+
+/** Saisie du solde lu dans la console du fournisseur (calibrage) : la seule mesure vraie du solde. */
+export const calibrationSchema = z.object({
+  readUsd: z
+    .string()
+    .trim()
+    .transform((v) => v.replace(',', '.'))
+    .pipe(
+      z
+        .string()
+        .regex(/^\d+(\.\d{1,6})?$/, 'Solde en dollars invalide (ex. 18.40).'),
+    ),
+  readAt: z.iso.date().optional(),
+  note: z.string().trim().max(300).optional(),
+});
+export type CalibrationInput = z.infer<typeof calibrationSchema>;
 
 export const payoutSchema = z.object({
   amountXaf: z.number().int().positive().max(1_000_000_000),
@@ -226,3 +301,189 @@ export const listQuerySchema = z.object({
   to: z.iso.date().optional(),
 });
 export type ListQuery = z.infer<typeof listQuerySchema>;
+
+/** Valeur décimale positive en texte (jamais un flottant : l'argent se manipule en décimal). */
+const decimal = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(",", "."))
+  .pipe(z.string().regex(/^\d+(\.\d{1,6})?$/, "Valeur décimale invalide."));
+
+/**
+ * Brouillon de la page « Configuration des calculs ». Tous les champs sont facultatifs : ce qui n'est pas
+ * fourni garde la valeur en vigueur. Les deux confirmations ne sont jamais implicites.
+ */
+export const pricingDraftSchema = z.object({
+  // Marges et protections
+  marginPercent: decimal.optional(),
+  bonusValuationPercent: decimal.optional(),
+  fxBufferPercent: decimal.optional(),
+  safetyMarginUsd: decimal.optional(),
+  minMarginPercent: decimal.optional(),
+  // Taux et frais
+  cardFcfaPerUsd: decimal.optional(),
+  circuitLossPercent: decimal.optional(),
+  withdrawalFeePercent: decimal.optional(),
+  momoToCardFeePercent: decimal.optional(),
+  topUpFeePercent: decimal.optional(),
+  // Packs et achats
+  minWithdrawalXaf: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(10_000_000)
+    .optional(),
+  minPurchaseXaf: z.coerce.number().int().positive().max(10_000_000).optional(),
+  // Plafonds et alertes
+  dailyCapUsd: decimal.optional(),
+  dailyUserCapUsd: decimal.optional(),
+  quoteValiditySeconds: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(86_400)
+    .optional(),
+  /** Bascule « production ouverte » : à ne passer à false qu'une fois r_out mesuré. */
+  provisional: z.boolean().optional(),
+  /** Motif obligatoire : une version sans motif est inexplicable six mois plus tard. */
+  note: z.string().trim().min(3, "Indiquez le motif du changement.").max(500),
+  /** Confirmation renforcée : appliquer malgré une vente sous le coût. */
+  confirmBelowCost: z.boolean().optional(),
+  /** Confirmation : appliquer malgré une variation de prix de plus de 20 % ou une marge sous le minimum. */
+  confirmBigChange: z.boolean().optional(),
+});
+export type PricingDraftInput = z.infer<typeof pricingDraftSchema>;
+
+/** Retour à une version précédente : une nouvelle version la recopie, rien n'est supprimé. */
+export const pricingRollbackSchema = z.object({
+  versionId: z.uuid(),
+  note: z.string().trim().min(3, "Indiquez le motif du retour.").max(500),
+});
+export type PricingRollbackInput = z.infer<typeof pricingRollbackSchema>;
+
+/** Création ou modification d'un modèle du catalogue. */
+export const modelUpsertSchema = z.object({
+  slug: z
+    .string()
+    .trim()
+    .min(3)
+    .max(200)
+    .regex(
+      /^[a-z0-9][a-z0-9._/-]*$/,
+      "Le slug doit être le chemin exact du modèle chez le fournisseur.",
+    ),
+  name: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(500).optional(),
+  mode: z.enum(["TEXT_TO_VIDEO", "IMAGE_TO_VIDEO"]).default("TEXT_TO_VIDEO"),
+  sortOrder: z.coerce.number().int().min(0).max(999).default(0),
+  isDefault: z.boolean().optional(),
+  params: z
+    .array(
+      z.object({
+        key: z.string().trim().min(1).max(60),
+        label: z.string().trim().max(60).optional(),
+        type: z.enum(["STRING", "INTEGER", "BOOLEAN", "ENUM"]),
+        role: z.enum([
+          "PROMPT",
+          "DURATION",
+          "RESOLUTION",
+          "ASPECT_RATIO",
+          "IMAGE_URL",
+          "OPTION",
+        ]),
+        exposure: z
+          .enum(["CLIENT", "FIXED", "HIDDEN_DEFAULT"])
+          .default("CLIENT"),
+        /** Liste pour ENUM, { min, max } pour INTEGER, { maxLength } pour STRING. */
+        allowedValues: z.unknown().optional(),
+        defaultValue: z.unknown().optional(),
+        affectsPrice: z.boolean().default(false),
+      }),
+    )
+    .min(1, "Un modèle a au moins un paramètre."),
+});
+export type ModelUpsertInput = z.infer<typeof modelUpsertSchema>;
+
+export const modelActiveSchema = z.object({ active: z.boolean() });
+export type ModelActiveInput = z.infer<typeof modelActiveSchema>;
+
+/** Lancement du calibrage : durées à estimer (facultatif, sinon les bornes du modèle). */
+export const calibrateSchema = z.object({
+  durations: z
+    .array(z.coerce.number().int().positive().max(600))
+    .max(10)
+    .optional(),
+});
+export type CalibrateInput = z.infer<typeof calibrateSchema>;
+
+/** Application du tableau de calibrage proposé, après l'aperçu. */
+export const calibrateApplySchema = z.object({
+  rows: z
+    .array(
+      z.object({
+        resolution: z.string().trim().max(20).nullable(),
+        usdPerUnit: decimal,
+      }),
+    )
+    .min(1),
+  note: z.string().trim().max(500).optional(),
+});
+export type CalibrateApplyInput = z.infer<typeof calibrateApplySchema>;
+
+/**
+ * Application du taux sortant mesuré d'une recharge à la grille. Le motif est obligatoire : c'est un
+ * changement de prix pour toute la plateforme, il doit rester explicable.
+ */
+export const applyTopUpRateSchema = z.object({
+  note: z.string().trim().min(3, "Indiquez le motif de l'application.").max(500),
+});
+export type ApplyTopUpRateInput = z.infer<typeof applyTopUpRateSchema>;
+
+/**
+ * Tarif de base d'un modèle pour une résolution, saisi à la main. En ajout seul : enregistrer AJOUTE une
+ * version datée, l'ancienne reste lisible et les générations passées gardent la leur.
+ */
+export const modelPriceSchema = z.object({
+  /** null = tarif unique du modèle, quelle que soit la résolution. */
+  resolution: z.string().trim().max(20).nullable().default(null),
+  usdPerUnit: decimal,
+  billingUnit: z.enum(["SECOND", "IMAGE"]).default("SECOND"),
+  /** Unités facturées par unité produite (une sortie + une entrée = 2). */
+  billableMultiplier: z.coerce.number().int().min(1).max(10).default(1),
+  minSeconds: z.coerce.number().int().min(1).max(600).nullable().default(null),
+  maxSeconds: z.coerce.number().int().min(1).max(600).nullable().default(null),
+  note: z.string().trim().max(500).optional(),
+});
+export type ModelPriceInput = z.infer<typeof modelPriceSchema>;
+
+/**
+ * Règle de prix d'une option payante : un supplément par unité facturée, ou un multiplicateur du tarif.
+ * `triggerValue` est la valeur EXACTE qui déclenche la règle, au même type que le paramètre.
+ */
+export const modelOptionPriceSchema = z
+  .object({
+    paramKey: z.string().trim().min(1).max(60),
+    triggerValue: z.union([z.string(), z.number(), z.boolean()]),
+    kind: z.enum(["SURCHARGE", "MULTIPLIER"]),
+    /** Supplément en dollars par unité facturée (kind = SURCHARGE). */
+    usdPerUnit: decimal.optional(),
+    /** Multiplicateur du tarif, 1.5 pour +50 % (kind = MULTIPLIER). */
+    multiplier: decimal.optional(),
+    note: z.string().trim().max(500).optional(),
+  })
+  .refine(
+    (v) =>
+      v.kind === "SURCHARGE"
+        ? v.usdPerUnit !== undefined && v.multiplier === undefined
+        : v.multiplier !== undefined && v.usdPerUnit === undefined,
+    {
+      message:
+        "Un supplément demande un montant en dollars ; un multiplicateur demande un facteur. Pas les deux.",
+      path: ["kind"],
+    },
+  )
+  .refine((v) => v.kind !== "MULTIPLIER" || Number(v.multiplier) > 0, {
+    message: "Le multiplicateur doit être supérieur à zéro.",
+    path: ["multiplier"],
+  });
+export type ModelOptionPriceInput = z.infer<typeof modelOptionPriceSchema>;

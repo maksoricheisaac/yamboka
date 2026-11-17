@@ -176,8 +176,8 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       status: 'success',
       amount: sent,
       currency: 'XAF',
-      clientFee: 270,
-      debitedAmount: sent + 270,
+      clientFee: 285,
+      debitedAmount: sent + 285,
       ...over,
     });
   };
@@ -196,17 +196,18 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       const user = await prisma.user.findUniqueOrThrow({
         where: { id: userId },
       });
-      // Starter 5 000 FCFA : plus grand A tel que A + ⌈5,7 % de A⌉ ≤ 5 000.
+      // Starter 5 000 FCFA : plus grand A tel que A + frais(A) ≤ 5 000, les frais portant sur le montant
+      // DÉBITÉ (mesure du 1er nov. 2026) : 4 715 + 285 = 5 000.
       expect(row.amount).toBe(5000);
-      expect(row.sentAmount).toBe(4730);
+      expect(row.sentAmount).toBe(4715);
       expect(row.network).toBe('mtn_cg');
       expect(row.status).toBe('PENDING');
       expect(row.externalReference).toMatch(/^SP-/);
       expect(row.idempotencyKey).toBeTruthy();
-      expect((row.feeSnapshot as { fee: number }).fee).toBe(270);
+      expect((row.feeSnapshot as { fee: number }).fee).toBe(285);
 
       const sent = fake.initiateCalls[0];
-      expect(sent.amount).toBe(4730);
+      expect(sent.amount).toBe(4715);
       expect(sent.idempotencyKey).toBe(row.idempotencyKey);
       expect(sent.network).toBe('mtn_cg');
       expect(sent.customer).toEqual({
@@ -328,8 +329,8 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
         'PURCHASE:500',
       ]);
       const p = await prisma.payment.findUniqueOrThrow({ where: { id } });
-      expect(p.clientFee).toBe(270);
-      expect(p.debitedAmount).toBe(4730 + 270);
+      expect(p.clientFee).toBe(285);
+      expect(p.debitedAmount).toBe(4715 + 285);
       expect((await ledgerOf(app, userId)).length).toBe(2);
     });
 
@@ -481,7 +482,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
           id,
           reference: 'TXN-1',
           status: 'SUCCESS',
-          amount: '4730.00',
+          amount: '4715.00',
           currency: 'XAF',
           msisdn: '242061234567',
           ...extra,
@@ -578,7 +579,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
       const ref = row.externalReference!;
       const raw = body('transaction.success', ref);
       const ts = nowTs();
-      const tampered = raw.replace('4730.00', '1.00');
+      const tampered = raw.replace('4715.00', '1.00');
       expect(
         (await post(tampered, { ts, signature: sign(ts, raw) })).status,
       ).toBe(403);
@@ -691,7 +692,7 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
         provider: 'saspay',
         network: 'mtn_cg',
         amount: 5000,
-        sentAmount: 4730,
+        sentAmount: 4715,
         status: 'PENDING',
         issue: null,
       });
@@ -751,10 +752,10 @@ describe('Paiements SasPay (e2e, fournisseur SasPay simulé)', () => {
         provider: 'saspay',
         status: 'SUCCESS',
         currency: 'XAF',
-        sentAmount: 4730,
-        clientFee: 270,
+        sentAmount: 4715,
+        clientFee: 285,
         debitedAmount: 5000,
-        fee: { source: 'provider', fee: 270, total: 5000 },
+        fee: { source: 'provider', fee: 285, total: 5000 },
       });
       const kinds = (res.body.timeline as { kind: string }[]).map(
         (e) => e.kind,

@@ -26,17 +26,18 @@ describe('Catalogue et devis (e2e)', () => {
         ['Pro', 10000, 1000],
         ['Business', 25000, 2500],
       ]);
-      // Équivalences calculées depuis les tarifs en base (4 / 8 / 16 crédits par seconde), vidéos de 5 s.
+      // Équivalences calculées depuis les tarifs DÉRIVÉS du coût fournisseur (5 / 10 / 20 crédits par
+      // seconde dans le scénario pessimiste : perte de circuit 14 %, bonus compté à 100 %), vidéos de 5 s.
       const byName = Object.fromEntries(
         packs.map((p) => [p.name, p.equivalent]),
       );
       expect(byName.Starter).toEqual({
-        '480p': { seconds: 125, videos: 25 },
-        '720p': { seconds: 62, videos: 12 },
-        '1080p': { seconds: 31, videos: 6 },
+        '480p': { seconds: 100, videos: 20 },
+        '720p': { seconds: 50, videos: 10 },
+        '1080p': { seconds: 25, videos: 5 },
       });
-      expect(byName.Pro['480p']).toEqual({ seconds: 250, videos: 50 });
-      expect(byName.Business['1080p']).toEqual({ seconds: 156, videos: 31 });
+      expect(byName.Pro['480p']).toEqual({ seconds: 200, videos: 40 });
+      expect(byName.Business['1080p']).toEqual({ seconds: 125, videos: 25 });
     });
 
     it('ne liste que les produits actifs', async () => {

@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env';
 import {
   GenerationAuthError,
+  GenerationProviderOutOfCreditsError,
   GenerationRejectedError,
   GenerationUnavailableError,
 } from './generation-provider';
@@ -126,6 +127,29 @@ describe('HiggsfieldGenerationProvider', () => {
     fetchMock.mockReturnValueOnce(json(422, { detail: 'video_url invalide' }));
     await expect(provider.submit(request)).rejects.toBeInstanceOf(
       GenerationRejectedError,
+    );
+  });
+
+  it('distingue un 403 « solde épuisé » d’identifiants refusés', async () => {
+    const provider = new HiggsfieldGenerationProvider(config());
+    const request = { model: 'm', input: {}, idempotencyKey: 'k' };
+
+    // Solde prépayé à sec : à traiter comme un arrêt de production, pas comme une clé à corriger.
+    fetchMock.mockReturnValueOnce(json(403, { detail: 'not_enough_credits' }));
+    await expect(provider.submit(request)).rejects.toBeInstanceOf(
+      GenerationProviderOutOfCreditsError,
+    );
+    // Variante d'écriture : la forme exacte de la réponse n'est pas documentée.
+    fetchMock.mockReturnValueOnce(
+      json(403, { error: { code: 'INSUFFICIENT-CREDITS' } }),
+    );
+    await expect(provider.submit(request)).rejects.toBeInstanceOf(
+      GenerationProviderOutOfCreditsError,
+    );
+    // Un 403 sans mention de solde reste un problème d'identifiants ou de droits.
+    fetchMock.mockReturnValueOnce(json(403, { detail: 'Forbidden' }));
+    await expect(provider.submit(request)).rejects.toBeInstanceOf(
+      GenerationAuthError,
     );
   });
 

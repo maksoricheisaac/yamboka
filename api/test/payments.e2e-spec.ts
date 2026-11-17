@@ -1,3 +1,4 @@
+import './isolate-payments-db';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { MOCK_UNAVAILABLE_PHONE } from '../src/payments/mock-payment.provider';
@@ -7,6 +8,7 @@ import {
 } from '../src/payments/payments.service';
 import { Client, createApp, prismaOf } from './helpers';
 import { ledgerOf, verifiedClient } from './finance-helpers';
+import { resetDatabase } from './reset-database';
 
 const PHONE = '242061234567';
 
@@ -16,10 +18,11 @@ describe('Paiements simulés (e2e)', () => {
   let payments: PaymentsService;
 
   beforeAll(async () => {
+    await resetDatabase(process.env.DATABASE_URL!);
     app = await createApp();
     prisma = prismaOf(app);
     payments = app.get(PaymentsService);
-  });
+  }, 120_000);
   afterAll(async () => {
     await app.close();
   });

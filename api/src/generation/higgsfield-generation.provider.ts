@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env';
 import {
   GenerationAuthError,
+  GenerationProviderOutOfCreditsError,
   GenerationProvider,
   GenerationRejectedError,
   GenerationRunStatus,
@@ -32,6 +33,17 @@ interface HiggsfieldBody {
 }
 
 const TIMEOUT_MS = 30_000;
+
+/**
+ * Le 403 d'un solde prépayé épuisé, reconnu sur le corps brut : la forme exacte de la réponse n'est pas
+ * documentée (`{"detail": "not_enough_credits"}` observé), donc on accepte les variantes connues plutôt que
+ * de parier sur une structure. Une erreur non reconnue reste traitée comme des identifiants refusés.
+ */
+function isOutOfCredits(rawBody: string): boolean {
+  return /not[_ -]?enough[_ -]?credits|insufficient[_ -]?credits|not[_ -]?enough[_ -]?balance/i.test(
+    rawBody,
+  );
+}
 
 /**
  * Higgsfield (GENERATION_PROVIDER=higgsfield). Chaque génération soumise est payante.
@@ -68,7 +80,15 @@ export class HiggsfieldGenerationProvider extends GenerationProvider {
     } catch {
       throw new GenerationUnavailableError('Higgsfield injoignable.');
     }
+    // Le corps est lu AVANT de classer l'erreur : un 403 « solde fournisseur vide » et un 403 « clé refusée »
+    // ne se distinguent que par là, et les confondre envoie l'administrateur vérifier la mauvaise chose.
+    const text = await res.text();
     if (res.status === 401 || res.status === 403) {
+      if (isOutOfCredits(text)) {
+        throw new GenerationProviderOutOfCreditsError(
+          `Solde Higgsfield épuisé (HTTP ${res.status}) : ${text.slice(0, 300)}`,
+        );
+      }
       throw new GenerationAuthError(
         'Identifiants Higgsfield refusés (HF_API_KEY_ID / HF_API_KEY_SECRET) ou droits insuffisants.',
       );
@@ -78,7 +98,6 @@ export class HiggsfieldGenerationProvider extends GenerationProvider {
         `Higgsfield indisponible (HTTP ${res.status}).`,
       );
     }
-    const text = await res.text();
     let body: HiggsfieldBody = {};
     if (text) {
       try {

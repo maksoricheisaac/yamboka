@@ -18,6 +18,8 @@ import {
   type PaymentCreditState,
   type PaymentSettleInput,
   type AdminStats,
+  type CalibrationInput,
+  type CalibrationRow,
   type DailyPoint,
   type AdminAuditPage,
   type FinanceSummary,
@@ -27,6 +29,7 @@ import {
   type Page,
   type PayoutInput,
   type PayoutRow,
+  type ProviderBalanceRow,
   type PromoteAdminInput,
   type SettingsUpdateInput,
   type SettingsView,
@@ -43,7 +46,15 @@ import type { Env } from '../config/env';
 import { EmailService } from '../email/email.service';
 import { Prisma } from '../generated/prisma/client';
 import { MISMATCH_REASON, PaymentsService } from '../payments/payments.service';
+import {
+  formatMicroUsd,
+  formatRate,
+  microUsdToFcfa,
+  toMicroUsd,
+} from '../billing/usd';
+import { FEE_DEVIATION_KEY } from '../payments/payments.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProviderLedgerService } from '../provider-balance/provider-ledger.service';
 import {
   SETTING_DEFAULTS,
   SettingsService,
@@ -80,6 +91,7 @@ export class AdminOpsService {
     private readonly payments: PaymentsService,
     private readonly audit: AuditService,
     private readonly email: EmailService,
+    private readonly providerLedger: ProviderLedgerService,
   ) {}
 
   // ───────────── Pilotage ─────────────
@@ -202,32 +214,19 @@ export class AdminOpsService {
     const pay = (s: string) => payByStatus.find((p) => p.status === s);
     const volume = payByStatus.reduce((n, p) => n + (p._sum.amount ?? 0), 0);
 
-    // Estimation du solde Higgsfield : recharges saisies moins le coût fournisseur des générations non échouées.
-    const billed = await this.prisma.generation.findMany({
-      where: { status: { in: ['SUBMITTED', 'PROCESSING', 'COMPLETED'] } },
-      select: {
-        billableSeconds: true,
-        product: {
-          select: {
-            billingUnit: true,
-            providerCostUsdPerUnit: true,
-            billableMultiplier: true,
-          },
-        },
-      },
-    });
-    const consumedUsd = billed.reduce((sum, g) => {
-      const units =
-        g.product.billingUnit === 'SECOND' ? (g.billableSeconds ?? 0) : 1;
-      return (
-        sum +
-        g.product.providerCostUsdPerUnit.toNumber() *
-          units *
-          g.product.billableMultiplier
-      );
-    }, 0);
+    // Solde fournisseur : lu dans le JOURNAL (somme des mouvements), jamais recalculé depuis les tarifs du
+    // moment — sinon un changement de tarif réécrirait l'historique de consommation, donc le solde estimé.
+    const [balanceMicroUsd, consumedMicroUsd, ledgerMovements] =
+      await Promise.all([
+        this.providerLedger.balanceMicroUsd(),
+        this.providerLedger.spentSince(new Date(0)),
+        this.prisma.providerLedger.count(),
+      ]);
+    const usd = (micro: bigint) => Number(formatMicroUsd(micro, 2));
+    const consumedUsd = usd(consumedMicroUsd);
     const topUpsUsd = topUps._sum.amountUsd?.toNumber() ?? 0;
-    const known = topUps._count > 0;
+    // « Connu » dès qu'un mouvement existe : une recharge, un calibrage ou un ajustement suffit à situer le solde.
+    const known = topUps._count > 0 || ledgerMovements > 0;
 
     const stats: AdminStats = {
       periodDays: days,
@@ -268,8 +267,8 @@ export class AdminOpsService {
       providerBalance: {
         known,
         topUpsUsd,
-        estimatedConsumedUsd: Math.round(consumedUsd * 100) / 100,
-        estimatedBalanceUsd: Math.round((topUpsUsd - consumedUsd) * 100) / 100,
+        estimatedConsumedUsd: consumedUsd,
+        estimatedBalanceUsd: usd(balanceMicroUsd),
       },
       series: { revenue: revenueSeries, signups: signupSeries },
       alerts: [],
@@ -319,6 +318,24 @@ export class AdminOpsService {
         href: '/admin/generations?status=FAILED',
       });
     }
+    // Verrou posé automatiquement quand le fournisseur a répondu « solde épuisé » (403 not_enough_credits) :
+    // aucune création n'est acceptée tant qu'il tient. Il se lève dès qu'une soumission repasse.
+    const outOfCredits = await this.prisma.setting.findUnique({
+      where: { key: 'providerOutOfCreditsAt' },
+    });
+    if (typeof outOfCredits?.value === 'string' && outOfCredits.value) {
+      const since = new Date(outOfCredits.value);
+      alerts.push({
+        key: 'provider-out-of-credits',
+        level: 'critical',
+        message: `Le fournisseur de génération a refusé une création pour solde épuisé${
+          Number.isNaN(since.getTime())
+            ? ''
+            : ` (depuis le ${since.toLocaleString('fr-FR')})`
+        }. Les nouvelles créations sont bloquées : rechargez Higgsfield, puis saisissez la recharge.`,
+        href: '/admin/finances',
+      });
+    }
     if (
       stats.providerBalance.known &&
       stats.providerBalance.estimatedBalanceUsd < balanceAlert
@@ -329,6 +346,37 @@ export class AdminOpsService {
         message: `Solde Higgsfield estimé bas : ${stats.providerBalance.estimatedBalanceUsd} $ (seuil ${balanceAlert} $). Rechargez puis saisissez la recharge.`,
         href: '/admin/finances',
       });
+    }
+    // Frais d'encaissement observés au-dessus de ce qu'on attendait : la grille retenue est fausse, et
+    // tout le plancher de valeur du crédit en dépend.
+    const feeDeviation = await this.prisma.setting.findUnique({
+      where: { key: FEE_DEVIATION_KEY },
+    });
+    if (typeof feeDeviation?.value === 'string' && feeDeviation.value) {
+      const d = parseFeeDeviation(feeDeviation.value);
+      if (d) {
+        alerts.push({
+          key: 'fee-deviation',
+          level: 'critical',
+          message: `Frais d'encaissement plus élevés que prévu sur ${d.country} · ${d.method} : ${d.observedPercent} % observés contre ${d.expectedPercent} % attendus (+${d.deviationPoints} point). Relevez la grille du compte chez l'encaisseur et corrigez le palier.`,
+          href: '/admin/configuration',
+        });
+      }
+    }
+    // Un modèle dont le fournisseur refuse les paramètres : le catalogue n'est pas à jour.
+    const rejection = await this.prisma.setting.findUnique({
+      where: { key: 'lastModelRejection' },
+    });
+    if (typeof rejection?.value === 'string' && rejection.value) {
+      const r = parseModelRejection(rejection.value);
+      if (r) {
+        alerts.push({
+          key: 'model-rejection',
+          level: 'critical',
+          message: `Le fournisseur a refusé les paramètres du modèle ${r.slug} : ${r.message}. Testez le modèle et corrigez son schéma — il n'a PAS été désactivé automatiquement.`,
+          href: '/admin/configuration',
+        });
+      }
     }
     if (maintenance) {
       alerts.push({
@@ -715,36 +763,50 @@ export class AdminOpsService {
     to?: string;
   }): Promise<FinanceSummary> {
     const { from, end } = range(q, 30);
-    const [pay, sold, reserved, refunded, topUps, payouts] = await Promise.all([
-      this.prisma.payment.aggregate({
-        where: { status: 'SUCCESS', creditedAt: { gte: from, lt: end } },
-        _sum: { amount: true },
-        _count: true,
-      }),
-      this.prisma.creditLedger.aggregate({
-        where: {
-          type: { in: ['PURCHASE', 'FIRST_PURCHASE_BONUS'] },
-          createdAt: { gte: from, lt: end },
-        },
-        _sum: { amount: true },
-      }),
-      this.prisma.creditLedger.aggregate({
-        where: { type: 'RESERVE', createdAt: { gte: from, lt: end } },
-        _sum: { amount: true },
-      }),
-      this.prisma.creditLedger.aggregate({
-        where: { type: 'RELEASE', createdAt: { gte: from, lt: end } },
-        _sum: { amount: true },
-      }),
-      this.prisma.providerTopUp.aggregate({
-        where: { createdAt: { gte: from, lt: end } },
-        _sum: { amountUsd: true, amountXaf: true },
-      }),
-      this.prisma.payoutRecord.aggregate({
-        where: { date: { gte: from, lt: end } },
-        _sum: { amountXaf: true, commissionXaf: true },
-      }),
-    ]);
+    const [pay, sold, reserved, refunded, topUps, payouts, bonus, rate] =
+      await Promise.all([
+        this.prisma.payment.aggregate({
+          where: { status: 'SUCCESS', creditedAt: { gte: from, lt: end } },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        this.prisma.creditLedger.aggregate({
+          where: {
+            type: { in: ['PURCHASE', 'FIRST_PURCHASE_BONUS'] },
+            createdAt: { gte: from, lt: end },
+          },
+          _sum: { amount: true },
+        }),
+        this.prisma.creditLedger.aggregate({
+          where: { type: 'RESERVE', createdAt: { gte: from, lt: end } },
+          _sum: { amount: true },
+        }),
+        this.prisma.creditLedger.aggregate({
+          where: { type: 'RELEASE', createdAt: { gte: from, lt: end } },
+          _sum: { amount: true },
+        }),
+        this.prisma.providerTopUp.aggregate({
+          where: { createdAt: { gte: from, lt: end } },
+          _sum: { amountUsd: true, amountXaf: true },
+        }),
+        this.prisma.payoutRecord.aggregate({
+          where: { date: { gte: from, lt: end } },
+          _sum: { amountXaf: true, commissionXaf: true },
+        }),
+        // Crédits offerts : ils ne rapportent rien mais consommeront du solde fournisseur.
+        this.prisma.creditLedger.aggregate({
+          where: {
+            type: 'FIRST_PURCHASE_BONUS',
+            createdAt: { gte: from, lt: end },
+          },
+          _sum: { amount: true },
+        }),
+        this.providerLedger.pricingRate(),
+      ]);
+    const collected = pay._sum.amount ?? 0;
+    const bonusCredits = bonus._sum.amount ?? 0;
+    // Coût du bonus : les crédits offerts valorisés au coût fournisseur d'un crédit, au taux sortant retenu.
+    const bonusCostFcfa = await this.bonusCost(bonusCredits, rate.rate);
     return {
       from: from.toISOString().slice(0, 10),
       to: new Date(end.getTime() - DAY).toISOString().slice(0, 10),
@@ -760,54 +822,119 @@ export class AdminOpsService {
       topUpsXaf: topUps._sum.amountXaf ?? 0,
       payoutsXaf: payouts._sum.amountXaf ?? 0,
       payoutCommissionXaf: payouts._sum.commissionXaf ?? 0,
+      bonusCreditsGranted: bonusCredits,
+      bonusCostFcfa,
+      bonusCostPercentOfCollected:
+        collected > 0 ? Math.round((bonusCostFcfa / collected) * 1000) / 10 : 0,
     };
+  }
+
+  /**
+   * Coût fournisseur de crédits offerts, en FCFA : les crédits valorisés au coût d'un crédit chez le
+   * fournisseur (réglage `hfCostFcfaPerCredit`, en dollars via le taux sortant retenu). Arrondi au-dessus.
+   */
+  private async bonusCost(credits: number, rate: bigint): Promise<number> {
+    if (credits <= 0) return 0;
+    const fcfaPerCredit = await this.settings.get('hfCostFcfaPerCredit');
+    // Le réglage est déjà en FCFA de coût fournisseur ; on le réévalue au taux retenu par rapport au taux
+    // de référence des réglages, pour que le chiffre suive le taux réellement constaté.
+    const referenceRate = await this.settings.get('usdToXafRate');
+    const micro = toMicroUsd(
+      (
+        Math.ceil(credits * Number(fcfaPerCredit) * 1e6) /
+        1e6 /
+        Number(referenceRate)
+      ).toFixed(6),
+    );
+    return microUsdToFcfa(micro, rate);
   }
 
   async listTopUps(): Promise<TopUpRow[]> {
     const rows = await this.prisma.providerTopUp.findMany({
-      orderBy: { createdAt: 'desc' },
+      orderBy: { occurredAt: 'desc' },
       take: 100,
     });
     return rows.map((r) => ({
       id: r.id,
-      amountUsd: r.amountUsd.toNumber(),
-      amountXaf: r.amountXaf,
-      fxRate: r.fxRate.toNumber(),
+      receivedUsd: r.amountUsd.toString(),
+      netWithdrawnXaf: r.netWithdrawnXaf ?? r.saspayWithdrawnXaf,
+      cardAmountXaf: r.amountXaf,
+      // Toujours 4 décimales, comme le taux de tarification : un même taux ne s'affiche pas de deux façons.
+      rOut: r.rOut?.toFixed(4) ?? null,
+      measured: r.measured,
+      rateAppliedAt: r.appliedToPricingAt?.toISOString() ?? null,
+      occurredAt: r.occurredAt.toISOString(),
       note: r.note,
       createdAt: r.createdAt.toISOString(),
     }));
   }
 
+  /**
+   * Saisie d'une recharge. Passe par le journal du solde fournisseur, jamais directement par la table : le
+   * mouvement en dollars et la ligne de recharge s'écrivent ensemble, avec `r_out` figé.
+   *
+   * Renvoie son identifiant et le taux sortant mesuré, SANS l'appliquer à la grille :
+   * l'administration en demande l'aperçu, puis l'applique si elle le confirme (T5).
+   */
   async addTopUp(
     adminId: string,
     input: TopUpInput,
-    ip?: string,
-  ): Promise<void> {
-    const fxRate =
-      Math.round((input.amountXaf / input.amountUsd) * 10_000) / 10_000;
-    await this.prisma.$transaction(async (tx) => {
-      const row = await tx.providerTopUp.create({
-        data: {
-          amountUsd: input.amountUsd,
-          amountXaf: input.amountXaf,
-          fxRate,
-          note: input.note,
-          createdById: adminId,
-        },
-      });
-      await this.audit.log(
-        {
-          actorId: adminId,
-          action: 'finance.topup',
-          entityType: 'ProviderTopUp',
-          entityId: row.id,
-          after: { amountUsd: input.amountUsd, amountXaf: input.amountXaf },
-          reason: input.note ?? 'Recharge Higgsfield',
-          ip,
-        },
-        tx,
-      );
+  ): Promise<{ id: string; rOut: string }> {
+    return this.providerLedger.recordTopUp({
+      netWithdrawnXaf: input.netWithdrawnXaf,
+      receivedUsd: input.receivedUsd,
+      cardAmountXaf: input.cardAmountXaf,
+      steps: input.steps,
+      occurredAt: input.occurredAt ? new Date(input.occurredAt) : undefined,
+      note: input.note,
+      adminId,
     });
+  }
+
+  async listCalibrations(): Promise<CalibrationRow[]> {
+    const rows = await this.prisma.providerBalanceCalibration.findMany({
+      orderBy: { readAt: 'desc' },
+      take: 100,
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      readUsd: formatMicroUsd(r.readMicroUsd),
+      estimatedUsd: formatMicroUsd(r.estimatedMicroUsd),
+      deltaUsd: formatMicroUsd(r.deltaMicroUsd),
+      readAt: r.readAt.toISOString(),
+      note: r.note,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  }
+
+  /** Recalage du solde sur la valeur lue dans la console du fournisseur (seule mesure vraie). */
+  async addCalibration(
+    adminId: string,
+    input: CalibrationInput,
+  ): Promise<{ deltaUsd: string; estimatedUsd: string }> {
+    const out = await this.providerLedger.calibrate({
+      readUsd: input.readUsd,
+      readAt: input.readAt ? new Date(input.readAt) : undefined,
+      note: input.note,
+      adminId,
+    });
+    return { deltaUsd: out.deltaUsd, estimatedUsd: out.estimatedUsd };
+  }
+
+  /** Solde prépayé du fournisseur : ce que le journal en sait, et le taux retenu pour tarifer. */
+  async providerBalance(): Promise<ProviderBalanceRow> {
+    const [view, rate] = await Promise.all([
+      this.providerLedger.view(),
+      this.providerLedger.pricingRate(),
+    ]);
+    return {
+      balanceUsd: view.balanceUsd,
+      reservedUsd: formatMicroUsd(view.reservedMicroUsd),
+      pricingRate: formatRate(rate.rate),
+      measured: rate.measured && view.measured,
+      lastCalibrationAt: view.lastCalibration?.readAt.toISOString() ?? null,
+      lastCalibrationDeltaUsd: view.lastCalibration?.deltaUsd ?? null,
+    };
   }
 
   async listPayouts(): Promise<PayoutRow[]> {
@@ -909,6 +1036,8 @@ export class AdminOpsService {
         createdAt: true,
         user: { select: { email: true } },
         product: { select: { name: true } },
+        model: { select: { name: true } },
+        modelSlug: true,
         preset: { select: { name: true } },
       },
     });
@@ -916,7 +1045,7 @@ export class AdminOpsService {
       rows.map((g) => ({
         id: g.id,
         user: { id: g.userId, email: g.user.email },
-        product: g.product.name,
+        product: g.model?.name ?? g.product?.name ?? g.modelSlug ?? '—',
         preset: g.preset?.name ?? null,
         status: g.status,
         creditsCost: g.creditsCost,
@@ -1410,5 +1539,50 @@ function paymentIssue(
       return 'Réponse illisible du fournisseur à la dernière tentative';
     default:
       return null;
+  }
+}
+
+/** Dernier écart de frais, tel que PaymentsService l'enregistre. null si la trace est illisible. */
+function parseFeeDeviation(raw: string): {
+  country: string;
+  method: string;
+  observedPercent: string;
+  expectedPercent: string;
+  deviationPoints: number;
+} | null {
+  try {
+    const d = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof d.country !== 'string' || typeof d.method !== 'string') {
+      return null;
+    }
+    return {
+      country: d.country,
+      method: d.method,
+      observedPercent:
+        typeof d.observedPercent === 'string' ? d.observedPercent : '?',
+      expectedPercent:
+        typeof d.expectedPercent === 'string' ? d.expectedPercent : '?',
+      deviationPoints:
+        typeof d.deviationPoints === 'number' ? d.deviationPoints : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Dernier refus de paramètres par le fournisseur, tel que CreationsService l'enregistre. */
+function parseModelRejection(
+  raw: string,
+): { slug: string; message: string } | null {
+  try {
+    const d = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof d.slug !== 'string') return null;
+    return {
+      slug: d.slug,
+      message:
+        typeof d.message === 'string' ? d.message : 'raison non précisée',
+    };
+  } catch {
+    return null;
   }
 }

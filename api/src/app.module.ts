@@ -28,6 +28,9 @@ import {
   isQueueEnabled,
   QueueModule,
 } from './queue/queue.module';
+import { CreditPricingModule } from './pricing/credit-pricing.module';
+import { PricingModule } from './pricing/pricing.module';
+import { ProviderBalanceModule } from './provider-balance/provider-balance.module';
 import { SettingsModule } from './settings/settings.module';
 import { SetupModule } from './setup/setup.module';
 import { StorageModule } from './storage/storage.module';
@@ -78,6 +81,9 @@ const emailTracker = (req: Record<string, any>): Promise<string> => {
     }),
     PrismaModule,
     SettingsModule,
+    PricingModule,
+    CreditPricingModule,
+    ProviderBalanceModule,
     AuditModule,
     CreditsModule,
     NotificationsModule,

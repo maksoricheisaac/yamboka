@@ -68,3 +68,20 @@ chaque redémarrage de sa version gratuite : mettre à jour l'URL chez SasPay.
 - Congo-Brazzaville (`mtn_cg`, `airtel_cg`) : le guide du 1er novembre ne les liste pas, le code les utilise depuis le lancement.
   À confirmer par un paiement réel.
 - Les frais affichés dans le catalogue sont **indicatifs** ; le coût réel vient de `GET /pricing/my-rates/` et du contrat marchand.
+
+## Frais d'encaissement : le pourcentage porte sur le montant DÉBITÉ
+
+Mesure du 1er novembre 2026 (MTN Congo, palier 5,7 % `ADD_ON`) : montant envoyé 473 F, frais facturés 28 F,
+client débité **501 F** pour un prix affiché à 500 F. Appliquer 5,7 % au montant envoyé donnait 27 F, soit une
+sous-estimation d'un franc — le client payait un franc de trop. 501 × 5,7 % = 28,56 → 28, et 501 − 28 = 473 :
+le pourcentage porte sur le montant débité.
+
+`fees.ts` calcule donc `frais = A × p ÷ (1 − p) + fixe`, arrondi au-dessus. La prévision MAJORE toujours les
+frais réels (29 prévus contre 28 facturés sur la mesure), donc le client ne paie jamais plus que le prix
+affiché ; Yamboka absorbe environ 2 F de plus pour 500 F. Conséquence sur la grille : un pack à 5 000 F
+rapporte 4 715 F nets, contre 4 730 estimés auparavant.
+
+SasPay n'expose **aucun calcul de frais exact** avant paiement : seulement la grille `/pricing/my-rates/`
+(dont la formule n'est pas documentée) et, après coup, `client_fee`, `debited_amount` et le bloc `amounts` de
+la transaction. L'écart entre frais prévus et frais constatés doit donc être surveillé sur chaque paiement
+(alerte au-delà de 0,5 point) : c'est le prochain lot.

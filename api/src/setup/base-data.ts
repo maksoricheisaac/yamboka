@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../generated/prisma/client';
 import { seedCountryCatalog } from '../payments/catalog/catalog-seed';
+import { seedModelCatalog } from './model-catalog-data';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -36,24 +37,6 @@ const PACKS = [
     publicVisible: true,
   },
 ];
-
-/**
- * Modèle vidéo par défaut (suivi des coûts dans l'administration) : Wan 3.0 Standard, image → vidéo,
- * 0,05 $ par seconde en 480p (prix vérifié par estimation officielle et essai réel, 5 nov. 2026).
- */
-const DEFAULT_MODEL = {
-  code: 'DEFAULT_VIDEO',
-  name: 'Wan 3.0 · image → vidéo',
-  providerModel: 'alibaba/wan-3.0/image-to-video',
-  resolution: null,
-  usdPerSecond: '0.05',
-  usdPerSecondWithAudio: null,
-  minSeconds: 2,
-  maxSeconds: 30,
-  isDefault: true,
-  active: true,
-  sortOrder: 0,
-} as const;
 
 /**
  * Produits vidéo : un par résolution. 1 crédit = 10 FCFA ; 4 / 8 / 16 crédits par seconde ; coût Higgsfield
@@ -229,11 +212,9 @@ export async function seedBaseData(db: Db): Promise<{
     });
   }
 
-  await db.modelPricing.upsert({
-    where: { code: DEFAULT_MODEL.code },
-    update: {},
-    create: DEFAULT_MODEL,
-  });
+  // Catalogue de modèles : source unique du slug, des paramètres et des tarifs (remplace ModelPricing,
+  // qui n'est plus lu nulle part).
+  await seedModelCatalog(db);
 
   for (const p of PRODUCTS) {
     await db.generationProduct.upsert({

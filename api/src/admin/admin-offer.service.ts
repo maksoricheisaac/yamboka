@@ -31,6 +31,8 @@ import type {
   GenerationProduct,
   Prisma,
 } from '../generated/prisma/client';
+import { ModelCatalogService } from '../generation/model-catalog.service';
+import { CreditPricingService } from '../pricing/credit-pricing.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Une offre publique : trois packs au maximum, une seule recommandée. */
@@ -43,7 +45,40 @@ export class AdminOfferService {
     private readonly catalog: CatalogService,
     private readonly audit: AuditService,
     private readonly site: PublicSiteService,
+    private readonly modelCatalog: ModelCatalogService,
+    private readonly creditPricing: CreditPricingService,
   ) {}
+
+  /**
+   * Plancher de crédits par seconde pour un modèle et une résolution : en dessous, la vidéo se vend sous
+   * son coût fournisseur. Calculé sans marge commerciale (le strict nécessaire pour ne pas perdre
+   * d'argent), avec la MÊME fonction que le devis. null quand le modèle ou son tarif est introuvable.
+   */
+  async floorCreditsPerUnit(
+    slug: string,
+    resolution: string | null,
+  ): Promise<number | null> {
+    try {
+      const model = await this.modelCatalog.bySlug(slug, {
+        requireActive: false,
+      });
+      const resolutionKey = this.modelCatalog.keyOfRole(model, 'RESOLUTION');
+      const priced = this.modelCatalog.defaultPriced(
+        model,
+        resolutionKey && resolution ? { [resolutionKey]: resolution } : {},
+      );
+      const [ctx, unit] = await Promise.all([
+        this.creditPricing.context(),
+        this.modelCatalog.costPerUnit(model, { priced, resolution }),
+      ]);
+      return this.creditPricing.floorCreditsPerUnit(
+        ctx,
+        unit.microUsdPerUnit * BigInt(unit.price.billableMultiplier),
+      );
+    } catch {
+      return null;
+    }
+  }
 
   /** Marge du pack sur chaque produit actif (référence : 10 s de vidéo, ou 1 image), et la pire. */
   private evaluate(
@@ -376,6 +411,24 @@ export class AdminOfferService {
       active: input.active ?? current.active,
       creditsPerUnit: input.creditsPerUnit ?? current.creditsPerUnit,
     };
+    // `creditsPerUnit` est une valeur DÉRIVÉE du coût fournisseur : une saisie manuelle est tolérée pour
+    // monter au-dessus du plancher, jamais pour descendre en dessous (ce serait vendre sous le coût).
+    if (
+      input.creditsPerUnit !== undefined &&
+      input.creditsPerUnit !== current.creditsPerUnit
+    ) {
+      const floor = await this.floorCreditsPerUnit(
+        current.providerModel,
+        current.resolution,
+      );
+      if (floor !== null && input.creditsPerUnit < floor) {
+        throw new UnprocessableEntityException({
+          code: 'BELOW_DERIVED_FLOOR',
+          message: `Valeur refusée : ${input.creditsPerUnit} crédit(s) par seconde est sous le plancher calculé (${floor}). Le tarif est dérivé du coût fournisseur ; pour le baisser, baissez le coût ou la marge dans la configuration des calculs.`,
+        });
+      }
+    }
+
     if (next.active && current.billingUnit !== 'SECOND') {
       throw new BadRequestException({
         code: 'PRODUCT_RETIRED',

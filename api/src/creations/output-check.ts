@@ -9,6 +9,8 @@ export type FailureCode =
   | 'FORMAT'
   | 'UNSUPPORTED'
   | 'PROVIDER'
+  /** Le compte prépayé du fournisseur est épuisé : rien ne passera tant qu'il n'est pas rechargé. */
+  | 'PROVIDER_CREDIT'
   | 'CANCELED';
 
 /** Résultat refusé : inexploitable, ou ne respectant pas la demande. Provoque l'échec et la restitution des crédits. */

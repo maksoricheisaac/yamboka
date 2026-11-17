@@ -10,5 +10,8 @@ coverage/
 tests/report/
 tests/results/
 
+# Réglages locaux de l'agent (propres à la machine, jamais partagés).
+.claude/
+
 .next-pwtmp/
 .next-check/

@@ -1,6 +1,7 @@
 import {
   Activity,
   Boxes,
+  Calculator,
   Clapperboard,
   Coins,
   History,
@@ -14,6 +15,7 @@ import {
   ShieldCheck,
   ScrollText,
   Settings,
+  SlidersHorizontal,
   Sparkles,
   Tags,
   Users,
@@ -98,11 +100,13 @@ export const ADMIN_NAV: NavGroup[] = [
       { title: "Paiements", href: "/admin/paiements", icon: CreditCard },
       { title: "Pays et paiements", href: "/admin/pays", icon: Globe },
       { title: "Synthèse financière", href: "/admin/finances", icon: LineChart },
+      { title: "Simulateur", href: "/admin/simulateur", icon: Calculator },
     ],
   },
   {
     label: "Configuration",
     items: [
+      { title: "Calculs et modèles", href: "/admin/configuration", icon: SlidersHorizontal },
       { title: "Paramètres", href: "/admin/parametres", icon: Settings },
       { title: "Textes légaux", href: "/admin/textes-legaux", icon: FileText },
       { title: "Administrateurs", href: "/admin/administrateurs", icon: ShieldCheck },

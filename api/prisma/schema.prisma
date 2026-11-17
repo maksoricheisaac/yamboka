@@ -181,20 +181,22 @@ model User {
   emailTokens      EmailToken[]
   legalAcceptances LegalAcceptance[]
   lots             CreditLot[]
-  ledger           CreditLedger[]     @relation("LedgerOwner")
-  ledgerCreated    CreditLedger[]     @relation("LedgerCreator")
+  ledger           CreditLedger[]               @relation("LedgerOwner")
+  ledgerCreated    CreditLedger[]               @relation("LedgerCreator")
   payments         Payment[]
-  paymentsSettled  Payment[]          @relation("PaymentCreditedBy")
+  paymentsSettled  Payment[]                    @relation("PaymentCreditedBy")
   paymentChecks    PaymentCheck[]
   generations      Generation[]
+  quotes           CreationQuote[]
   mediaFiles       MediaFile[]
-  reportsFiled     Report[]           @relation("ReportReporter")
-  reportsHandled   Report[]           @relation("ReportHandler")
-  moderationTarget ModerationAction[] @relation("ModerationTarget")
-  moderationActor  ModerationAction[] @relation("ModerationActor")
+  reportsFiled     Report[]                     @relation("ReportReporter")
+  reportsHandled   Report[]                     @relation("ReportHandler")
+  moderationTarget ModerationAction[]           @relation("ModerationTarget")
+  moderationActor  ModerationAction[]           @relation("ModerationActor")
   notifications    Notification[]
   auditLogs        AuditLog[]
   topUps           ProviderTopUp[]
+  calibrations     ProviderBalanceCalibration[]
   payouts          PayoutRecord[]
   settingsUpdated  Setting[]
 
@@ -490,6 +492,13 @@ model Payment {
   /// Constatés par la vérification du fournisseur (frais client, montant débité).
   clientFee                 Int?
   debitedAmount             Int?
+  /// Net RÉELLEMENT reçu sur le compte de l'encaisseur, en FCFA : prix affiché moins les frais observés.
+  /// C'est lui, et non le prix affiché, qui vaut quelque chose pour la plateforme.
+  netReceived               Int?
+  /// Frais observés et frais attendus, en % du prix affiché. Un écart de plus de 0,5 point déclenche une
+  /// alerte : la grille du fournisseur a changé, ou le palier appliqué n'est pas celui qu'on croyait.
+  observedFeePercent        Decimal?       @db.Decimal(7, 4)
+  expectedFeePercent        Decimal?       @db.Decimal(7, 4)
   /// Pourcentage de bonus de premier achat promis au moment de la création (figé).
   firstPurchaseBonusPercent Int?
   status                    PaymentStatus  @default(INITIATED)
@@ -520,6 +529,8 @@ model Payment {
   @@index([createdAt, id])
   @@index([gateway, createdAt])
   @@index([country, createdAt])
+  // Recalibrage des frais entrants : tous les paiements crédités d'un (pays, moyen de paiement).
+  @@index([country, methodCode, creditedAt])
   @@index([methodCode])
   /// Repérage immédiat des paiements confirmés non crédités (anomalie à régulariser).
   @@index([status, creditedAt])
@@ -696,7 +707,14 @@ model CreditLedger {
 model Generation {
   id                String           @id @default(uuid()) @db.Uuid
   userId            String           @db.Uuid
-  productId         String           @db.Uuid
+  /// Hérité : produit de l'ancien catalogue. Conservé pour l'historique, plus jamais lu pour une
+  /// nouvelle création (le catalogue GenerationModel fait foi). Nullable depuis le catalogue unique.
+  productId         String?          @db.Uuid
+  /// Modèle du catalogue utilisé, et son slug FIGÉ au moment de la soumission (le catalogue peut changer).
+  modelId           String?          @db.Uuid
+  modelSlug         String?
+  /// `input` EXACT envoyé au fournisseur, figé (aucun secret : les identifiants ne sont pas dans l'input).
+  providerInput     Json?
   presetId          String?          @db.Uuid
   status            GenerationStatus @default(PENDING)
   prompt            String?
@@ -704,6 +722,18 @@ model Generation {
   options           Json?
   billableSeconds   Int?
   creditsCost       Int
+  /// Coût fournisseur FIGÉ à la création, en micro-dollars. Jamais recalculé : un changement de tarif ne
+  /// réécrit pas ce qui a été engagé. null = création antérieure au journal en dollars.
+  costMicroUsd      BigInt?
+  /// Taux sortant (FCFA/$) retenu au moment de la création, figé.
+  pricingRate       Decimal?         @db.Decimal(12, 4)
+  /// Marge commerciale appliquée (%), figée.
+  marginPercent     Decimal?         @db.Decimal(7, 4)
+  /// Valeur FCFA de la création au moment où elle a été faite (coût × taux × marge), figée.
+  priceFcfa         Int?
+  /// Lignes de tarif et de paramètres utilisées (sans clé étrangère : ces tables sont en ajout seul).
+  modelPriceId      String?          @db.Uuid
+  pricingConfigId   String?          @db.Uuid
   providerRequestId String?
   providerStatusUrl String?
   errorMessage      String?
@@ -725,7 +755,8 @@ model Generation {
   completedAt       DateTime?
 
   user        User               @relation(fields: [userId], references: [id], onDelete: Restrict)
-  product     GenerationProduct  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product     GenerationProduct? @relation(fields: [productId], references: [id], onDelete: Restrict)
+  model       GenerationModel?   @relation(fields: [modelId], references: [id], onDelete: Restrict)
   preset      Preset?            @relation(fields: [presetId], references: [id], onDelete: SetNull)
   media       MediaFile[]
   ledger      CreditLedger[]
@@ -808,6 +839,153 @@ model ModerationAction {
 
 // ───────────── Finances ─────────────
 
+enum ModelPriceSource {
+  /// Saisi par un administrateur (relevé de la grille publique du fournisseur, essai réel).
+  MANUAL
+  /// Obtenu du point d'estimation du fournisseur (POST /estimate/{modèle}).
+  ESTIMATE
+}
+
+/**
+ * Paramètres de tarification, VERSIONNÉS : une ligne par changement, jamais de mise à jour. Le prix d'une
+ * génération se calcule avec la ligne en vigueur à sa date, donc un changement ne réécrit jamais le passé.
+ */
+model PricingConfig {
+  id                    String   @id @default(uuid()) @db.Uuid
+  /// Marge commerciale appliquée au coût fournisseur, en % « humain » (10 = 10 %).
+  marginPercent         Decimal  @db.Decimal(7, 4)
+  /// Marge de sécurité sur le change ajoutée au taux sortant mesuré, en %.
+  fxBufferPercent       Decimal  @db.Decimal(7, 4)
+  /// Taux carte FCFA/$ et perte de circuit estimée : servent SEULEMENT tant qu'aucune recharge n'est mesurée.
+  cardFcfaPerUsd        Decimal  @db.Decimal(12, 4)
+  circuitLossPercent    Decimal  @db.Decimal(7, 4)
+  /// Dollars gardés en permanence sur le compte fournisseur, en micro-dollars (jamais engagés).
+  safetyMarginMicroUsd  BigInt
+  /// Plafonds quotidiens de dépense fournisseur, en micro-dollars : tous utilisateurs, puis par utilisateur.
+  dailyCapMicroUsd      BigInt
+  dailyUserCapMicroUsd  BigInt
+  /// Part du bonus de premier achat comptée dans la valeur d'un crédit, en % : 100 au lancement (prudent, le
+  /// bonus compte sur chaque crédit), à abaisser plus tard vers la part réellement observée sur les ventes.
+  bonusValuationPercent Decimal  @default(100) @db.Decimal(7, 4)
+  /// Frais de chaque étape du circuit de recharge, en % : retrait SasPay, MoMo → carte, recharge
+  /// fournisseur. PROVISOIRES tant que `provisional` est vrai : une fois r_out mesuré, c'est lui qui fait foi.
+  withdrawalFeePercent  Decimal  @default(1) @db.Decimal(7, 4)
+  momoToCardFeePercent  Decimal  @default(0) @db.Decimal(7, 4)
+  topUpFeePercent       Decimal  @default(0) @db.Decimal(7, 4)
+  /// Marge nette minimale acceptée, en % : en dessous, l'application exige une confirmation renforcée.
+  minMarginPercent      Decimal  @default(5) @db.Decimal(7, 4)
+  /// Achat minimum sur mesure, en FCFA : en dessous, la marge nette ne serait plus positive.
+  minPurchaseXaf        Int      @default(500)
+  /// Durée de validité d'un devis déjà affiché, en secondes.
+  quoteValiditySeconds  Int      @default(600)
+  /// Version dont celle-ci est le retour en arrière, ou null (un retour crée une version, jamais de suppression).
+  revertedFromId        String?  @db.Uuid
+  /// Minimum de retrait imposé par l'encaisseur, en FCFA : les recharges se font par lots d'au moins ce montant.
+  minWithdrawalXaf      Int
+  /// true = au moins une valeur n'est pas mesurée. L'administration l'affiche, et la production reste à valider.
+  provisional           Boolean  @default(true)
+  /// Date d'entrée en vigueur : la ligne retenue est la plus récente dont la date est passée.
+  effectiveFrom         DateTime
+  note                  String?
+  createdById           String?  @db.Uuid
+  createdAt             DateTime @default(now())
+
+  @@index([effectiveFrom])
+}
+
+/**
+ * Tarif fournisseur d'un modèle à une date, en ajout seul : un changement AJOUTE une ligne, on ne modifie
+ * jamais l'ancienne. Le prix est en micro-dollars entiers par unité facturée (seconde pour la vidéo).
+ */
+model ModelPrice {
+  id                 String           @id @default(uuid()) @db.Uuid
+  /// Chemin du modèle chez le fournisseur (= GenerationProduct.providerModel).
+  providerModel      String
+  /// Résolution facturée séparément (« 480p »), ou null si le tarif ne dépend pas de la résolution.
+  resolution         String?
+  /// Format facturé séparément, ou null (Wan 3.0 : le format ne change pas le prix).
+  format             String?
+  billingUnit        BillingUnit      @default(SECOND)
+  /// Prix fournisseur par unité facturée, en micro-dollars (0,05 $/s → 50000).
+  microUsdPerUnit    BigInt
+  /// Unités facturées par unité produite (une sortie + une entrée = 2).
+  billableMultiplier Int              @default(1)
+  minSeconds         Int?
+  maxSeconds         Int?
+  source             ModelPriceSource
+  effectiveFrom      DateTime
+  note               String?
+  createdById        String?          @db.Uuid
+  createdAt          DateTime         @default(now())
+
+  @@index([providerModel, resolution, effectiveFrom])
+  @@index([effectiveFrom])
+}
+
+/// Nature d'un mouvement du solde prépayé du fournisseur de génération. Le solde n'est JAMAIS écrit :
+/// il est toujours la somme des mouvements (RG-02 appliqué aux dollars).
+enum ProviderLedgerType {
+  /// Recharge du compte fournisseur (+). Porte le taux r_out mesuré pour cette recharge.
+  TOPUP
+  /// Réservation à la soumission d'une génération (−) : l'argent est engagé avant d'être dépensé.
+  GENERATION_RESERVE
+  /// Génération réussie : la réservation devient définitive. Montant 0 (le débit a eu lieu à la réservation).
+  GENERATION_CAPTURE
+  /// Génération échouée : la réservation est restituée (+). Le fournisseur ne facture pas un échec.
+  GENERATION_RELEASE
+  /// Recalage sur le solde lu dans la console du fournisseur (±) : seule écriture qui corrige une dérive.
+  CALIBRATION
+  /// Correction manuelle motivée (±), hors recalage.
+  ADJUSTMENT
+}
+
+/// Journal du solde prépayé du fournisseur, en ajout seul, en MICRO-dollars entiers (1 $ = 1 000 000).
+/// Volontairement sans clé étrangère entrante, comme CreditLedger : aucune table ne le référence.
+model ProviderLedger {
+  id             String             @id @default(uuid()) @db.Uuid
+  provider       String             @default("higgsfield")
+  type           ProviderLedgerType
+  /// Montant SIGNÉ en micro-dollars. Entier : aucun flottant ne touche l'argent.
+  amountMicroUsd BigInt
+  /// Référence déterministe et unique (« topup:<id> », « hfreserve:<generationId> », « calib:<id> ») :
+  /// un même événement rejoué n'écrit qu'un mouvement.
+  reference      String             @unique
+  generationId   String?            @db.Uuid
+  /// Recharge d'origine, pour un mouvement TOPUP (sans clé étrangère : ProviderLedger ne référence rien).
+  topUpId        String?            @db.Uuid
+  /// Taux FCFA/$ attaché au mouvement : r_out mesuré pour une recharge, r_pricing figé pour une génération.
+  fcfaPerUsd     Decimal?           @db.Decimal(12, 4)
+  note           String?
+  createdById    String?            @db.Uuid
+  createdAt      DateTime           @default(now())
+
+  @@index([provider, createdAt])
+  @@index([type, createdAt])
+  @@index([generationId])
+}
+
+/// Solde lu à la main dans la console du fournisseur (Billing) : la seule mesure vraie, l'API ne l'expose pas.
+/// On enregistre l'écart avec l'estimation au moment de la lecture ; le recalage est un mouvement CALIBRATION.
+model ProviderBalanceCalibration {
+  id                String   @id @default(uuid()) @db.Uuid
+  provider          String   @default("higgsfield")
+  /// Solde lu dans la console, en micro-dollars.
+  readMicroUsd      BigInt
+  /// Solde estimé par le journal à l'instant de la lecture (figé : jamais recalculé).
+  estimatedMicroUsd BigInt
+  /// readMicroUsd − estimatedMicroUsd : négatif = on a dépensé plus que ce que le journal savait.
+  deltaMicroUsd     BigInt
+  /// Date de la lecture dans la console, distincte de la date d'enregistrement.
+  readAt            DateTime @default(now())
+  note              String?
+  createdById       String   @db.Uuid
+  createdAt         DateTime @default(now())
+
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+}
+
+/// Recharge du compte fournisseur, avec le détail des frais de chaque étape (SasPay → MoMo → carte → dollars).
+/// C'est la seule source de `r_out` : FCFA NETS retirés de SasPay ÷ dollars arrivés chez le fournisseur.
 model ProviderTopUp {
   id                 String   @id @default(uuid()) @db.Uuid
   provider           String   @default("higgsfield")
@@ -818,13 +996,30 @@ model ProviderTopUp {
   saspayWithdrawnXaf Int?
   /// Taux effectif FCFA/$ constaté (calculé à la saisie).
   fxRate             Decimal  @db.Decimal(10, 4)
+  /// Dollars RÉELLEMENT arrivés chez le fournisseur, en micro-dollars entiers : source de vérité du calcul.
+  amountMicroUsd     BigInt?
+  /// FCFA NETS sortis du portefeuille SasPay (après frais de retrait) : numérateur de r_out.
+  netWithdrawnXaf    Int?
+  /// Frais étape par étape : [{ step, amountXaf, feeXaf, note }]. Saisi une fois, jamais réécrit.
+  feeSteps           Json?
+  /// r_out = netWithdrawnXaf ÷ (amountMicroUsd / 1e6), figé à la saisie et jamais recalculé.
+  rOut               Decimal? @db.Decimal(12, 4)
+  /// false = saisie incomplète (une étape estimée) : l'administration l'affiche « non mesuré » et ne s'y fie pas.
+  measured           Boolean  @default(false)
   /// Date de la recharge (saisie), distincte de la date d'enregistrement.
   occurredAt         DateTime @default(now())
+  /// Date à laquelle le taux mesuré de CETTE recharge a été appliqué à la grille, ou null s'il attend
+  /// encore la confirmation d'un administrateur. Tant qu'il attend, la grille garde le taux provisoire :
+  /// saisir une recharge ne change jamais un prix à l'insu de qui la saisit.
+  appliedToPricingAt DateTime?
   note               String?
   createdById        String   @db.Uuid
   createdAt          DateTime @default(now())
 
   createdBy User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([provider, occurredAt])
+  @@index([provider, appliedToPricingAt])
 }
 
 model PayoutRecord {
@@ -889,4 +1084,199 @@ model AuditLog {
   @@index([actorId, createdAt])
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+// ───────────── Catalogue de modèles ─────────────
+
+/// Mode d'un modèle de génération : ce qu'il prend en entrée. Le catalogue en gère plusieurs, mais seuls les
+/// modes effectivement implémentés côté parcours client peuvent être activés.
+enum GenerationMode {
+  /// Un texte seul produit la vidéo.
+  TEXT_TO_VIDEO
+  /// Une photo (première image) et un texte produisent la vidéo.
+  IMAGE_TO_VIDEO
+}
+
+/// Type d'une valeur de paramètre, pour valider ce que le client envoie.
+enum ModelParamType {
+  STRING
+  INTEGER
+  BOOLEAN
+  ENUM
+}
+
+/// Rôle d'un paramètre dans le calcul et dans le formulaire. Le serveur sait ainsi lequel porte la durée, la
+/// résolution, etc., sans connaître les noms exacts du fournisseur.
+enum ModelParamRole {
+  PROMPT
+  DURATION
+  RESOLUTION
+  ASPECT_RATIO
+  /// URL de l'image d'entrée, déposée par le serveur (modes image → vidéo). Jamais saisie par le client.
+  IMAGE_URL
+  OPTION
+}
+
+/// Qui décide de la valeur d'un paramètre.
+enum ModelParamExposure {
+  /// Le client choisit, dans les valeurs autorisées.
+  CLIENT
+  /// Valeur imposée par la configuration : une valeur envoyée par le client est refusée.
+  FIXED
+  /// Valeur par défaut envoyée au fournisseur, jamais montrée ni acceptée du client.
+  HIDDEN_DEFAULT
+}
+
+/// Comment une option payante modifie le tarif de base.
+enum ModelOptionPriceKind {
+  /// Supplément en micro-dollars, par unité facturée.
+  SURCHARGE
+  /// Multiplicateur du tarif, en points de base (10000 = ×1).
+  MULTIPLIER
+}
+
+/**
+ * Modèle du catalogue : tout ce que le serveur doit savoir pour appeler le fournisseur et facturer, SANS
+ * aucun nom de modèle en dur dans le code. Un appel fournisseur, c'est toujours (slug, input) : le slug est
+ * ici, l'`input` est reconstruit à partir de ModelParam. Les identifiants d'API viennent de l'environnement,
+ * jamais du catalogue.
+ */
+model GenerationModel {
+  id          String         @id @default(uuid()) @db.Uuid
+  /// Chemin exact chez le fournisseur (« alibaba/wan-3.0-prime/text-to-video »).
+  slug        String         @unique
+  /// Nom affiché au client et à l'administration.
+  name        String
+  description String?
+  mode        GenerationMode @default(TEXT_TO_VIDEO)
+  /// Un modèle inactif est refusé immédiatement : aucun devis, aucune génération.
+  active      Boolean        @default(false)
+  /// Modèle retenu quand le client n'en choisit pas (un seul à la fois).
+  isDefault   Boolean        @default(false)
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  params      ModelParam[]
+  generations Generation[]
+
+  @@index([active, sortOrder])
+}
+
+/**
+ * Un paramètre de l'`input` envoyé au fournisseur : sa clé EXACTE, son type, son rôle, qui le choisit, les
+ * valeurs autorisées et s'il change le prix. Le serveur reconstruit l'`input` à partir de ces lignes et
+ * refuse toute clé ou valeur absente du catalogue.
+ */
+model ModelParam {
+  id            String             @id @default(uuid()) @db.Uuid
+  modelId       String             @db.Uuid
+  /// Clé exacte attendue par le fournisseur (« aspect_ratio », « generate_audio »).
+  key           String
+  /// Libellé montré au client dans le formulaire généré, ou null (la clé sert alors de libellé).
+  label         String?
+  type          ModelParamType
+  role          ModelParamRole
+  exposure      ModelParamExposure @default(CLIENT)
+  /// Valeurs autorisées : liste pour ENUM (["480p","720p"]), bornes pour INTEGER ({"min":2,"max":30}),
+  /// longueur maximale pour STRING ({"maxLength":600}). null = aucune contrainte au-delà du type.
+  allowedValues Json?
+  /// Valeur envoyée quand le client n'en fournit pas (obligatoire pour FIXED et HIDDEN_DEFAULT).
+  defaultValue  Json?
+  /// Vrai si la valeur de ce paramètre entre dans le calcul du coût fournisseur.
+  affectsPrice  Boolean            @default(false)
+  sortOrder     Int                @default(0)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  model GenerationModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([modelId, key])
+  @@index([modelId, sortOrder])
+}
+
+/**
+ * Règle de prix d'une option payante, en ajout seul comme ModelPrice : « generate_audio = true ajoute
+ * 0,01 $ par seconde », « draft = true multiplie par 0,5 ». Le coût d'une génération reçoit les options
+ * RÉELLEMENT envoyées, donc une option non choisie ne se facture pas.
+ */
+model ModelOptionPrice {
+  id              String               @id @default(uuid()) @db.Uuid
+  /// Slug du modèle concerné (= GenerationModel.slug), sans clé étrangère : table en ajout seul.
+  providerModel   String
+  /// Clé du paramètre concerné (= ModelParam.key).
+  paramKey        String
+  /// Valeur qui déclenche la règle, au format JSON (true, "draft", "1080p").
+  triggerValue    Json
+  kind            ModelOptionPriceKind
+  /// Supplément par unité facturée, en micro-dollars (kind = SURCHARGE).
+  microUsdPerUnit BigInt?
+  /// Multiplicateur en points de base, 10000 = ×1 (kind = MULTIPLIER).
+  multiplierBp    Int?
+  source          ModelPriceSource
+  effectiveFrom   DateTime
+  note            String?
+  createdById     String?              @db.Uuid
+  createdAt       DateTime             @default(now())
+
+  @@index([providerModel, paramKey, effectiveFrom])
+  @@index([effectiveFrom])
+}
+
+/**
+ * Relevé du prix annoncé par le fournisseur (POST /estimate) comparé au tarif configuré, en ajout seul.
+ * Au-delà de 5 % d'écart vers le haut, la tarification retient le PLUS ÉLEVÉ des deux pour les nouveaux
+ * devis et l'administration alerte : jamais d'application automatique d'un nouveau tarif.
+ */
+model ModelEstimateCheck {
+  id                        String   @id @default(uuid()) @db.Uuid
+  /// Slug du modèle (= GenerationModel.slug).
+  providerModel             String
+  resolution                String?
+  /// Options exactes envoyées à /estimate (celles qui changent le prix).
+  options                   Json
+  /// Tarif configuré au moment du relevé, en micro-dollars par unité facturée.
+  configuredMicroUsdPerUnit BigInt
+  /// Tarif observé, ramené à l'unité facturée.
+  observedMicroUsdPerUnit   BigInt
+  /// Écart relatif en % arrondi au-dessus (positif = le fournisseur est plus cher que la config).
+  deviationPercent          Int
+  /// Unités facturées de la demande estimée (sert à ramener le prix total à l'unité).
+  units                     Int
+  /// Réponse brute du fournisseur : sa forme n'est pas garantie par la documentation.
+  raw                       Json?
+  note                      String?
+  createdById               String?  @db.Uuid
+  checkedAt                 DateTime @default(now())
+
+  @@index([providerModel, resolution, checkedAt])
+  @@index([checkedAt])
+}
+
+/**
+ * Devis affiché au client, gardé côté serveur pour un temps réglable (`quoteValiditySeconds`, 10 min par
+ * défaut). Appliquer une nouvelle configuration prend effet tout de suite sur les NOUVEAUX devis ; un devis
+ * déjà affiché reste honoré pendant sa validité — à la condition absolue qu'il couvre encore le coût
+ * fournisseur, la règle « jamais sous le coût » passant avant la promesse commerciale.
+ */
+model CreationQuote {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  /// Slug du modèle et paramètres EXACTS : un devis ne vaut que pour ces paramètres.
+  modelSlug       String
+  resolution      String?
+  durationSeconds Int
+  options         Json
+  credits         Int
+  costMicroUsd    BigInt
+  pricingConfigId String?   @db.Uuid
+  expiresAt       DateTime
+  /// Date d'utilisation : un devis ne sert qu'une fois.
+  usedAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
 }

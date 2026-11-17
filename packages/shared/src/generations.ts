@@ -89,11 +89,31 @@ export interface CreationView {
 
 export type CreationPage = Page<CreationView>;
 
+/**
+ * Schéma du modèle actif, tel que le catalogue le décrit : c'est LUI qui dit quelles qualités, quelles
+ * durées et quels formats proposer. Le formulaire de création s'en déduit, il ne les connaît pas d'avance.
+ */
+export interface CreationModelSchema {
+  slug: string;
+  name: string;
+  /** Vrai si le modèle attend une photo d'entrée (mode photo → vidéo). */
+  needsPhoto: boolean;
+  /** Qualités proposées, dans l'ordre du catalogue. */
+  resolutions: VideoResolution[];
+  /** Bornes de durée du modèle et valeur par défaut. */
+  duration: { min: number; max: number; default: number };
+  /** Formats proposés. */
+  formats: CreationFormat[];
+  defaultFormat: CreationFormat;
+}
+
 /** Réglages de la page de création, lus côté serveur : tarifs, bornes, garde-fou, valeur du crédit. */
 export interface CreationConfig {
   rates: Record<VideoResolution, number>;
   creditValueFcfa: number;
   guard: { credits: number; balancePercent: number };
+  /** Schéma du modèle actif : le formulaire est généré à partir de lui. */
+  model: CreationModelSchema;
 }
 
 export const MAX_PROMPT_LENGTH = 600;
@@ -104,6 +124,12 @@ export const MAX_PROMPT_LENGTH = 600;
  */
 export const createCreationSchema = z.object({
   styleId: z.uuid("Choisis une idée valide.").optional(),
+  /**
+   * Devis déjà affiché au client (voir `creationQuoteSchema`). S'il est encore valable et qu'il couvre
+   * toujours le coût fournisseur, c'est LUI qui est facturé : un changement de tarif ne change pas un prix
+   * déjà montré. Absent ou périmé : le prix du moment s'applique.
+   */
+  quoteId: z.uuid().optional(),
   format: z.enum(CREATION_FORMATS).default("9:16"),
   resolution: z.enum(VIDEO_RESOLUTIONS).default("480p"),
   durationSeconds: z.coerce
@@ -129,6 +155,34 @@ export const createCreationSchema = z.object({
     .transform((v) => v === true || v === "true"),
 });
 export type CreateCreationInput = z.infer<typeof createCreationSchema>;
+
+/**
+ * Demande de devis : les mêmes paramètres que la création, sans la photo ni le texte. Le serveur garde le
+ * devis un temps réglable (10 minutes par défaut) et le facture tel quel si la création arrive à temps.
+ */
+export const creationQuoteSchema = z.object({
+  format: z.enum(CREATION_FORMATS).default("9:16"),
+  resolution: z.enum(VIDEO_RESOLUTIONS).default("480p"),
+  durationSeconds: z.coerce
+    .number()
+    .int("La durée doit être un nombre entier de secondes.")
+    .min(VIDEO_DURATION.min)
+    .max(VIDEO_DURATION.max)
+    .default(VIDEO_DURATION.default),
+});
+export type CreationQuoteInput = z.infer<typeof creationQuoteSchema>;
+
+/** Devis rendu au client : ce qu'il paiera s'il crée avant l'échéance. */
+export interface CreationQuoteView {
+  quoteId: string;
+  credits: number;
+  /** Crédits par seconde retenus, pour expliquer le total. */
+  creditsPerSecond: number;
+  resolution: VideoResolution;
+  durationSeconds: number;
+  /** Date au-delà de laquelle le prix du moment s'applique de nouveau. */
+  expiresAt: string;
+}
 
 export const REPORT_REASONS = [
   "Contenu inapproprié",

@@ -45,15 +45,44 @@ import type {
   SettingsView,
   TopUpInput,
   TopUpRow,
+  CalibrationInput,
+  CalibrationRow,
+  SimulationInput,
+  SimulationView,
+  ProviderBalanceRow,
   UserStatusActionInput,
+  PricingSections,
+  PricingPreview,
+  PricingDraftInput,
+  PricingRollbackInput,
+  ModelUpsertInput,
+  ModelActiveInput,
+  ModelTestResult,
+  CalibrateInput,
+  CalibrateApplyInput,
+  CalibrationGrid,
+  AdminModelDetail,
+  ModelPriceInput,
+  ModelOptionPriceInput,
 } from '@yamboka/shared';
 import {
+  calibrateApplySchema,
+  calibrateSchema,
+  calibrationSchema,
   creditAdjustSchema,
+  modelActiveSchema,
+  modelOptionPriceSchema,
+  modelPriceSchema,
+  modelUpsertSchema,
+  applyTopUpRateSchema,
+  pricingDraftSchema,
+  pricingRollbackSchema,
   demoteAdminSchema,
   paymentSettleSchema,
   legalPublishSchema,
   listQuerySchema,
   packCreateSchema,
+  simulationSchema,
   packUpdateSchema,
   payoutSchema,
   productUpdateSchema,
@@ -65,11 +94,17 @@ import {
 } from '@yamboka/shared';
 import type { Response } from 'express';
 import { z } from 'zod';
+import { formatMicroUsd } from '../billing/usd';
 import { ClientIp, CurrentUser, Roles } from '../common/decorators';
+import { ModelCalibrationService } from '../generation/model-calibration.service';
+import { ModelCatalogService } from '../generation/model-catalog.service';
+import { PricingService } from '../pricing/pricing.service';
 import type { AuthUser } from '../common/decorators';
 import { ZodPipe } from '../common/zod.pipe';
 import { AdminOfferService } from './admin-offer.service';
 import { AdminOpsService } from './admin-ops.service';
+import { AdminPricingService } from './admin-pricing.service';
+import { AdminSimulatorService } from './admin-simulator.service';
 import { AdminUsersService } from './admin-users.service';
 
 const query = new ZodPipe(listQuerySchema);
@@ -96,6 +131,7 @@ const statsQuery = new ZodPipe(
     to: z.iso.date().optional(),
   }),
 );
+const simulationQuery = new ZodPipe(simulationSchema);
 const periodQuery = new ZodPipe(
   z.object({ from: z.iso.date().optional(), to: z.iso.date().optional() }),
 );
@@ -113,6 +149,11 @@ export class AdminController {
     private readonly users: AdminUsersService,
     private readonly offer: AdminOfferService,
     private readonly ops: AdminOpsService,
+    private readonly simulator: AdminSimulatorService,
+    private readonly pricing: AdminPricingService,
+    private readonly catalog: ModelCatalogService,
+    private readonly calibration: ModelCalibrationService,
+    private readonly pricingVersions: PricingService,
   ) {}
 
   @Get('ping')
@@ -391,13 +432,80 @@ export class AdminController {
   }
 
   @Post('finance/topups')
+  @ApiOperation({
+    summary:
+      'Saisie d’une recharge du fournisseur : écrit le mouvement en dollars et fige le taux sortant mesuré',
+  })
   async addTopUp(
     @CurrentUser() admin: AuthUser,
     @Body(new ZodPipe(topUpSchema)) body: TopUpInput,
+  ): Promise<{ ok: true; topUpId: string; rOut: string }> {
+    // Le taux mesuré n'est PAS appliqué ici : l'administration en demande l'aperçu, puis le confirme.
+    const out = await this.ops.addTopUp(admin.id, body);
+    return { ok: true, topUpId: out.id, rOut: out.rOut };
+  }
+
+  @Get('finance/topups/:id/rate-preview')
+  @ApiOperation({
+    summary:
+      'Aperçu avant / après de la grille si le taux mesuré de cette recharge était appliqué. Rien n’est appliqué',
+  })
+  topUpRatePreview(@Param('id', uuid) id: string): Promise<PricingPreview> {
+    return this.pricing.topUpRatePreview(id);
+  }
+
+  @Post('finance/topups/:id/apply-rate')
+  @ApiOperation({
+    summary:
+      'Applique le taux mesuré de cette recharge à la grille, après confirmation. Idempotent',
+  })
+  applyTopUpRate(
+    @CurrentUser() admin: AuthUser,
+    @Param('id', uuid) id: string,
+    @Body(new ZodPipe(applyTopUpRateSchema)) body: { note: string },
     @ClientIp() ip?: string,
-  ): Promise<{ ok: true }> {
-    await this.ops.addTopUp(admin.id, body, ip);
-    return { ok: true };
+  ): Promise<{ applied: boolean; pricingRate: string }> {
+    return this.pricing.applyTopUpRate(admin.id, id, body.note, ip);
+  }
+
+  @Get('finance/simulate')
+  @ApiOperation({
+    summary:
+      'Simulateur : coût, net attendu et crédits à facturer par vidéo, pour un scénario donné (lecture seule, rien n’est enregistré)',
+  })
+  simulate(
+    @Query(simulationQuery) q: SimulationInput,
+  ): Promise<SimulationView> {
+    return this.simulator.simulate({
+      ...q,
+      durations: q.durations?.split(',').map(Number),
+    });
+  }
+
+  @Get('finance/provider-balance')
+  @ApiOperation({
+    summary:
+      'Solde prépayé du fournisseur tel que le journal le connaît, et taux retenu pour tarifer',
+  })
+  providerBalance(): Promise<ProviderBalanceRow> {
+    return this.ops.providerBalance();
+  }
+
+  @Get('finance/calibrations')
+  listCalibrations(): Promise<CalibrationRow[]> {
+    return this.ops.listCalibrations();
+  }
+
+  @Post('finance/calibrations')
+  @ApiOperation({
+    summary:
+      'Recalage du solde sur la valeur lue dans la console du fournisseur : enregistre l’écart constaté',
+  })
+  addCalibration(
+    @CurrentUser() admin: AuthUser,
+    @Body(new ZodPipe(calibrationSchema)) body: CalibrationInput,
+  ): Promise<{ deltaUsd: string; estimatedUsd: string }> {
+    return this.ops.addCalibration(admin.id, body);
   }
 
   @Get('finance/payouts')
@@ -416,6 +524,208 @@ export class AdminController {
   }
 
   // ───────────── Configuration ─────────────
+
+  // ───────────── Configuration des calculs ─────────────
+
+  @Get('pricing')
+  @ApiOperation({
+    summary:
+      'Configuration des calculs : version en vigueur, historique, modèles, packs, moyens de paiement et alertes',
+  })
+  pricingSections(): Promise<PricingSections> {
+    return this.pricing.sections();
+  }
+
+  @Post('pricing/preview')
+  @ApiOperation({
+    summary:
+      'Aperçu avant / après d’un brouillon, par modèle, qualité et durée. Lecture seule : rien n’est enregistré',
+  })
+  @HttpCode(200)
+  pricingPreview(
+    @Body(new ZodPipe(pricingDraftSchema)) body: PricingDraftInput,
+  ): Promise<PricingPreview> {
+    return this.pricing.preview(body);
+  }
+
+  @Post('pricing/apply')
+  @ApiOperation({
+    summary:
+      'Applique le brouillon : nouvelle version prise en compte immédiatement, sans redéploiement',
+  })
+  pricingApply(
+    @CurrentUser() admin: AuthUser,
+    @Body(new ZodPipe(pricingDraftSchema)) body: PricingDraftInput,
+    @ClientIp() ip?: string,
+  ): Promise<{ versionId: string; appliedAt: string }> {
+    return this.pricing.apply(admin.id, body, ip);
+  }
+
+  @Post('pricing/rollback')
+  @ApiOperation({
+    summary:
+      'Retour à une version précédente : une nouvelle version la recopie, rien n’est supprimé',
+  })
+  pricingRollback(
+    @CurrentUser() admin: AuthUser,
+    @Body(new ZodPipe(pricingRollbackSchema)) body: PricingRollbackInput,
+    @ClientIp() ip?: string,
+  ): Promise<{ versionId: string }> {
+    return this.pricing.rollback(admin.id, body.versionId, body.note, ip);
+  }
+
+  // ───────────── Catalogue de modèles ─────────────
+  // Le slug d'un modèle contient des « / » (« alibaba/wan-3.0/image-to-video ») : il ne peut donc pas être
+  // un segment d'URL. Il passe en paramètre de requête ou dans le corps.
+
+  @Post('models')
+  @ApiOperation({
+    summary:
+      'Crée ou modifie un modèle et son schéma de paramètres. Un modèle créé est inactif tant que son tarif n’est pas complet',
+  })
+  upsertModel(
+    @CurrentUser() admin: AuthUser,
+    @Body(new ZodPipe(modelUpsertSchema)) body: ModelUpsertInput,
+  ): Promise<{ slug: string; active: boolean }> {
+    return this.catalog
+      .upsert(body, admin.id)
+      .then((m) => ({ slug: m.slug, active: m.active }));
+  }
+
+  @Get('models/detail')
+  @ApiOperation({
+    summary:
+      'Détail d’un modèle pour l’édition : schéma des paramètres, tarifs et règles d’option en vigueur, combinaisons sans tarif',
+  })
+  modelDetail(@Query('slug') slug: string): Promise<AdminModelDetail> {
+    return this.pricing.modelDetail(slug);
+  }
+
+  @Post('models/prices')
+  @ApiOperation({
+    summary:
+      'Tarif de base d’un modèle pour une résolution, saisi à la main. Ajoute une version datée (source MANUAL)',
+  })
+  async addModelPrice(
+    @CurrentUser() admin: AuthUser,
+    @Query('slug') slug: string,
+    @Body(new ZodPipe(modelPriceSchema)) body: ModelPriceInput,
+  ): Promise<{ ok: true }> {
+    await this.pricingVersions.addModelPrice({
+      providerModel: slug,
+      resolution: body.resolution,
+      billingUnit: body.billingUnit,
+      usdPerUnit: body.usdPerUnit,
+      billableMultiplier: body.billableMultiplier,
+      minSeconds: body.minSeconds,
+      maxSeconds: body.maxSeconds,
+      source: 'MANUAL',
+      note: body.note,
+      adminId: admin.id,
+    });
+    this.catalog.invalidate();
+    return { ok: true };
+  }
+
+  @Post('models/option-prices')
+  @ApiOperation({
+    summary:
+      'Règle de prix d’une option payante : supplément par unité facturée, ou multiplicateur du tarif. Ajoute une version datée',
+  })
+  async addModelOptionPrice(
+    @CurrentUser() admin: AuthUser,
+    @Query('slug') slug: string,
+    @Body(new ZodPipe(modelOptionPriceSchema)) body: ModelOptionPriceInput,
+  ): Promise<{ ok: true }> {
+    await this.pricingVersions.addModelOptionPrice({
+      providerModel: slug,
+      paramKey: body.paramKey,
+      triggerValue: body.triggerValue,
+      kind: body.kind,
+      usdPerUnit: body.usdPerUnit,
+      multiplier: body.multiplier,
+      source: 'MANUAL',
+      note: body.note,
+      adminId: admin.id,
+    });
+    this.catalog.invalidate();
+    return { ok: true };
+  }
+
+  @Post('models/active')
+  @ApiOperation({
+    summary:
+      'Active ou désactive un modèle. L’activation est refusée si une combinaison autorisée n’a pas de tarif',
+  })
+  @HttpCode(200)
+  setModelActive(
+    @CurrentUser() admin: AuthUser,
+    @Query('slug') slug: string,
+    @Body(new ZodPipe(modelActiveSchema)) body: ModelActiveInput,
+  ): Promise<{ slug: string; active: boolean }> {
+    return this.catalog
+      .setActive(slug, body.active, admin.id)
+      .then((m) => ({ slug: m.slug, active: m.active }));
+  }
+
+  @Post('models/test')
+  @ApiOperation({
+    summary:
+      'Teste un modèle sans rien produire : vérifie le schéma et demande le prix au fournisseur (gratuit)',
+  })
+  @HttpCode(200)
+  testModel(@Query('slug') slug: string): Promise<ModelTestResult> {
+    return this.calibration.testModel(slug);
+  }
+
+  @Post('models/calibrate')
+  @ApiOperation({
+    summary:
+      'Calibrage : /estimate sur la grille complète et tableau de prix proposé. Rien n’est appliqué',
+  })
+  @HttpCode(200)
+  async calibrateModel(
+    @CurrentUser() admin: AuthUser,
+    @Query('slug') slug: string,
+    @Body(new ZodPipe(calibrateSchema)) body: CalibrateInput,
+  ): Promise<CalibrationGrid> {
+    const grid = await this.calibration.estimateGrid(slug, {
+      durations: body.durations,
+      adminId: admin.id,
+    });
+    return {
+      slug: grid.slug,
+      maxDeviationPercent: grid.maxDeviationPercent,
+      rows: grid.rows.map((r) => ({
+        resolution: r.resolution,
+        options: r.options,
+        durationSeconds: r.durationSeconds,
+        configuredUsdPerUnit: formatMicroUsd(r.configuredMicroUsdPerUnit, 6),
+        observedUsdPerUnit:
+          r.observedMicroUsdPerUnit === null
+            ? null
+            : formatMicroUsd(r.observedMicroUsdPerUnit, 6),
+        deviationPercent: r.deviationPercent,
+        error: r.error,
+      })),
+    };
+  }
+
+  @Post('models/calibrate/apply')
+  @ApiOperation({
+    summary:
+      'Applique le tableau de calibrage proposé : une nouvelle version de tarif par résolution, source ESTIMATE',
+  })
+  calibrateApply(
+    @CurrentUser() admin: AuthUser,
+    @Query('slug') slug: string,
+    @Body(new ZodPipe(calibrateApplySchema)) body: CalibrateApplyInput,
+  ): Promise<{ applied: number }> {
+    return this.calibration.applyGrid(slug, body.rows, {
+      adminId: admin.id,
+      note: body.note,
+    });
+  }
 
   @Get('settings')
   getSettings(): Promise<SettingsView> {

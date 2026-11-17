@@ -511,20 +511,77 @@ describe('Administration (e2e)', () => {
   });
 
   describe('Finances', () => {
-    it('recharge Higgsfield : le solde estimé devient calculable', async () => {
-      await admin
+    it('recharge fournisseur : le taux mesuré attend une confirmation avant de changer les prix', async () => {
+      const created = await admin
         .post('/api/admin/finance/topups', {
-          amountUsd: 100,
-          amountXaf: 60000,
+          receivedUsd: '100',
+          netWithdrawnXaf: 60000,
+          cardAmountXaf: 61000,
           note: 'Première recharge',
         })
         .expect(201);
+      const topUpId = created.body.topUpId as string;
+      expect(created.body.rOut).toBe('600.0000');
+
       const { body } = await admin.get('/api/admin/stats').expect(200);
       expect(body.providerBalance.known).toBe(true);
       expect(body.providerBalance.estimatedBalanceUsd).toBe(100);
-      expect(
-        (await admin.get('/api/admin/finance/topups')).body[0].fxRate,
-      ).toBe(600);
+      // 60 000 F nets retirés pour 100 $ arrivés = 600 F/$, figé à la saisie.
+      const [row] = (await admin.get('/api/admin/finance/topups')).body;
+      expect(row.rOut).toBe('600.0000');
+      expect(row.measured).toBe(true);
+      expect(row.netWithdrawnXaf).toBe(60000);
+
+      // Le solde vient du journal tout de suite, MAIS la grille garde le taux provisoire : saisir une
+      // recharge ne change aucun prix sans confirmation (T5).
+      const before = (
+        await admin.get('/api/admin/finance/provider-balance').expect(200)
+      ).body;
+      expect(before.balanceUsd).toBe('100.00');
+      expect(before.measured).toBe(false);
+      expect(before.pricingRate).not.toBe('612.0000');
+
+      // L'aperçu montre l'avant / après avant toute application.
+      const preview = (
+        await admin
+          .get(`/api/admin/finance/topups/${topUpId}/rate-preview`)
+          .expect(200)
+      ).body;
+      expect(preview.rows.length).toBeGreaterThan(0);
+      expect(preview.pricingRateAfter).toBe('612.0000');
+
+      // Après confirmation, le taux mesuré majoré de la marge de change s'applique.
+      await admin
+        .post(`/api/admin/finance/topups/${topUpId}/apply-rate`, {
+          note: 'Taux mesuré sur le premier retrait réel',
+        })
+        .expect(201);
+      const after = (
+        await admin.get('/api/admin/finance/provider-balance').expect(200)
+      ).body;
+      expect(after.measured).toBe(true);
+      expect(after.pricingRate).toBe('612.0000');
+    });
+
+    it('relevé du solde en console : l’écart est enregistré et le solde recalé', async () => {
+      const before = (
+        await admin.get('/api/admin/finance/provider-balance').expect(200)
+      ).body;
+      const read = (Number(before.balanceUsd) - 2.5).toFixed(2);
+      const { body } = await admin
+        .post('/api/admin/finance/calibrations', {
+          readUsd: read,
+          note: 'Relevé Billing',
+        })
+        .expect(201);
+      expect(body.estimatedUsd).toBe(before.balanceUsd);
+      expect(body.deltaUsd).toBe('-2.50');
+      const after = (
+        await admin.get('/api/admin/finance/provider-balance').expect(200)
+      ).body;
+      expect(after.balanceUsd).toBe(read);
+      const [row] = (await admin.get('/api/admin/finance/calibrations')).body;
+      expect(row.deltaUsd).toBe('-2.50');
     });
 
     it('retrait SasPay et synthèse', async () => {

@@ -56,31 +56,32 @@ describe('marge d’un pack (perte du circuit 9 %, 1 crédit = 2,5 FCFA)', () =>
 
   it('Starter 5 000 FCFA / 1 250 crédits', () => {
     const m = margin(5000, 1250);
-    expect(m.receivedFcfa).toBe(4730);
-    expect(m.netAfterCircuitFcfa).toBeCloseTo(4304.3, 1);
+    // Reçu 4 715 depuis la correction des frais (le pourcentage porte sur le montant débité).
+    expect(m.receivedFcfa).toBe(4715);
+    expect(m.netAfterCircuitFcfa).toBeCloseTo(4290.7, 1);
     expect(m.withoutBonus.hfCostFcfa).toBe(3125);
-    expect(m.withoutBonus.marginPercent).toBeCloseTo(24.9, 1);
-    expect(m.withBonus.marginPercent).toBeCloseTo(11.7, 1);
+    expect(m.withoutBonus.marginPercent).toBeCloseTo(24.7, 1);
+    expect(m.withBonus.marginPercent).toBeCloseTo(11.5, 1);
   });
 
   it('Pro 10 000 FCFA / 2 600 crédits', () => {
     const m = margin(10_000, 2600);
-    expect(m.withoutBonus.marginPercent).toBeCloseTo(22.3, 1);
-    expect(m.withBonus.marginPercent).toBeCloseTo(8.5, 1);
+    expect(m.withoutBonus.marginPercent).toBeCloseTo(22.1, 1);
+    expect(m.withBonus.marginPercent).toBeCloseTo(8.3, 1);
   });
 
   it('Business 25 000 FCFA / 6 800 crédits', () => {
     const m = margin(25_000, 6800);
-    expect(m.receivedFcfa).toBe(23_651);
-    expect(m.withoutBonus.marginPercent).toBeCloseTo(19.1, 1);
-    expect(m.withBonus.marginPercent).toBeCloseTo(4.7, 1);
+    expect(m.receivedFcfa).toBe(23_575);
+    expect(m.withoutBonus.marginPercent).toBeCloseTo(18.9, 1);
+    expect(m.withBonus.marginPercent).toBeCloseTo(4.5, 1);
   });
 
   it('la perte du circuit est un paramètre : 14 % réduit la marge', () => {
     const base = margin(10_000, 2600).withoutBonus.marginPercent;
     const worse = computePackMargin({
       displayedPrice: 10_000,
-      sentAmount: 9460,
+      sentAmount: 9430,
       credits: 2600,
       bonusCredits: 520,
       circuitLossPercent: 14,

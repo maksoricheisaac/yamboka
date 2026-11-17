@@ -8,12 +8,15 @@ import { CreditsService } from '../src/credits/credits.service';
 import { CreationsService } from '../src/creations/creations.service';
 import {
   GenerationProvider,
+  GenerationProviderOutOfCreditsError,
   GenerationRejectedError,
   GenerationStatusResult,
   GenerationUnavailableError,
   SubmitGenerationRequest,
   SubmitGenerationResult,
 } from '../src/generation/generation-provider';
+import { PricingService } from '../src/pricing/pricing.service';
+import { ProviderLedgerService } from '../src/provider-balance/provider-ledger.service';
 import { StorageDriver } from '../src/storage/storage-driver';
 import { APP_ORIGIN, Client, prismaOf } from './helpers';
 import { addLot, lotsMatchLedger, verifiedClient } from './finance-helpers';
@@ -79,6 +82,8 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
   let creations: CreationsService;
   let credits: CreditsService;
   let storage: StorageDriver;
+  let ledger: ProviderLedgerService;
+  let pricing: PricingService;
   const provider = new ScriptedProvider();
   let fetchSpy: jest.SpiedFunction<typeof fetch>;
   let mp4: Buffer;
@@ -95,7 +100,19 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
     creations = app.get(CreationsService);
     credits = app.get(CreditsService);
     storage = app.get(StorageDriver);
+    ledger = app.get(ProviderLedgerService);
+    pricing = app.get(PricingService);
     mp4 = await readFile(join(process.cwd(), 'assets', 'mock-output.mp4'));
+    // Le fournisseur scripté n'est PAS le simulé : ses créations engagent de vrais dollars dans le journal.
+    // On provisionne donc le compte prépayé, comme en production après une recharge.
+    await prisma.providerLedger.create({
+      data: {
+        type: 'ADJUSTMENT',
+        amountMicroUsd: 100_000_000n, // 100 $
+        reference: `hfadjust:test-${Date.now()}`,
+        note: 'Provision du compte fournisseur pour les tests',
+      },
+    });
   });
   afterAll(async () => {
     await app.close();
@@ -173,6 +190,8 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       format: '9:16',
       resolution: '480p',
       durationSeconds: '5',
+      // Consentement obligatoire depuis RG-31 : sans lui, la création est refusée avant tout débit.
+      consent: 'true',
       ...extra,
     });
 
@@ -181,7 +200,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       const { client, userId, creation } = await create(fun(), 60);
       expect(creation).toMatchObject({
         status: 'COMPLETED',
-        credits: 20,
+        credits: 25,
         simulated: false,
       });
       expect(provider.submitted[0].model).toBe(
@@ -213,10 +232,10 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       expect(media.sizeBytes).toBe(mp4.length);
       expect((await storage.get(media.key)).equals(mp4)).toBe(true);
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await balance(client)).toBe(40);
+      expect(await balance(client)).toBe(35);
       expect(await lotsMatchLedger(app, userId)).toEqual({
-        ledger: 40,
-        lots: 40,
+        ledger: 35,
+        lots: 35,
       });
     });
 
@@ -239,7 +258,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       ).not.toBe('COMPLETED');
       expect(await outputs(creation.id)).toBe(0);
       expect(await ledgerTypes(creation.id)).toEqual(['RESERVE']);
-      expect(await balance(client)).toBe(40);
+      expect(await balance(client)).toBe(35);
     });
 
     it.each([
@@ -342,7 +361,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       provider.submitError = new GenerationUnavailableError('panne');
       const { client, userId, creation } = await create(fun(), 60);
       expect(creation.status).toBe('PENDING');
-      expect(await balance(client)).toBe(40); // réservé, pas encore consommé
+      expect(await balance(client)).toBe(35); // réservé, pas encore consommé
       provider.submitError = null;
       completeWith(mp4, 'video/mp4');
       await creations.advance(creation.id);
@@ -354,8 +373,8 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       expect(provider.submitted).toHaveLength(1);
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
       expect(await lotsMatchLedger(app, userId)).toEqual({
-        ledger: 40,
-        lots: 40,
+        ledger: 35,
+        lots: 35,
       });
     });
 
@@ -365,7 +384,7 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
       await creations.advance(creation.id);
       await creations.advance(creation.id);
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await balance(client)).toBe(40);
+      expect(await balance(client)).toBe(35);
     });
 
     it('délai dépassé alors que les crédits sont déjà consommés : jamais remboursée à tort, la création se termine', async () => {
@@ -382,21 +401,184 @@ describe('Fiabilité de la génération (e2e, fournisseur scripté)', () => {
         .creation;
       expect(after.status).toBe('COMPLETED');
       expect(await ledgerTypes(creation.id)).toEqual(['CAPTURE', 'RESERVE']);
-      expect(await balance(client)).toBe(40);
+      expect(await balance(client)).toBe(35);
     });
 
-    it('1080p, 30 s, 3:4 : tout part au fournisseur tel que choisi, et 480 crédits sont réservés', async () => {
+    it('1080p, 30 s, 3:4 : tout part au fournisseur tel que choisi, et 600 crédits sont réservés', async () => {
       const { client, creation } = await create(
         fun({ resolution: '1080p', durationSeconds: '30', format: '3:4' }),
         600,
       );
-      expect(creation.credits).toBe(480);
+      expect(creation.credits).toBe(600);
       expect(provider.submitted[0].input).toMatchObject({
         duration: 30,
         resolution: '1080p',
         aspect_ratio: '3:4',
       });
-      expect(await balance(client)).toBe(120);
+      expect(await balance(client)).toBe(0);
+    });
+  });
+
+  /**
+   * Côté dollars : chaque création engage le solde prépayé du fournisseur dans la MÊME transaction que les
+   * crédits, fige son coût, et rend les dollars si elle échoue. 480p / 5 s = 0,25 $ (0,05 $/s).
+   */
+  describe('Dollars engagés chez le fournisseur', () => {
+    const fun = (extra: Record<string, string> = {}) => ({
+      prompt: 'La caméra tourne autour de mes chaussures',
+      format: '9:16',
+      resolution: '480p',
+      durationSeconds: '5',
+      consent: 'true',
+      ...extra,
+    });
+    const usdBalance = () => ledger.balanceMicroUsd();
+    const movements = async (id: string) =>
+      (await prisma.providerLedger.findMany({ where: { generationId: id } }))
+        .map((m) => m.type)
+        .sort();
+
+    it('fige le coût fournisseur et engage les dollars à la création', async () => {
+      completeWith(mp4, 'video/mp4');
+      const before = await usdBalance();
+      const { creation } = await create(fun(), 60);
+      expect(creation.status).toBe('COMPLETED');
+
+      const row = await prisma.generation.findUniqueOrThrow({
+        where: { id: creation.id },
+      });
+      // 5 s × 0,05 $ = 0,25 $, figés avec le taux et la marge du moment.
+      expect(row.costMicroUsd).toBe(250_000n);
+      expect(row.pricingRate).not.toBeNull();
+      expect(row.marginPercent?.toFixed(4)).toBe('10.0000');
+      expect(row.modelPriceId).not.toBeNull();
+      expect(row.pricingConfigId).not.toBeNull();
+      // Valeur FCFA attendue dans le scénario pessimiste : taux provisoire 620 ÷ (1 − 14 %) × 1,02 =
+      // 735,3488 F/$ ; 0,25 $ → 184 F (arrondi au-dessus), × 1,10 de marge = 202,4 → 203 F.
+      expect(row.priceFcfa).toBe(203);
+
+      expect(await movements(creation.id)).toEqual([
+        'GENERATION_CAPTURE',
+        'GENERATION_RESERVE',
+      ]);
+      expect(await usdBalance()).toBe(before - 250_000n);
+    });
+
+    it('un changement de tarif ne touche pas au coût d’une création déjà faite', async () => {
+      completeWith(mp4, 'video/mp4');
+      const { creation } = await create(fun(), 60);
+      const before = await prisma.generation.findUniqueOrThrow({
+        where: { id: creation.id },
+      });
+      await pricing.addModelPrice({
+        providerModel: 'alibaba/wan-3.0/image-to-video',
+        resolution: '480p',
+        usdPerUnit: '0.12',
+        source: 'MANUAL',
+        minSeconds: 2,
+        maxSeconds: 30,
+        note: 'Hausse du fournisseur',
+      });
+      // L’ancienne création garde son coût ; la suivante paie le nouveau tarif.
+      const after = await prisma.generation.findUniqueOrThrow({
+        where: { id: creation.id },
+      });
+      expect(after.costMicroUsd).toBe(before.costMicroUsd);
+      const { creation: next } = await create(fun(), 60);
+      const row = await prisma.generation.findUniqueOrThrow({
+        where: { id: next.id },
+      });
+      expect(row.costMicroUsd).toBe(600_000n); // 5 s × 0,12 $
+
+      // Remise du tarif mesuré pour la suite des tests.
+      await pricing.addModelPrice({
+        providerModel: 'alibaba/wan-3.0/image-to-video',
+        resolution: '480p',
+        usdPerUnit: '0.05',
+        source: 'MANUAL',
+        minSeconds: 2,
+        maxSeconds: 30,
+        note: 'Retour au tarif mesuré',
+      });
+    });
+
+    it('rend les dollars quand la création échoue', async () => {
+      provider.status = () => ({ status: 'failed', error: 'GPU indisponible' });
+      const before = await usdBalance();
+      const { client, creation } = await create(fun(), 60);
+      expect(creation.status).toBe('FAILED');
+      expect(await movements(creation.id)).toEqual([
+        'GENERATION_RELEASE',
+        'GENERATION_RESERVE',
+      ]);
+      // Crédits ET dollars sont revenus : un échec ne coûte rien, ni au client ni à la plateforme.
+      expect(await balance(client)).toBe(60);
+      expect(await usdBalance()).toBe(before);
+    });
+
+    it('refuse la création quand le solde ne couvre pas le coût plus la marge de sécurité', async () => {
+      const before = await usdBalance();
+      // Solde ramené à 2,10 $ : la marge de sécurité (2 $) ne laisse que 0,10 $ utilisable.
+      await prisma.providerLedger.create({
+        data: {
+          type: 'ADJUSTMENT',
+          amountMicroUsd: -(before - 2_100_000n),
+          reference: `hfadjust:drain-${Date.now()}`,
+          note: 'Test : solde ramené juste au-dessus de la marge de sécurité',
+        },
+      });
+      const { res, creation } = await create(fun(), 60);
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe('GENERATION_UNAVAILABLE');
+      expect(creation).toBeUndefined();
+      // Aucune trace : ni génération, ni crédits réservés, ni dollars engagés.
+      expect(await usdBalance()).toBe(2_100_000n);
+
+      await prisma.providerLedger.create({
+        data: {
+          type: 'ADJUSTMENT',
+          amountMicroUsd: before - 2_100_000n,
+          reference: `hfadjust:refill-${Date.now()}`,
+          note: 'Test : solde rétabli',
+        },
+      });
+    });
+
+    it('solde épuisé annoncé par le fournisseur : crédits rendus, solde remis à zéro, créations bloquées', async () => {
+      provider.submitError = new GenerationProviderOutOfCreditsError(
+        'HTTP 403 : not_enough_credits',
+      );
+      const { client, creation } = await create(fun(), 60);
+      expect(creation).toMatchObject({ status: 'FAILED', refunded: true });
+      expect(await balance(client)).toBe(60);
+
+      // Notre estimation était fausse : le solde est ramené à zéro et l’écart est tracé.
+      expect(await usdBalance()).toBe(0n);
+      const calibration =
+        await prisma.providerBalanceCalibration.findFirstOrThrow({
+          orderBy: { createdAt: 'desc' },
+        });
+      expect(calibration.readMicroUsd).toBe(0n);
+      expect(calibration.note).toMatch(/not_enough_credits/);
+
+      // Et plus aucune création n’est acceptée tant que le verrou tient.
+      provider.submitError = null;
+      const again = await create(fun(), 60);
+      expect(again.res.status).toBe(503);
+      expect(again.res.body.code).toBe('GENERATION_UNAVAILABLE');
+
+      // Nettoyage : verrou levé et compte réapprovisionné pour les suites suivantes.
+      await prisma.setting.deleteMany({
+        where: { key: 'providerOutOfCreditsAt' },
+      });
+      await prisma.providerLedger.create({
+        data: {
+          type: 'ADJUSTMENT',
+          amountMicroUsd: 100_000_000n,
+          reference: `hfadjust:restore-${Date.now()}`,
+          note: 'Test : compte réapprovisionné',
+        },
+      });
     });
   });
 });

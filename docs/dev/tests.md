@@ -9,13 +9,14 @@
 
 ## Bases de données de test
 
-Trois suites modifient des données **globales** (paramètres, packs, absence d'administrateur) : elles utilisent leur **propre base** pour ne pas perturber les suites exécutées en parallèle. Le module `test/isolate-*-db.ts`, importé **avant** les helpers, redirige `DATABASE_URL` :
+Plusieurs suites modifient des données **globales** (paramètres, packs, bonus, absence d'administrateur) : elles utilisent leur **propre base** pour ne pas perturber les suites exécutées en parallèle. Le module `test/isolate-*-db.ts`, importé **avant** les helpers, redirige `DATABASE_URL` :
 
 | Suite | Base | Particularité |
 |---|---|---|
 | `admin.e2e-spec.ts` | `yamboka_admin_test` | migrée et seedée (administrateur de test) |
 | `setup.e2e-spec.ts` | `yamboka_setup_test` | **vierge** (migrations seules, ni seed ni administrateur) : c'est le seul moyen de tester le Setup Wizard |
 | `otp.e2e-spec.ts` | `yamboka_test` | rétablit le délai de renvoi (60 s) et le plafond horaire (5) que les autres suites désactivent |
+| `payments.e2e-spec.ts` | `yamboka_payments_test` | modifie le bonus de premier achat d'un pack et le réglage global `firstPurchaseBonusEnabled`, qui entrent dans la **valeur plancher du crédit** : pendant cette fenêtre, une suite partageant la base lirait des tarifs différents |
 
 Le mode de confirmation de connexion (`loginOtpMode`) est simulé par un espion sur `SettingsService` propre au processus de la suite : le réglage n'est jamais modifié en base partagée.
 
@@ -24,6 +25,21 @@ Le mode de confirmation de connexion (`loginOtpMode`) est simulé par un espion 
 Les tests d'intégration recréent la base `yamboka_test` à chaque exécution (suppression, création, migrations, seed). Le registre de crédits est volontairement impossible à vider (trigger), d'où une base neuve plutôt qu'un nettoyage. **Garde-fou** : `resetDatabase` refuse toute base dont le nom ne finit pas par `_test` ou `_e2e`.
 
 PostgreSQL **et Redis** doivent tourner : `docker compose --env-file .env.local -f docker/docker-compose.local.yml up -d`.
+Redis doit être **joignable depuis l'hôte** (`127.0.0.1:6380`) : les tests de file s'y connectent sur la base 15.
+Si le conteneur a été démarré avant l'ajout du mappage de port, `docker ps` montre `6379/tcp` sans adresse et les
+cinq tests BullMQ échouent ; `docker compose … up -d` le recrée avec le bon port.
+
+**Deux tests de file échouent encore** (`la tâche de rattrapage…`, `la tâche d'expiration…`), de façon
+reproductible et pour une raison extérieure au code de production : `pg` crée ses sockets avec un
+`require('net')` paresseux (`pg/lib/stream.js`, `getStream`), et sous Jest avec `--experimental-vm-modules` ce
+require renvoie `undefined` quand le pool ouvre une connexion depuis un worker BullMQ — la tâche échoue sur
+« Cannot read properties of undefined (reading 'Socket') ». Fournir une fabrique de socket au pool a été
+essayé : l'option arrive bien jusqu'à `PrismaPg`, mais `pg` appelle quand même `getStream`. À traiter à part
+(piste : un pool externe pré-connecté, ou l'abandon de `--experimental-vm-modules` pour cette suite).
+
+Le parallélisme est **figé à deux workers** (`maxWorkers` dans `test/jest-e2e.json`). Au-delà, les suites qui
+partagent la base `yamboka_test` se gênent (une suite SasPay échoue par interférence). Les suites qui écrivent
+un état global ont leur propre base : `yamboka_admin_test`, `yamboka_provider_test`, `yamboka_pricing_test`…
 
 ## Tests de navigateur (Playwright)
 
