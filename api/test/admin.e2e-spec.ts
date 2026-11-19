@@ -116,6 +116,35 @@ describe('Administration (e2e)', () => {
       expect(body.providerBalance.known).toBe(false);
       expect(Array.isArray(body.alerts)).toBe(true);
     });
+
+    it('les séries couvrent CHAQUE jour de la période, zéros compris', async () => {
+      // Sans les jours vides, un histogramme de trente jours dont trois actifs se lisait comme trois jours
+      // pleins : la période choisie n'était plus lisible sur l'axe.
+      const { body } = await admin
+        .get('/api/admin/stats?from=2026-01-01&to=2026-01-10')
+        .expect(200);
+      const days = (body.series.signups as { day: string }[]).map((p) => p.day);
+      expect(days).toHaveLength(10);
+      expect(days[0]).toBe('2026-01-01');
+      expect(days[9]).toBe('2026-01-10');
+      expect(body.series.revenue).toHaveLength(10);
+      // Aucune donnée sur cette période : chaque point vaut zéro, et aucun n'est absent.
+      expect(
+        (body.series.signups as { value: number }[]).every(
+          (p) => p.value === 0,
+        ),
+      ).toBe(true);
+    });
+
+    it('une période d’un seul jour renvoie un seul point', async () => {
+      const { body } = await admin
+        .get('/api/admin/stats?from=2026-01-05&to=2026-01-05')
+        .expect(200);
+      expect(body.series.signups).toHaveLength(1);
+      expect((body.series.signups as { day: string }[])[0].day).toBe(
+        '2026-01-05',
+      );
+    });
   });
 
   describe('Clients', () => {

@@ -6,105 +6,71 @@ import { DataTableColumnHeader } from "@/components/admin/data-table/data-table-
 import { DataTable } from "@/components/admin/data-table/data-table";
 import type { DataTableFeatures } from "@/components/admin/data-table/data-table-features";
 import { Pill } from "@/components/admin/ui";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatFcfa } from "@/lib/format";
+
+/** Deux lignes dans une cellule : le chiffre qui décide, puis sa précision. Évite d'étaler onze colonnes. */
+function Stacked({ main, sub, alert }: { main: React.ReactNode; sub: React.ReactNode; alert?: boolean }) {
+  return (
+    <div className="whitespace-nowrap tabular-nums">
+      <div className={alert ? "font-semibold text-destructive" : "font-medium"}>{main}</div>
+      <div className="text-xs text-muted-foreground">{sub}</div>
+    </div>
+  );
+}
 
 const video = createColumnHelper<DataTableFeatures, VideoSimulationRow>();
 
 const videoColumns = video.columns([
   video.accessor("modelName", {
     id: "modelName",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Modèle" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Vidéo" />,
     sortFn: "text",
     enableHiding: false,
     cell: ({ row }) => (
-      <span className="whitespace-nowrap font-medium" title={row.original.modelSlug}>
-        {row.original.modelName}
-      </span>
-    ),
-  }),
-  video.accessor("resolution", {
-    id: "resolution",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Qualité" />,
-    sortFn: "text",
-    cell: ({ row }) => <span className="whitespace-nowrap font-medium">{row.original.resolution}</span>,
-  }),
-  video.accessor("durationSeconds", {
-    id: "durationSeconds",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Durée" />,
-    sortFn: "basic",
-    cell: ({ row }) => <span className="whitespace-nowrap tabular-nums">{row.original.durationSeconds} s</span>,
-  }),
-  video.accessor("optionsLabel", {
-    id: "optionsLabel",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Options" />,
-    sortFn: "text",
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap text-muted-foreground">{row.original.optionsLabel || "—"}</span>
+      <Stacked
+        main={<span title={row.original.modelSlug}>{row.original.modelName}</span>}
+        sub={`${row.original.resolution} · ${row.original.durationSeconds} s${row.original.optionsLabel ? ` · ${row.original.optionsLabel}` : ""}`}
+      />
     ),
   }),
   video.accessor("costUsd", {
     id: "costUsd",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Coût fournisseur" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Coût" />,
     sortFn: "basic",
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap tabular-nums">
-        {row.original.costUsd} $ · {formatFcfa(row.original.costFcfa)}
-      </span>
-    ),
+    cell: ({ row }) => <Stacked main={`${row.original.costUsd} $`} sub={formatFcfa(row.original.costFcfa)} />,
   }),
   video.accessor("netNeededFcfa", {
     id: "netNeededFcfa",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Doit rapporter" />,
     sortFn: "basic",
-    cell: ({ row }) => <span className="whitespace-nowrap tabular-nums">{formatFcfa(row.original.netNeededFcfa)}</span>,
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap tabular-nums">{formatFcfa(row.original.netNeededFcfa)}</span>
+    ),
   }),
   video.accessor("chargedCredits", {
     id: "chargedCredits",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Crédits facturés" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Facturé" />,
     sortFn: "basic",
     cell: ({ row }) => (
-      <span className="whitespace-nowrap tabular-nums">
-        {row.original.chargedCredits}
-        <span className="text-muted-foreground"> / {row.original.requiredCredits} requis</span>
-      </span>
-    ),
-  }),
-  video.accessor("priceEquivalentFcfa", {
-    id: "priceEquivalentFcfa",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Prix équivalent" />,
-    sortFn: "basic",
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap tabular-nums">{formatFcfa(row.original.priceEquivalentFcfa)}</span>
+      <Stacked
+        main={`${row.original.chargedCredits} cr.`}
+        sub={`${row.original.requiredCredits} requis · ${formatFcfa(row.original.priceEquivalentFcfa)}`}
+        alert={row.original.chargedCredits < row.original.requiredCredits}
+      />
     ),
   }),
   video.accessor("marginFcfa", {
     id: "marginFcfa",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Marge en vigueur" />,
+    // Le scénario pessimiste décide de l'ouverture de la vente : il se lit sous la marge en vigueur.
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Marge" />,
     sortFn: "basic",
-    // Une marge négative est la seule chose qui compte vraiment sur cet écran : elle ressort en rouge.
     cell: ({ row }) => (
-      <span
-        className={`whitespace-nowrap tabular-nums ${
-          row.original.marginFcfa < 0 ? "font-semibold text-destructive" : ""
-        }`}
-      >
-        {formatFcfa(row.original.marginFcfa)}
-      </span>
-    ),
-  }),
-  video.display({
-    id: "worstMargin",
-    header: "Marge pessimiste",
-    // C'est cette colonne qui décide si la vente peut ouvrir : le scénario le plus défavorable.
-    cell: ({ row }) => (
-      <span
-        className={`whitespace-nowrap tabular-nums ${
-          row.original.worst.marginFcfa < 0 ? "font-semibold text-destructive" : ""
-        }`}
-      >
-        {formatFcfa(row.original.worst.marginFcfa)}
-        <span className="text-muted-foreground"> · {row.original.worst.chargedCredits} cr.</span>
-      </span>
+      <Stacked
+        main={formatFcfa(row.original.marginFcfa)}
+        sub={`pessimiste ${formatFcfa(row.original.worst.marginFcfa)}`}
+        alert={row.original.marginFcfa < 0 || row.original.worst.marginFcfa < 0}
+      />
     ),
   }),
   video.display({
@@ -113,7 +79,7 @@ const videoColumns = video.columns([
     cell: ({ row }) =>
       row.original.belowCost || row.original.worst.belowCost ? (
         <Pill tone="bad">
-          Sous le coût · {row.original.missingCredits} crédit{row.original.missingCredits > 1 ? "s" : ""} manquant
+          {row.original.missingCredits} crédit{row.original.missingCredits > 1 ? "s" : ""} manquant
           {row.original.missingCredits > 1 ? "s" : ""}
         </Pill>
       ) : (
@@ -128,19 +94,14 @@ export function VideoSimulationTable({ videos }: { videos: VideoSimulationRow[] 
       caption="Coût et prix de chaque vidéo"
       columns={videoColumns}
       data={videos}
-      minWidth="72rem"
+      minWidth="46rem"
       paginate={false}
       columnLabels={{
-        modelName: "Modèle",
-        resolution: "Qualité",
-        durationSeconds: "Durée",
-        optionsLabel: "Options",
-        costUsd: "Coût fournisseur",
+        modelName: "Vidéo",
+        costUsd: "Coût",
         netNeededFcfa: "Doit rapporter",
-        chargedCredits: "Crédits facturés",
-        priceEquivalentFcfa: "Prix équivalent",
-        marginFcfa: "Marge en vigueur",
-        worstMargin: "Marge pessimiste",
+        chargedCredits: "Facturé",
+        marginFcfa: "Marge",
         verdict: "Verdict",
       }}
       emptyMessage="Aucune vidéo à simuler."
@@ -156,28 +117,19 @@ const packColumns = pack.columns([
     header: ({ column }) => <DataTableColumnHeader column={column} title="Pack" />,
     sortFn: "text",
     enableHiding: false,
-    cell: ({ row }) => <span className="whitespace-nowrap font-medium">{row.original.name}</span>,
+    cell: ({ row }) => (
+      <Stacked
+        main={row.original.name}
+        sub={`${row.original.credits} crédits${row.original.bonusCredits > 0 ? ` + ${row.original.bonusCredits} offerts` : ""}`}
+      />
+    ),
   }),
   pack.accessor("priceFcfa", {
     id: "priceFcfa",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Prix" />,
     sortFn: "basic",
-    cell: ({ row }) => <span className="whitespace-nowrap tabular-nums">{formatFcfa(row.original.priceFcfa)}</span>,
-  }),
-  pack.accessor("netFcfa", {
-    id: "netFcfa",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Net reçu" />,
-    sortFn: "basic",
-    cell: ({ row }) => <span className="whitespace-nowrap tabular-nums">{formatFcfa(row.original.netFcfa)}</span>,
-  }),
-  pack.display({
-    id: "credits",
-    header: "Crédits",
     cell: ({ row }) => (
-      <span className="whitespace-nowrap tabular-nums">
-        {row.original.credits}
-        {row.original.bonusCredits > 0 ? ` + ${row.original.bonusCredits} offerts` : ""}
-      </span>
+      <Stacked main={formatFcfa(row.original.priceFcfa)} sub={`${formatFcfa(row.original.netFcfa)} nets`} />
     ),
   }),
   pack.accessor("fcfaPerCredit", {
@@ -204,17 +156,46 @@ export function PackMarginTable({ packs }: { packs: PackMarginRow[] }) {
       caption="Valeur d’un crédit par pack"
       columns={packColumns}
       data={packs}
-      minWidth="44rem"
+      minWidth="36rem"
       paginate={false}
       columnLabels={{
         name: "Pack",
         priceFcfa: "Prix",
-        netFcfa: "Net reçu",
-        credits: "Crédits",
         fcfaPerCredit: "Net par crédit",
         bonusCostFcfa: "Coût du bonus",
       }}
       emptyMessage="Aucun pack publié."
     />
+  );
+}
+
+/** Un seul tableau à l'écran à la fois : la page tient sans défilement latéral ni empilement de sections. */
+export function SimulationTabs({
+  videos,
+  packs,
+  packNote,
+}: {
+  videos: VideoSimulationRow[];
+  packs: PackMarginRow[];
+  packNote: string;
+}) {
+  return (
+    <Tabs defaultValue="videos">
+      <TabsList variant="line" className="w-full justify-start gap-1 rounded-none border-b p-0 group-data-[orientation=horizontal]/tabs:h-auto">
+        <TabsTrigger value="videos" className="h-11 flex-none rounded-none px-3 group-data-[orientation=horizontal]/tabs:after:bottom-0">
+          Par vidéo <span className="text-muted-foreground">({videos.length})</span>
+        </TabsTrigger>
+        <TabsTrigger value="packs" className="h-11 flex-none rounded-none px-3 group-data-[orientation=horizontal]/tabs:after:bottom-0">
+          Par pack <span className="text-muted-foreground">({packs.length})</span>
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="videos" className="pt-4">
+        <VideoSimulationTable videos={videos} />
+      </TabsContent>
+      <TabsContent value="packs" className="space-y-3 pt-4">
+        <p className="text-xs text-muted-foreground">{packNote}</p>
+        <PackMarginTable packs={packs} />
+      </TabsContent>
+    </Tabs>
   );
 }

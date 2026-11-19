@@ -4,25 +4,15 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { PricingConfigRow, PricingPreview, PricingSections } from "@yamboka/shared";
 import { PricingPreviewTable } from "@/components/admin/pricing-preview-table";
-import { Pill } from "@/components/admin/ui";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, apiPost } from "@/lib/api-client";
 
 /**
- * Page « Configuration des calculs » : brouillon → aperçu → application.
+ * Réglages des calculs : brouillon → aperçu → application.
  *
  * Aucun paramètre de calcul ne passe par le code. Appliquer une version prend effet immédiatement, sans
  * redéploiement. L'aperçu est obligatoire dans les faits : c'est lui qui dit si la version vend sous le
@@ -55,53 +45,46 @@ interface Draft {
   provisional: boolean;
 }
 
-const TABS = [
-  { id: "marges", label: "Marges et protections" },
-  { id: "taux", label: "Taux et frais" },
-  { id: "packs", label: "Packs et achats" },
-  { id: "plafonds", label: "Plafonds et alertes" },
-] as const;
-type TabId = (typeof TABS)[number]["id"];
-
-const GROUPS: { tab: TabId; title: string; fields: Field[] }[] = [
+/** Quatre groupes à la suite : moins de clics qu'un second niveau d'onglets, et tout se relit d'un coup. */
+const GROUPS: { title: string; note: string; fields: Field[] }[] = [
   {
-    tab: "marges",
-    title: "Marge visée et protections",
+    title: "Marges et protections",
+    note: "Ce que chaque vidéo doit rapporter au-delà de son coût.",
     fields: [
-      { key: "marginPercent", label: "Marge visée (%)", kind: "decimal", hint: "Appliquée au coût fournisseur de chaque vidéo." },
-      { key: "minMarginPercent", label: "Marge minimale acceptée (%)", kind: "decimal", hint: "En dessous, l’application exige une confirmation." },
-      { key: "fxBufferPercent", label: "Marge de change (%)", kind: "decimal", hint: "Ajoutée au taux sortant retenu." },
-      { key: "safetyMarginUsd", label: "Marge de sécurité ($)", kind: "decimal", hint: "Dollars jamais engagés sur le compte fournisseur." },
-      { key: "bonusValuationPercent", label: "Bonus compté dans la valeur du crédit (%)", kind: "decimal", hint: "100 = cas prudent : le bonus compte sur chaque crédit." },
+      { key: "marginPercent", label: "Marge visée (%)", kind: "decimal" },
+      { key: "minMarginPercent", label: "Marge minimale (%)", kind: "decimal", hint: "En dessous : confirmation exigée." },
+      { key: "fxBufferPercent", label: "Marge de change (%)", kind: "decimal" },
+      { key: "safetyMarginUsd", label: "Marge de sécurité ($)", kind: "decimal", hint: "Jamais engagée chez le fournisseur." },
+      { key: "bonusValuationPercent", label: "Bonus compté (%)", kind: "decimal", hint: "100 = cas prudent." },
     ],
   },
   {
-    tab: "taux",
-    title: "Taux de change et frais du circuit de recharge",
+    title: "Taux et frais du circuit",
+    note: "Le coût du trajet FCFA → dollars, tant qu'aucune recharge n'est mesurée.",
     fields: [
-      { key: "cardFcfaPerUsd", label: "Taux carte FCFA → $", kind: "decimal", hint: "Ne sert que tant qu’aucune recharge n’est mesurée." },
-      { key: "circuitLossPercent", label: "Perte de circuit provisoire (%)", kind: "decimal", hint: "Valeur unique, provisoire. Ne s’ajoute JAMAIS à un r_out mesuré." },
-      { key: "withdrawalFeePercent", label: "Frais de retrait SasPay (%)", kind: "decimal", hint: "1 % supposé, NON mesuré." },
+      { key: "cardFcfaPerUsd", label: "Taux carte (F/$)", kind: "decimal" },
+      { key: "circuitLossPercent", label: "Perte de circuit (%)", kind: "decimal", hint: "Ne s’ajoute jamais à un taux mesuré." },
+      { key: "withdrawalFeePercent", label: "Frais de retrait (%)", kind: "decimal", hint: "Supposé, non mesuré." },
       { key: "momoToCardFeePercent", label: "Frais MoMo → carte (%)", kind: "decimal" },
-      { key: "topUpFeePercent", label: "Frais de recharge fournisseur (%)", kind: "decimal" },
+      { key: "topUpFeePercent", label: "Frais de recharge (%)", kind: "decimal" },
     ],
   },
   {
-    tab: "packs",
     title: "Achats et retraits",
+    note: "Montants en dessous desquels une opération n'est plus rentable.",
     fields: [
-      { key: "minPurchaseXaf", label: "Achat minimum (FCFA)", kind: "integer", hint: "En dessous, la marge nette d’un achat sur mesure ne serait plus positive." },
-      { key: "minWithdrawalXaf", label: "Retrait minimum (FCFA)", kind: "integer", hint: "Minimum imposé par l’encaisseur." },
+      { key: "minPurchaseXaf", label: "Achat minimum (FCFA)", kind: "integer" },
+      { key: "minWithdrawalXaf", label: "Retrait minimum (FCFA)", kind: "integer", hint: "Imposé par l’encaisseur." },
     ],
   },
   {
-    tab: "plafonds",
-    title: "Plafonds de dépense et validité des devis",
+    title: "Plafonds et devis",
+    note: "Garde-fous de dépense et durée de validité d'un prix affiché.",
     fields: [
-      { key: "dailyCapUsd", label: "Plafond quotidien, toute la plateforme ($)", kind: "decimal" },
+      { key: "dailyCapUsd", label: "Plafond quotidien, plateforme ($)", kind: "decimal" },
       { key: "dailyUserCapUsd", label: "Plafond quotidien par client ($)", kind: "decimal" },
-      { key: "quoteValiditySeconds", label: "Validité d’un devis affiché (secondes)", kind: "integer", hint: "600 = 10 minutes. Un devis déjà affiché reste honoré pendant ce délai." },
-      { key: "provisional", label: "Configuration provisoire (scénario pessimiste appliqué)", kind: "boolean", hint: "À ne décocher qu’une fois le taux sortant réellement mesuré." },
+      { key: "quoteValiditySeconds", label: "Validité d’un devis (s)", kind: "integer", hint: "600 = 10 minutes." },
+      { key: "provisional", label: "Configuration provisoire", kind: "boolean", hint: "À décocher une fois le taux sortant mesuré." },
     ],
   },
 ];
@@ -148,7 +131,6 @@ export function PricingConfigForm({ sections }: { sections: PricingSections }) {
   const router = useRouter();
   const initial = draftOf(sections.current);
   const [draft, setDraft] = useState<Draft>(initial);
-  const [tab, setTab] = useState<TabId>("marges");
   const [note, setNote] = useState("");
   const [preview, setPreview] = useState<PricingPreview | null>(null);
   const [confirmBelowCost, setConfirmBelowCost] = useState(false);
@@ -197,25 +179,6 @@ export function PricingConfigForm({ sections }: { sections: PricingSections }) {
     }
   }
 
-  async function rollback(versionId: string) {
-    const reason = window.prompt("Motif du retour à cette version ?");
-    if (!reason || reason.trim().length < 3) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      await apiPost("/admin/pricing/rollback", { versionId, note: reason.trim() });
-      setMsg({ ok: true, text: "Retour effectué : une nouvelle version recopie l’ancienne, rien n’a été supprimé." });
-      router.refresh();
-    } catch (err) {
-      setMsg({
-        ok: false,
-        text: err instanceof ApiError ? (err.details[0]?.message ?? err.message) : "Retour impossible.",
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const needsBelowCost = preview?.sellsBelowCost ?? false;
   const needsBigChange = (preview?.bigPriceChange ?? false) || (preview?.underMinMargin ?? false);
   const canApply =
@@ -225,6 +188,15 @@ export function PricingConfigForm({ sections }: { sections: PricingSections }) {
     (!needsBelowCost || confirmBelowCost) &&
     (!needsBigChange || confirmBigChange);
 
+  /** Ce qu'il reste à faire pour pouvoir appliquer, en une phrase et une seule à la fois. */
+  const blocker = !dirty
+    ? "Aucun changement en attente."
+    : note.trim().length < 3
+      ? "Indiquez un motif pour pouvoir appliquer."
+      : preview === null
+        ? "Regardez l’aperçu avant d’appliquer."
+        : null;
+
   return (
     <div className="space-y-6">
       {msg && (
@@ -233,81 +205,64 @@ export function PricingConfigForm({ sections }: { sections: PricingSections }) {
         </Alert>
       )}
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
-        <TabsList
-          variant="line"
-          className="w-full justify-start gap-1 overflow-x-auto rounded-none border-b p-0 group-data-[orientation=horizontal]/tabs:h-auto"
-        >
-          {TABS.map((t) => {
-            const count = GROUPS.filter((g) => g.tab === t.id)
-              .flatMap((g) => g.fields)
-              .filter((f) => initial[f.key] !== draft[f.key]).length;
-            return (
-              <TabsTrigger
-                key={t.id}
-                value={t.id}
-                className="h-11 flex-none rounded-none px-3 group-data-[orientation=horizontal]/tabs:after:bottom-0 focus-visible:ring-inset"
-              >
-                {t.label}
-                {count > 0 && (
-                  <span className="grid min-w-5 place-items-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
-                    {count}
-                    <span className="sr-only"> modification{count > 1 ? "s" : ""} non appliquée{count > 1 ? "s" : ""}</span>
-                  </span>
-                )}
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
+      {GROUPS.map((g) => {
+        const count = g.fields.filter((f) => initial[f.key] !== draft[f.key]).length;
+        return (
+          <fieldset key={g.title} className="rounded-2xl bg-card p-4 shadow-card">
+            <legend className="flex items-center gap-2 px-1">
+              <span className="text-sm font-semibold">{g.title}</span>
+              {count > 0 && (
+                <span className="grid min-w-5 place-items-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
+                  {count}
+                  <span className="sr-only"> modification{count > 1 ? "s" : ""} non appliquée{count > 1 ? "s" : ""}</span>
+                </span>
+              )}
+            </legend>
+            <p className="mb-3 text-xs text-muted-foreground">{g.note}</p>
+            <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+              {g.fields.map((f) => {
+                const id = `p-${f.key}`;
+                const value = draft[f.key];
+                const touched = initial[f.key] !== value;
+                return (
+                  <div key={f.key} className="space-y-1">
+                    {f.kind === "boolean" ? (
+                      <label className="flex items-start gap-2.5 pt-5 text-sm">
+                        <input
+                          id={id}
+                          type="checkbox"
+                          checked={Boolean(value)}
+                          onChange={(e) => set(f.key, e.target.checked)}
+                          className="mt-0.5 size-5"
+                        />
+                        <span className="font-medium">{f.label}</span>
+                      </label>
+                    ) : (
+                      <>
+                        <Label htmlFor={id} className="text-xs text-muted-foreground">
+                          {f.label}
+                        </Label>
+                        <Input
+                          id={id}
+                          inputMode="decimal"
+                          value={String(value)}
+                          onChange={(e) => set(f.key, e.target.value)}
+                          className={`h-9 tabular-nums ${touched ? "border-primary" : ""}`}
+                        />
+                      </>
+                    )}
+                    {f.hint && <p className="text-xs text-muted-foreground/80">{f.hint}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </fieldset>
+        );
+      })}
 
-        {TABS.map((t) => (
-          <TabsContent key={t.id} value={t.id} className="space-y-8 pt-6">
-            {GROUPS.filter((g) => g.tab === t.id).map((g) => (
-              <fieldset key={g.title} className="space-y-4">
-                <legend className="mb-1 text-lg font-bold">{g.title}</legend>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {g.fields.map((f) => {
-                    const id = `p-${f.key}`;
-                    const value = draft[f.key];
-                    return (
-                      <div key={f.key} className="space-y-1.5">
-                        {f.kind === "boolean" ? (
-                          <label className="flex items-start gap-3 text-sm">
-                            <input
-                              id={id}
-                              type="checkbox"
-                              checked={Boolean(value)}
-                              onChange={(e) => set(f.key, e.target.checked)}
-                              className="mt-0.5 size-5"
-                            />
-                            <span className="font-medium">{f.label}</span>
-                          </label>
-                        ) : (
-                          <>
-                            <Label htmlFor={id}>{f.label}</Label>
-                            <Input
-                              id={id}
-                              inputMode="decimal"
-                              value={String(value)}
-                              onChange={(e) => set(f.key, e.target.value)}
-                            />
-                          </>
-                        )}
-                        {f.hint && <p className="text-xs text-muted-foreground">{f.hint}</p>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </fieldset>
-            ))}
-          </TabsContent>
-        ))}
-      </Tabs>
-
-      <fieldset className="space-y-2 rounded-3xl bg-card p-4 shadow-card">
-        <legend className="px-1 text-lg font-bold">Motif</legend>
-        <Label htmlFor="pricing-note">
-          Pourquoi ce changement ? (obligatoire, conservé avec la version)
+      <div className="space-y-3 rounded-2xl bg-card p-4 shadow-card">
+        <Label htmlFor="pricing-note" className="text-sm font-semibold">
+          Motif du changement
         </Label>
         <Textarea
           id="pricing-note"
@@ -316,7 +271,7 @@ export function PricingConfigForm({ sections }: { sections: PricingSections }) {
           rows={2}
           placeholder="Taux sortant mesuré sur la recharge du 20 novembre."
         />
-        <div className="flex flex-wrap gap-2 pt-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" disabled={!dirty || busy} onClick={() => void run("preview")}>
             {busy ? "…" : "Voir l’aperçu"}
           </Button>
@@ -332,43 +287,36 @@ export function PricingConfigForm({ sections }: { sections: PricingSections }) {
                 setPreview(null);
               }}
             >
-              Annuler les changements
+              Annuler
             </Button>
           )}
+          {blocker && <p className="text-sm text-muted-foreground">{blocker}</p>}
         </div>
-        {!dirty && <p className="text-sm text-muted-foreground">Aucun changement en attente.</p>}
-        {dirty && note.trim().length < 3 && (
-          <p className="text-sm text-muted-foreground">Indiquez un motif pour pouvoir appliquer.</p>
-        )}
-        {dirty && preview === null && note.trim().length >= 3 && (
-          <p className="text-sm text-muted-foreground">Regardez l’aperçu avant d’appliquer.</p>
-        )}
-      </fieldset>
+      </div>
 
       {preview && (
         <section aria-labelledby="apercu" className="space-y-4">
-          <h2 id="apercu" className="text-xl font-bold">
-            Aperçu avant / après
-          </h2>
-          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-            <span>
-              Taux retenu : {preview.pricingRateBefore} → <strong>{preview.pricingRateAfter}</strong> F/$
-            </span>
-            <span>
-              Plancher du crédit : {preview.creditFloorBeforeFcfa} → <strong>{preview.creditFloorAfterFcfa}</strong> F
-            </span>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 id="apercu" className="text-sm font-semibold">
+              Aperçu avant / après
+            </h3>
+            <p className="text-xs tabular-nums text-muted-foreground">
+              Taux {preview.pricingRateBefore} → <strong className="text-foreground">{preview.pricingRateAfter}</strong> F/$
+              {" · "}
+              Plancher {preview.creditFloorBeforeFcfa} → <strong className="text-foreground">{preview.creditFloorAfterFcfa}</strong> F
+            </p>
           </div>
 
           {needsBelowCost && (
-            <div className="space-y-2 rounded-3xl border border-destructive/40 bg-destructive/8 p-4">
-              <p className="font-semibold text-destructive">
-                Cette configuration vend sous le coût sur {preview.belowCostLabels.length} ligne(s).
+            <div className="space-y-2 rounded-2xl border border-destructive/40 bg-destructive/8 p-4">
+              <p className="text-sm font-semibold text-destructive">
+                Vend sous le coût sur {preview.belowCostLabels.length} ligne(s).
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {preview.belowCostLabels.slice(0, 6).join(" ; ")}
                 {preview.belowCostLabels.length > 6 ? " …" : ""}
               </p>
-              <label className="flex items-start gap-3 text-sm font-medium">
+              <label className="flex items-start gap-2.5 text-sm font-medium">
                 <input
                   type="checkbox"
                   checked={confirmBelowCost}
@@ -381,19 +329,19 @@ export function PricingConfigForm({ sections }: { sections: PricingSections }) {
           )}
 
           {needsBigChange && (
-            <div className="space-y-2 rounded-3xl border border-warning/40 bg-warning/8 p-4">
+            <div className="space-y-2 rounded-2xl border border-warning/40 bg-warning/8 p-4">
               {preview.bigPriceChange && (
-                <p className="font-semibold">
+                <p className="text-sm font-semibold">
                   Le prix change de plus de 20 % sur {preview.bigPriceChangeLabels.length} ligne(s).
                 </p>
               )}
               {preview.underMinMargin && (
-                <p className="font-semibold">
+                <p className="text-sm font-semibold">
                   La marge passe sous le minimum ({Number(preview.after.minMarginPercent)} %) sur{" "}
                   {preview.underMinMarginLabels.length} ligne(s).
                 </p>
               )}
-              <label className="flex items-start gap-3 text-sm font-medium">
+              <label className="flex items-start gap-2.5 text-sm font-medium">
                 <input
                   type="checkbox"
                   checked={confirmBigChange}
@@ -408,72 +356,6 @@ export function PricingConfigForm({ sections }: { sections: PricingSections }) {
           <PricingPreviewTable rows={preview.rows} />
         </section>
       )}
-
-      <section aria-labelledby="historique" className="space-y-3">
-        <h2 id="historique" className="text-xl font-bold">
-          Historique des versions
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Rien n’est jamais modifié ni supprimé : un retour en arrière crée une nouvelle version qui recopie
-          l’ancienne. Chaque génération garde la version avec laquelle elle a été facturée.
-        </p>
-        <div className="overflow-x-auto rounded-3xl bg-card shadow-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>En vigueur depuis</TableHead>
-                <TableHead>Marge</TableHead>
-                <TableHead>Taux carte</TableHead>
-                <TableHead>Perte circuit</TableHead>
-                <TableHead>Bonus compté</TableHead>
-                <TableHead>État</TableHead>
-                <TableHead>Motif</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sections.history.map((v) => (
-                <TableRow key={v.id}>
-                  <TableCell className="whitespace-nowrap tabular-nums">
-                    {new Date(v.effectiveFrom).toLocaleString("fr-FR")}
-                  </TableCell>
-                  <TableCell className="tabular-nums">{Number(v.marginPercent)} %</TableCell>
-                  <TableCell className="tabular-nums">{Number(v.cardFcfaPerUsd)} F/$</TableCell>
-                  <TableCell className="tabular-nums">{Number(v.circuitLossPercent)} %</TableCell>
-                  <TableCell className="tabular-nums">{Number(v.bonusValuationPercent)} %</TableCell>
-                  <TableCell>
-                    {v.id === sections.current.id ? (
-                      <Pill tone="ok">En vigueur</Pill>
-                    ) : v.provisional ? (
-                      <Pill tone="warn">Provisoire</Pill>
-                    ) : (
-                      <Pill>Archivée</Pill>
-                    )}
-                  </TableCell>
-                  <TableCell className="max-w-[18rem] truncate" title={v.note ?? ""}>
-                    {v.note ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {v.id === sections.current.id ? (
-                      <span className="text-sm text-muted-foreground">—</span>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => void rollback(v.id)}
-                      >
-                        Revenir à cette version
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
     </div>
   );
 }

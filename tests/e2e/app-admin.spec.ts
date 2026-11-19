@@ -112,7 +112,8 @@ test.describe('Administration — actions réelles', () => {
     // Les tests de création partagent cette base : le tableau de bord montre soit l'état vide, soit les chiffres réels.
     await expect(page.getByRole('heading', { name: 'Générations' })).toBeVisible();
     await expect(page.getByText(/Aucune génération sur la période|Réussies|Échouées/).first()).toBeVisible();
-    await expect(page.getByText(/Non calculable|Solde estimé/).first()).toBeVisible();
+    // Le libellé réel de la page : soit le solde estimé, soit l'aveu qu'il n'est pas calculable.
+    await expect(page.getByText(/Solde fournisseur (estimé|non calculable)/).first()).toBeVisible();
   });
 
   test('le sélecteur de période recalcule le tableau de bord, raccourci puis période personnalisée', async ({ page }) => {

@@ -153,8 +153,9 @@ arrière est toujours possible en un clic.
 | 8 | **Marge visée** | une fois tout le reste mesuré : c'est le seul paramètre qui soit une décision commerciale, pas une mesure |
 | 9 | **`provisional` → faux** | **en dernier.** Regardez l'aperçu : aucune marge négative, dans les deux scénarios |
 
-Après la bascule, repassez sur le **Simulateur** : la colonne « Marge pessimiste » doit rester positive
-partout. Si elle ne l'est plus, remettez `provisional` à vrai (retour en arrière en un clic) et reprenez.
+Après la bascule, repassez sur le **Simulateur**, onglet « Par vidéo » : dans la colonne « Marge », la
+ligne « pessimiste » doit rester positive partout, et chaque verdict doit indiquer « Couvert ». Si ce n'est
+plus le cas, remettez `provisional` à vrai (retour en arrière en un clic) et reprenez.
 
 ---
 
