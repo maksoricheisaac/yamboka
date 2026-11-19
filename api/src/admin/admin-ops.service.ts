@@ -96,6 +96,11 @@ export class AdminOpsService {
 
   // ───────────── Pilotage ─────────────
 
+  /**
+   * Série journalière COMPLÈTE sur la période : un point par jour calendaire de Brazzaville, y compris les
+   * jours sans données (valeur 0). Sans ce remplissage, l'histogramme n'affichait que les jours actifs,
+   * collés les uns aux autres : trente jours dont trois actifs se lisaient comme trois jours pleins.
+   */
   private async daily(
     table: 'User' | 'Payment',
     since: Date,
@@ -104,11 +109,27 @@ export class AdminOpsService {
     const rows =
       table === 'User'
         ? await this.prisma.$queryRaw<{ day: string; value: number }[]>`
-            SELECT to_char(("createdAt" AT TIME ZONE 'Africa/Brazzaville')::date, 'YYYY-MM-DD') AS day, COUNT(*)::int AS value
-            FROM "User" WHERE "createdAt" >= ${since} AND "createdAt" < ${until} GROUP BY 1 ORDER BY 1`
+            SELECT to_char(d, 'YYYY-MM-DD') AS day, COALESCE(v.value, 0)::int AS value
+            FROM generate_series(
+                   (${since} AT TIME ZONE 'Africa/Brazzaville')::date,
+                   ((${until} AT TIME ZONE 'Africa/Brazzaville') - interval '1 microsecond')::date,
+                   interval '1 day') AS d
+            LEFT JOIN (
+              SELECT ("createdAt" AT TIME ZONE 'Africa/Brazzaville')::date AS day, COUNT(*)::int AS value
+              FROM "User" WHERE "createdAt" >= ${since} AND "createdAt" < ${until} GROUP BY 1
+            ) v ON v.day = d::date
+            ORDER BY 1`
         : await this.prisma.$queryRaw<{ day: string; value: number }[]>`
-            SELECT to_char(("creditedAt" AT TIME ZONE 'Africa/Brazzaville')::date, 'YYYY-MM-DD') AS day, COALESCE(SUM("amount"), 0)::int AS value
-            FROM "Payment" WHERE "status" = 'SUCCESS' AND "creditedAt" >= ${since} AND "creditedAt" < ${until} GROUP BY 1 ORDER BY 1`;
+            SELECT to_char(d, 'YYYY-MM-DD') AS day, COALESCE(v.value, 0)::int AS value
+            FROM generate_series(
+                   (${since} AT TIME ZONE 'Africa/Brazzaville')::date,
+                   ((${until} AT TIME ZONE 'Africa/Brazzaville') - interval '1 microsecond')::date,
+                   interval '1 day') AS d
+            LEFT JOIN (
+              SELECT ("creditedAt" AT TIME ZONE 'Africa/Brazzaville')::date AS day, COALESCE(SUM("amount"), 0)::int AS value
+              FROM "Payment" WHERE "status" = 'SUCCESS' AND "creditedAt" >= ${since} AND "creditedAt" < ${until} GROUP BY 1
+            ) v ON v.day = d::date
+            ORDER BY 1`;
     return rows;
   }
 

@@ -46,3 +46,8 @@ const dateOnly = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "shor
 export function formatDate(iso: string): string {
   return dateOnly.format(new Date(iso));
 }
+
+/** Accord d'un nom de dénombrement : « 1 paiement réussi », « 3 paiements réussis ». */
+export function plural(count: number, one: string, many: string): string {
+  return `${formatNumber(count)} ${count > 1 ? many : one}`;
+}

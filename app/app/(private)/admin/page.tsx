@@ -6,7 +6,7 @@ import { Bars } from "@/components/admin/bars";
 import { PageHeader } from "@/components/admin/ui";
 import { PeriodPicker } from "@/components/admin/period-picker";
 import { requireUser } from "@/lib/auth";
-import { formatFcfa, formatNumber } from "@/lib/format";
+import { formatFcfa, formatNumber, plural } from "@/lib/format";
 import { isIsoDate, presetRange } from "@/lib/period";
 import { serverGet } from "@/lib/server-api";
 
@@ -66,14 +66,30 @@ export default async function AdminHomePage({ searchParams }: PageProps<"/admin"
       <section aria-labelledby="activite" className="space-y-4">
         <h2 id="activite" className="text-heading">Activité</h2>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Kpi label="Inscrits sur la période" value={formatNumber(s.users.newInPeriod)} hint={`${formatNumber(s.users.activeInPeriod)} actifs · ${formatNumber(s.users.total)} comptes au total (cumul)`} />
-          <Kpi label="Chiffre d’affaires" value={formatFcfa(s.payments.revenueFcfa)} hint={`${formatNumber(s.payments.successCount)} paiement(s) réussi(s)`} />
-          <Kpi label="Volume de paiements" value={formatFcfa(s.payments.volumeFcfa)} hint={`${s.payments.pendingCount} en attente · ${s.payments.failedCount} échoué(s)`} />
-          <Kpi label="Crédits" value={`${formatNumber(s.credits.sold)} vendus`} hint={`${formatNumber(s.credits.consumed)} consommés`} />
+          <Kpi
+            label="Inscrits sur la période"
+            value={formatNumber(s.users.newInPeriod)}
+            hint={`${plural(s.users.activeInPeriod, "actif", "actifs")} · ${formatNumber(s.users.total)} comptes au total, hors période`}
+          />
+          <Kpi
+            label="Chiffre d’affaires encaissé"
+            value={formatFcfa(s.payments.revenueFcfa)}
+            hint={plural(s.payments.successCount, "paiement réussi", "paiements réussis")}
+          />
+          <Kpi
+            label="Paiements engagés"
+            value={formatFcfa(s.payments.volumeFcfa)}
+            hint={`${plural(s.payments.pendingCount, "en attente", "en attente")} · ${plural(s.payments.failedCount, "échoué", "échoués")}`}
+          />
+          <Kpi
+            label="Crédits vendus"
+            value={formatNumber(s.credits.sold)}
+            hint={`${formatNumber(s.credits.consumed)} consommés`}
+          />
         </dl>
         <div className="grid gap-6 pt-2 md:grid-cols-2">
           <Bars title="Chiffre d’affaires par jour" data={s.series.revenue} unit="FCFA" />
-          <Bars title="Inscriptions par jour" data={s.series.signups} unit="inscrits" />
+          <Bars title="Inscriptions par jour" data={s.series.signups} unit="inscriptions" unitOne="inscription" />
         </div>
       </section>
 
@@ -99,7 +115,7 @@ export default async function AdminHomePage({ searchParams }: PageProps<"/admin"
         <p className="text-sm text-muted-foreground">
           {s.providerBalance.known ? (
             <>
-              Solde fournisseur estimé : <strong className="text-foreground">{formatNumber(s.providerBalance.estimatedBalanceUsd)} $</strong> ({formatNumber(s.providerBalance.topUpsUsd)} $ rechargés, {formatNumber(s.providerBalance.estimatedConsumedUsd)} $ consommés).
+              Solde fournisseur estimé : <strong className="text-foreground">{formatNumber(s.providerBalance.estimatedBalanceUsd)} $</strong> ({formatNumber(s.providerBalance.topUpsUsd)} $ rechargés, {formatNumber(s.providerBalance.estimatedConsumedUsd)} $ consommés) — depuis l’origine, hors période.
             </>
           ) : (
             <>
