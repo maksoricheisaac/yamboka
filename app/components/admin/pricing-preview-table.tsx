@@ -10,69 +10,61 @@ import { formatFcfa } from "@/lib/format";
 
 const col = createColumnHelper<DataTableFeatures, PricingPreviewRow>();
 
-/** Marge affichée : en rouge dès qu'elle est négative, c'est la seule chose à repérer d'un coup d'œil. */
-function Margin({ value }: { value: number }) {
+/** Deux lignes dans une cellule : le chiffre qui décide, puis sa précision. */
+function Stacked({ main, sub, alert }: { main: React.ReactNode; sub: React.ReactNode; alert?: boolean }) {
   return (
-    <span className={`whitespace-nowrap tabular-nums ${value < 0 ? "font-semibold text-destructive" : ""}`}>
-      {formatFcfa(value)}
-    </span>
+    <div className="whitespace-nowrap tabular-nums">
+      <div className={alert ? "font-semibold text-destructive" : "font-medium"}>{main}</div>
+      <div className="text-xs text-muted-foreground">{sub}</div>
+    </div>
+  );
+}
+
+/** Passage avant → après, l'après en gras : c'est lui qu'on applique. */
+function Change({ before, after }: { before: React.ReactNode; after: React.ReactNode }) {
+  return (
+    <>
+      <span className="text-muted-foreground">{before}</span>
+      <span className="text-muted-foreground"> → </span>
+      <span className="font-semibold text-foreground">{after}</span>
+    </>
   );
 }
 
 const columns = col.columns([
   col.accessor("modelName", {
     id: "modelName",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Modèle" />,
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Vidéo" />,
     sortFn: "text",
     enableHiding: false,
     cell: ({ row }) => (
-      <span className="whitespace-nowrap font-medium" title={row.original.modelSlug}>
-        {row.original.modelName}
-      </span>
+      <Stacked
+        main={<span title={row.original.modelSlug}>{row.original.modelName}</span>}
+        sub={`${row.original.resolution} · ${row.original.durationSeconds} s`}
+      />
     ),
-  }),
-  col.accessor("resolution", {
-    id: "resolution",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Qualité" />,
-    sortFn: "text",
-    cell: ({ row }) => <span className="whitespace-nowrap">{row.original.resolution}</span>,
-  }),
-  col.accessor("durationSeconds", {
-    id: "durationSeconds",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Durée" />,
-    sortFn: "basic",
-    cell: ({ row }) => <span className="whitespace-nowrap tabular-nums">{row.original.durationSeconds} s</span>,
   }),
   col.accessor("costUsd", {
     id: "costUsd",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Coût" />,
     sortFn: "basic",
     cell: ({ row }) => (
-      <span className="whitespace-nowrap tabular-nums">
-        {row.original.costUsd} $ · {formatFcfa(row.original.after.costFcfa)}
-      </span>
+      <Stacked main={`${row.original.costUsd} $`} sub={formatFcfa(row.original.after.costFcfa)} />
     ),
   }),
   col.display({
-    id: "credits",
-    header: "Crédits (avant → après)",
+    id: "billed",
+    header: "Facturé (avant → après)",
     cell: ({ row }) => (
-      <span className="whitespace-nowrap tabular-nums">
-        {row.original.before.credits}
-        <span className="text-muted-foreground"> → </span>
-        <span className="font-semibold">{row.original.after.credits}</span>
-      </span>
-    ),
-  }),
-  col.display({
-    id: "price",
-    header: "Prix équivalent",
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap tabular-nums">
-        {formatFcfa(row.original.before.priceEquivalentFcfa)}
-        <span className="text-muted-foreground"> → </span>
-        <span className="font-semibold">{formatFcfa(row.original.after.priceEquivalentFcfa)}</span>
-      </span>
+      <Stacked
+        main={<Change before={`${row.original.before.credits} cr.`} after={`${row.original.after.credits} cr.`} />}
+        sub={
+          <Change
+            before={formatFcfa(row.original.before.priceEquivalentFcfa)}
+            after={formatFcfa(row.original.after.priceEquivalentFcfa)}
+          />
+        }
+      />
     ),
   }),
   col.accessor("changePercent", {
@@ -93,12 +85,13 @@ const columns = col.columns([
   col.display({
     id: "margin",
     header: "Marge après",
-    cell: ({ row }) => <Margin value={row.original.after.marginFcfa} />,
-  }),
-  col.display({
-    id: "worstMargin",
-    header: "Marge pessimiste",
-    cell: ({ row }) => <Margin value={row.original.afterWorstMarginFcfa} />,
+    cell: ({ row }) => (
+      <Stacked
+        main={formatFcfa(row.original.after.marginFcfa)}
+        sub={`pessimiste ${formatFcfa(row.original.afterWorstMarginFcfa)}`}
+        alert={row.original.after.marginFcfa < 0 || row.original.afterWorstMarginFcfa < 0}
+      />
+    ),
   }),
   col.display({
     id: "verdict",
@@ -118,18 +111,14 @@ export function PricingPreviewTable({ rows }: { rows: PricingPreviewRow[] }) {
       caption="Avant / après, par modèle, qualité et durée"
       columns={columns}
       data={rows}
-      minWidth="72rem"
+      minWidth="48rem"
       paginate={false}
       columnLabels={{
-        modelName: "Modèle",
-        resolution: "Qualité",
-        durationSeconds: "Durée",
+        modelName: "Vidéo",
         costUsd: "Coût",
-        credits: "Crédits (avant → après)",
-        price: "Prix équivalent",
+        billed: "Facturé (avant → après)",
         changePercent: "Variation",
         margin: "Marge après",
-        worstMargin: "Marge pessimiste",
         verdict: "Verdict",
       }}
       emptyMessage="Aucune ligne à comparer."

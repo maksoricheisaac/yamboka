@@ -3,10 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { CalibrationGrid, ModelTestResult, PricingSections } from "@yamboka/shared";
+import { MoreVertical } from "lucide-react";
 import { ModelFormDialog } from "@/components/admin/model-form";
 import { Pill } from "@/components/admin/ui";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -92,22 +94,15 @@ export function ModelCatalogPanel({ sections }: { sections: PricingSections }) {
         </Alert>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          Ajouter ou modifier un modèle ne demande aucune intervention dans le code : tout est en base.
+        <p className="text-xs text-muted-foreground">
+          {sections.estimateAvailable
+            ? "Tester vérifie le schéma et renvoie le prix réel ; calibrer enregistre les tarifs estimés."
+            : "Fournisseur simulé : le test vérifie le schéma, le calibrage n’est pas possible."}
         </p>
-        <ModelFormDialog
-          trigger={<Button type="button">Ajouter un modèle</Button>}
-        />
+        <ModelFormDialog trigger={<Button type="button" size="sm">Ajouter un modèle</Button>} />
       </div>
 
-      {!sections.estimateAvailable && (
-        <p className="text-sm text-muted-foreground">
-          Le fournisseur en service ne sait pas estimer un prix (fournisseur simulé) : le test vérifie le
-          schéma du modèle, mais le calibrage n’est pas possible.
-        </p>
-      )}
-
-      <div className="overflow-x-auto rounded-3xl bg-card shadow-card">
+      <div className="overflow-x-auto rounded-2xl bg-card shadow-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -144,42 +139,44 @@ export function ModelCatalogPanel({ sections }: { sections: PricingSections }) {
                   {m.active ? <Pill tone="ok">Actif</Pill> : <Pill>Inactif</Pill>}
                   {m.isDefault && <Pill tone="info">Par défaut</Pill>}
                 </TableCell>
-                <TableCell className="space-x-2 whitespace-nowrap text-right">
-                  <ModelFormDialog
-                    slug={m.slug}
-                    trigger={
-                      <Button type="button" size="sm" variant="outline">
-                        Modifier
-                      </Button>
-                    }
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={busy !== null}
-                    onClick={() => void act(m.slug, "test")}
-                  >
-                    Tester
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={busy !== null || !sections.estimateAvailable}
-                    onClick={() => void act(m.slug, "calibrate")}
-                  >
-                    Calibrer
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={m.active ? "ghost" : "default"}
-                    disabled={busy !== null || (!m.active && m.missingPrices > 0)}
-                    onClick={() => void act(m.slug, m.active ? "disable" : "activate")}
-                  >
-                    {m.active ? "Désactiver" : "Activer"}
-                  </Button>
+                <TableCell className="whitespace-nowrap text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <ModelFormDialog
+                      slug={m.slug}
+                      trigger={
+                        <Button type="button" size="sm" variant="outline">
+                          Modifier
+                        </Button>
+                      }
+                    />
+                    {/* Tester, calibrer et activer sont rangés dans un menu : quatre boutons par ligne débordaient. */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button type="button" variant="ghost" size="icon" className="size-9" aria-label={`Actions sur ${m.name}`}>
+                          <MoreVertical aria-hidden />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" collisionPadding={8} className="min-w-48">
+                        <DropdownMenuItem disabled={busy !== null} onSelect={() => void act(m.slug, "test")}>
+                          Tester le modèle
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={busy !== null || !sections.estimateAvailable}
+                          onSelect={() => void act(m.slug, "calibrate")}
+                        >
+                          Calibrer les tarifs
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant={m.active ? "destructive" : "default"}
+                          disabled={busy !== null || (!m.active && m.missingPrices > 0)}
+                          onSelect={() => void act(m.slug, m.active ? "disable" : "activate")}
+                        >
+                          {m.active ? "Désactiver" : "Activer"}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -188,7 +185,7 @@ export function ModelCatalogPanel({ sections }: { sections: PricingSections }) {
       </div>
 
       {test && (
-        <section aria-labelledby="test-result" className="space-y-2 rounded-3xl bg-card p-4 shadow-card">
+        <section aria-labelledby="test-result" className="space-y-2 rounded-2xl bg-card p-4 shadow-card">
           <h3 id="test-result" className="font-bold">
             Essai de {test.slug}
           </h3>
@@ -217,7 +214,7 @@ export function ModelCatalogPanel({ sections }: { sections: PricingSections }) {
       )}
 
       {grid && (
-        <section aria-labelledby="grid-result" className="space-y-3 rounded-3xl bg-card p-4 shadow-card">
+        <section aria-labelledby="grid-result" className="space-y-3 rounded-2xl bg-card p-4 shadow-card">
           <h3 id="grid-result" className="font-bold">
             Calibrage de {grid.slug}
           </h3>
@@ -268,7 +265,7 @@ export function ModelCatalogPanel({ sections }: { sections: PricingSections }) {
       )}
 
       {sections.estimateAlerts.length > 0 && (
-        <section aria-labelledby="alertes" className="space-y-2 rounded-3xl border border-warning/40 bg-warning/8 p-4">
+        <section aria-labelledby="alertes" className="space-y-2 rounded-2xl border border-warning/40 bg-warning/8 p-4">
           <h3 id="alertes" className="font-bold">
             Le fournisseur est plus cher que la configuration
           </h3>

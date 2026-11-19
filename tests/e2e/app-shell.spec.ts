@@ -209,6 +209,8 @@ test.describe('Administration — identité et navigation', () => {
       ['/admin/presets', 'Presets'],
       ['/admin/paiements', 'Paiements'],
       ['/admin/finances', 'Synthèse financière'],
+      ['/admin/simulateur', 'Simulateur'],
+      ['/admin/configuration', 'Configuration des calculs'],
       ['/admin/parametres', 'Paramètres'],
       ['/admin/textes-legaux', 'Textes légaux'],
       ['/admin/administrateurs', 'Administrateurs'],

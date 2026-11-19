@@ -12,8 +12,8 @@ export default async function SettingsPage() {
   const settings = await serverGet<SettingsView>("/admin/settings");
 
   return (
-    <div className="space-y-8">
-      <PageHeader title="Paramètres" />
+    <div className="space-y-5">
+      <PageHeader title="Paramètres" description="Réglages d’exploitation. Chaque enregistrement demande un motif et part au journal d’audit." />
       <SettingsForm initial={settings.values} emailProvider={settings.email.provider} />
     </div>
   );

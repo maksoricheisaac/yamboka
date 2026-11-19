@@ -32,6 +32,40 @@ export function StatGrid({ children }: { children: ReactNode }) {
   return <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">{children}</div>;
 }
 
+/**
+ * Tuile d'indicateur : la valeur d'abord, le libellé dessous, une précision courte en bas. Même forme que les
+ * indicateurs du tableau de bord, pour qu'un chiffre se lise partout de la même façon.
+ */
+export function Metric({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: "ok" | "warn" | "bad" }) {
+  const color = tone === "bad" ? "text-destructive" : tone === "warn" ? "text-warning" : tone === "ok" ? "text-success" : "";
+  return (
+    <div className="space-y-1 rounded-2xl bg-card p-4 shadow-card">
+      <dt className="text-label">{label}</dt>
+      <dd className={`font-heading text-xl font-bold tracking-tight tabular-nums ${color}`}>{value}</dd>
+      {hint && <dd className="text-xs text-muted-foreground">{hint}</dd>}
+    </div>
+  );
+}
+
+/** Rangée de tuiles d'indicateurs : deux colonnes sur mobile, quatre sur grand écran. */
+export function MetricGrid({ children }: { children: ReactNode }) {
+  return <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{children}</dl>;
+}
+
+/** Message d'état d'une page : une seule phrase, ton porté par la couleur de fond. */
+export function Notice({ tone, children }: { tone: "ok" | "warn" | "bad"; children: ReactNode }) {
+  const styles = {
+    ok: "border-success/30 bg-success/8 text-success",
+    warn: "border-warning/40 bg-warning/8 text-warning",
+    bad: "border-destructive/40 bg-destructive/8 text-destructive",
+  }[tone];
+  return (
+    <p className={`rounded-2xl border px-4 py-3 text-sm font-medium ${styles}`} role={tone === "bad" ? "alert" : "status"}>
+      {children}
+    </p>
+  );
+}
+
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="rounded-2xl border border-dashed bg-card/50 p-8 text-center">

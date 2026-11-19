@@ -29,18 +29,23 @@ const TABS = [
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
-const GROUPS: { tab: TabId; title: string; fields: Def[] }[] = [
+/**
+ * Les libellés disent ce que le réglage fait ; la précision n'apparaît que lorsqu'un chiffre seul induirait en
+ * erreur. Tout le reste de l'explication appartient à la documentation, pas à l'écran de réglage.
+ */
+const GROUPS: { tab: TabId; title: string; note?: string; fields: Def[] }[] = [
   {
     tab: "general",
     title: "Mode maintenance",
+    note: "Affiche un bandeau aux clients.",
     fields: [
-      { key: "maintenanceMode", label: "Activer le mode maintenance", kind: "boolean", hint: "Annonce la maintenance (bandeau) ; le blocage des nouvelles créations s’appliquera à l’ouverture de la génération." },
+      { key: "maintenanceMode", label: "Activer le mode maintenance", kind: "boolean" },
       { key: "maintenanceMessage", label: "Message affiché aux clients", kind: "text" },
     ],
   },
   {
     tab: "rentabilite",
-    title: "Rentabilité (règles de marge)",
+    title: "Règles de marge",
     fields: [
       { key: "minMarginPercent", label: "Marge minimale (%)", kind: "number" },
       { key: "usdToXafRate", label: "Taux USD → FCFA", kind: "number" },
@@ -53,40 +58,42 @@ const GROUPS: { tab: TabId; title: string; fields: Def[] }[] = [
     tab: "rentabilite",
     title: "Crédits",
     fields: [
+      { key: "creditValueFcfa", label: "Prix d’un crédit (FCFA)", kind: "number", hint: "À tenir aligné sur le pack d’entrée (prix ÷ crédits)." },
       { key: "purchasedCreditsExpiryMonths", label: "Validité des crédits achetés (mois)", kind: "number" },
     ],
   },
   {
-    tab: "rentabilite",
-    title: "Paiements",
+    tab: "generation",
+    title: "Limites de génération",
     fields: [
-      { key: "creditValueFcfa", label: "Prix d’un crédit (FCFA) : affichage et achat à la quantité", kind: "number", hint: "À tenir aligné sur le pack d’entrée (prix ÷ crédits). Les packs, eux, gardent leur prix propre." },
+      { key: "generationConfirmCredits", label: "Confirmer à partir de (crédits)", kind: "number" },
+      { key: "generationConfirmBalancePercent", label: "Confirmer à partir de (% du solde)", kind: "number" },
+      { key: "maxConcurrentGenerationsPerUser", label: "Générations simultanées par client", kind: "number" },
+      { key: "maxConcurrentGenerationsGlobal", label: "Générations simultanées au total", kind: "number" },
     ],
   },
   {
     tab: "generation",
-    title: "Limites de génération et seuils d’alerte",
+    title: "Seuils d’alerte",
+    note: "Déclenchent une alerte sur le tableau de bord.",
     fields: [
-      { key: "generationConfirmCredits", label: "Confirmation avant génération : à partir de (crédits)", kind: "number" },
-      { key: "generationConfirmBalancePercent", label: "Confirmation avant génération : à partir de (% du solde)", kind: "number" },
-      { key: "maxConcurrentGenerationsPerUser", label: "Générations simultanées par client", kind: "number" },
-      { key: "maxConcurrentGenerationsGlobal", label: "Générations simultanées au total", kind: "number" },
-      { key: "providerBalanceAlertUsd", label: "Alerte solde fournisseur (USD)", kind: "number" },
-      { key: "failureRateAlertPercent", label: "Alerte taux d’échec (%)", kind: "number" },
+      { key: "providerBalanceAlertUsd", label: "Solde fournisseur bas ($)", kind: "number" },
+      { key: "failureRateAlertPercent", label: "Taux d’échec élevé (%)", kind: "number" },
     ],
   },
   {
     tab: "fichiers",
     title: "Conservation des fichiers",
     fields: [
-      { key: "inputRetentionDays", label: "Fichiers envoyés : conservation (jours)", kind: "number" },
-      { key: "outputRetentionDays", label: "Créations : conservation (jours)", kind: "number" },
+      { key: "inputRetentionDays", label: "Fichiers envoyés (jours)", kind: "number" },
+      { key: "outputRetentionDays", label: "Créations (jours)", kind: "number" },
       { key: "deletionReminderDays", label: "Rappel avant suppression (jours)", kind: "number" },
     ],
   },
   {
     tab: "securite",
     title: "Sécurité de connexion",
+    note: "Exige que l’envoi d’e-mails fonctionne. Les comptes Google ne sont pas concernés.",
     fields: [
       {
         key: "loginOtpMode",
@@ -97,7 +104,6 @@ const GROUPS: { tab: TabId; title: string; fields: Def[] }[] = [
           { value: "admin", label: "Administrateurs uniquement" },
           { value: "all", label: "Tous les comptes avec mot de passe" },
         ],
-        hint: "Exige que l’envoi d’e-mails fonctionne. Les comptes Google ne sont pas concernés.",
       },
     ],
   },
@@ -131,7 +137,7 @@ export function SettingsForm({ initial, emailProvider }: { initial: Record<strin
   }
 
   return (
-    <form onSubmit={save} className="space-y-8" noValidate>
+    <form onSubmit={save} className="space-y-5" noValidate>
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
         <TabsList variant="line" className="w-full justify-start gap-1 overflow-x-auto rounded-none border-b p-0 group-data-[orientation=horizontal]/tabs:h-auto">
           {TABS.map((t) => {
@@ -149,60 +155,60 @@ export function SettingsForm({ initial, emailProvider }: { initial: Record<strin
           })}
         </TabsList>
         {TABS.map((t) => (
-          <TabsContent key={t.id} value={t.id} className="space-y-8 pt-6">
-            {t.id === "general" && (
-              <section aria-labelledby="fournisseurs" className="space-y-3">
-                <h2 id="fournisseurs" className="text-lg font-bold">Fournisseurs</h2>
-                <EmailTestPanel provider={emailProvider} />
-                <p className="text-sm text-muted-foreground">Paiement (SasPay) et génération (Higgsfield) : les clés se configurent dans les variables d’environnement du serveur, jamais ici.</p>
-              </section>
-            )}
+          <TabsContent key={t.id} value={t.id} className="space-y-4 pt-5">
+            {t.id === "general" && <EmailTestPanel provider={emailProvider} />}
             {GROUPS.filter((g) => g.tab === t.id).map((g) => (
-            <fieldset key={g.title} className="space-y-4">
-              <legend className="mb-1 text-lg font-bold">{g.title}</legend>
-              <div className="grid gap-4 sm:grid-cols-2">
-                {g.fields.map((f) => {
-                  const id = `s-${f.key}`;
-                  const v = values[f.key];
-                  return (
-                    <div key={f.key} className={`space-y-1.5 ${f.kind === "text" ? "sm:col-span-2" : ""}`}>
-                      {f.kind === "boolean" ? (
-                        <label className="flex items-start gap-3 text-sm">
-                          <input id={id} type="checkbox" checked={Boolean(v)} onChange={(e) => setValues({ ...values, [f.key]: e.target.checked })} className="mt-0.5 size-5" />
-                          <span className="font-medium">{f.label}</span>
-                        </label>
-                      ) : (
-                        <>
-                          <Label htmlFor={id}>{f.label}</Label>
-                          {f.kind === "select" ? (
-                            <select id={id} value={String(v)} onChange={(e) => setValues({ ...values, [f.key]: e.target.value })} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm">
-                              {f.options!.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
-                          ) : (
-                            <Input
-                              id={id}
-                              inputMode={f.kind === "number" ? "decimal" : undefined}
-                              value={String(v ?? "")}
-                              onChange={(e) => setValues({ ...values, [f.key]: f.kind === "number" ? Number(e.target.value.replace(",", ".")) || 0 : e.target.value })}
-                            />
-                          )}
-                        </>
-                      )}
-                      {f.hint && <p className="text-xs text-muted-foreground">{f.hint}</p>}
-                    </div>
-                  );
-                })}
-              </div>
-                </fieldset>
+              <fieldset key={g.title} className="rounded-2xl bg-card p-4 shadow-card">
+                <legend className="px-1 text-sm font-semibold">{g.title}</legend>
+                {g.note && <p className="mb-3 text-xs text-muted-foreground">{g.note}</p>}
+                <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {g.fields.map((f) => {
+                    const id = `s-${f.key}`;
+                    const v = values[f.key];
+                    const touched = initial[f.key] !== v;
+                    return (
+                      <div key={f.key} className={`space-y-1 ${f.kind === "text" ? "sm:col-span-2 lg:col-span-3" : ""}`}>
+                        {f.kind === "boolean" ? (
+                          <label className="flex items-start gap-2.5 pt-5 text-sm">
+                            <input id={id} type="checkbox" checked={Boolean(v)} onChange={(e) => setValues({ ...values, [f.key]: e.target.checked })} className="mt-0.5 size-5" />
+                            <span className="font-medium">{f.label}</span>
+                          </label>
+                        ) : (
+                          <>
+                            <Label htmlFor={id} className="text-xs text-muted-foreground">{f.label}</Label>
+                            {f.kind === "select" ? (
+                              <select id={id} value={String(v)} onChange={(e) => setValues({ ...values, [f.key]: e.target.value })} className={`h-9 w-full rounded-lg border bg-background px-3 text-sm ${touched ? "border-primary" : "border-input"}`}>
+                                {f.options!.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                              </select>
+                            ) : (
+                              <Input
+                                id={id}
+                                inputMode={f.kind === "number" ? "decimal" : undefined}
+                                value={String(v ?? "")}
+                                onChange={(e) => setValues({ ...values, [f.key]: f.kind === "number" ? Number(e.target.value.replace(",", ".")) || 0 : e.target.value })}
+                                className={`h-9 ${f.kind === "number" ? "tabular-nums" : ""} ${touched ? "border-primary" : ""}`}
+                              />
+                            )}
+                          </>
+                        )}
+                        {f.hint && <p className="text-xs text-muted-foreground/80">{f.hint}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </fieldset>
             ))}
           </TabsContent>
         ))}
       </Tabs>
 
-      <div className={`space-y-3 border-t pt-6 ${dirty ? "sticky bottom-0 z-10 -mx-4 bg-background/95 px-4 pb-4 backdrop-blur md:-mx-6 md:px-6" : ""}`}>
+      {/* Le motif et l'enregistrement restent visibles dès qu'il y a quelque chose à enregistrer. */}
+      <div className={`space-y-3 border-t pt-5 ${dirty ? "sticky bottom-0 z-10 -mx-4 bg-background/95 px-4 pb-4 backdrop-blur md:-mx-6 md:px-6" : ""}`}>
         <div className="space-y-1.5">
-          <Label htmlFor="settings-reason">Motif de la modification (conservé dans le journal d’audit)</Label>
-          <Textarea id="settings-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Au moins 5 caractères" />
+          <Label htmlFor="settings-reason" className="text-xs text-muted-foreground">
+            Motif de la modification (journal d’audit)
+          </Label>
+          <Textarea id="settings-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
         </div>
         {msg && (
           <Alert variant={msg.ok ? "default" : "destructive"} role={msg.ok ? "status" : "alert"}>
@@ -238,11 +244,20 @@ export function EmailTestPanel({ provider }: { provider: "console" | "smtp" }) {
   }
 
   return (
-    <div className="space-y-3 rounded-3xl bg-card shadow-card p-4">
-      <p className="text-sm">
-        Envoi d’e-mails : <strong>{provider === "smtp" ? "SMTP (envoi réel)" : "console (aucun e-mail réel)"}</strong>. Variables : <code className="rounded bg-muted px-1">EMAIL_PROVIDER</code>, <code className="rounded bg-muted px-1">SMTP_*</code> (serveur, non modifiables ici).
-      </p>
-      <Button type="button" variant="outline" onClick={run} disabled={busy}>{busy ? "Test en cours…" : "Tester l’envoi d’e-mails"}</Button>
+    <div className="space-y-3 rounded-2xl bg-card p-4 shadow-card">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">
+            E-mails : {provider === "smtp" ? "SMTP, envoi réel" : "console, aucun envoi réel"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Paiement, génération et e-mail se configurent dans les variables d’environnement du serveur.
+          </p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={run} disabled={busy}>
+          {busy ? "Test en cours…" : "Tester l’envoi"}
+        </Button>
+      </div>
       {res && (
         <Alert variant={res.ok ? "default" : "destructive"} role={res.ok ? "status" : "alert"}>
           <AlertDescription>{res.detail}</AlertDescription>

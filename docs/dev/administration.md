@@ -18,7 +18,7 @@
 
 | Rubrique | Page | Ce qui fonctionne |
 |---|---|---|
-| Pilotage | Tableau de bord | Utilisateurs (total, inscrits, actifs), chiffre d'affaires, volume et état des paiements, crédits vendus/consommés, générations par état, histogrammes journaliers, **alertes** (paiements en attente > 30 min, taux d'échec, solde Higgsfield bas, marge insuffisante, maintenance, e-mail non configuré en production), **estimation** du solde Higgsfield |
+| Pilotage | Tableau de bord | Utilisateurs (total, inscrits, actifs), chiffre d'affaires, volume et état des paiements, crédits vendus/consommés, générations par état, histogrammes journaliers (un point par jour de la période, zéros compris, avec les dates aux extrémités), **alertes** (paiements en attente > 30 min, taux d'échec, solde Higgsfield bas, marge insuffisante, maintenance, e-mail non configuré en production), **estimation** du solde Higgsfield |
 | Clients | Utilisateurs, fiche client | Recherche et filtres, fiche (paiements, générations, registre de crédits, modération), suspension / bannissement / réactivation (motif obligatoire, sessions coupées, e-mail au client), ajustement de crédits (motif obligatoire, jamais de solde négatif) |
 | Clients | Réclamations | Liste filtrable et traitement des signalements |
 | Générations et modération | Générations | Liste filtrable (client, statut, preset, dates), masquer / ré-afficher avec motif |
@@ -26,6 +26,8 @@
 | Finances | Pays et paiements | Pays et moyens de paiement : statuts, tarification par devise (voir [catalogue-international.md](catalogue-international.md)) |
 | Finances | Paiements | Journal filtrable (statut, fournisseur, pays, moyen, utilisateur, période), **vérification manuelle** (interroge le fournisseur), export CSV |
 | Finances | Synthèse financière | Période, encaissé, crédits, **saisie des recharges Higgsfield et des retraits SasPay**, export CSV |
+| Finances | Simulateur | Coût, prix et marge de chaque vidéo dans un scénario choisi (raccourcis ou paramètres ajustés, portés par l'URL) ; onglets « Par vidéo » et « Par pack ». **Lecture seule** : aucun paramètre n'y est modifié |
+| Configuration | Calculs et modèles | Trois onglets : **Paramètres de calcul** (brouillon → aperçu → application, motif obligatoire), **Modèles** (catalogue, test, calibrage, activation), **Historique** des versions (retour en arrière par recopie) |
 | Configuration | Paramètres | Mode maintenance, marges, crédits, limites et seuils, conservation, sécurité de connexion ; test e-mail |
 | Configuration | Textes légaux | Nouvelle version (les anciennes sont conservées), version majeure = nouvelle acceptation |
 | Configuration | Administrateurs | Ajouter / retirer l'accès (jamais soi-même, jamais le dernier) |
