@@ -29,6 +29,16 @@ async function bootstrap(): Promise<void> {
   // Doit rester supérieur à keepAliveTimeout (consigne de Node).
   server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 1_000;
 
+  /**
+   * Arrêt gracieux. Sans ces crochets, Node tue le processus dès le SIGTERM de Docker : les requêtes en vol sont
+   * coupées, la tâche BullMQ active reste « active » jusqu'à la détection de blocage, et les connexions ne sont
+   * pas rendues. Avec eux, Nest enchaîne le drain du serveur HTTP puis la fermeture des workers BullMQ (qui
+   * attendent la tâche en cours) — d'où le stop_grace_period: 30s des fichiers Compose, supérieur aux 10 s par
+   * défaut de Docker. Liste explicite : par défaut Nest écouterait aussi SIGSEGV, SIGILL et SIGABRT, où un arrêt
+   * gracieux n'a aucun sens. Rien à ajouter pour les journaux : pino écrit ici sans transport, donc en synchrone.
+   */
+  app.enableShutdownHooks(['SIGTERM', 'SIGINT']);
+
   await app.listen(config.get('PORT', { infer: true }));
 }
 void bootstrap();

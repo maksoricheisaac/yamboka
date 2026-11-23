@@ -20,6 +20,7 @@ async function bootstrap(): Promise<void> {
     bufferLogs: true,
   });
   app.useLogger(app.get(Logger));
-  app.enableShutdownHooks();
+  // Même liste explicite que main.ts : seuls SIGTERM (Docker) et SIGINT (Ctrl+C) déclenchent un arrêt gracieux.
+  app.enableShutdownHooks(['SIGTERM', 'SIGINT']);
 }
 void bootstrap();

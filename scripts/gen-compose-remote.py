@@ -71,12 +71,12 @@ services:
       retries: 10
     networks: [internal]
 
-  # Migrations Prisma : exécutées à chaque déploiement avant le démarrage de l'API, puis le conteneur s'arrête.
+  # Migrations Prisma puis chargement idempotent du catalogue des paiements : exécutés à chaque déploiement avant le démarrage de l'API, puis le conteneur s'arrête.
   migrate:
     <<: *logging
     build: *api-build
     image: ${COMPOSE_PROJECT_NAME}-api:${IMAGE_TAG:-latest}
-    command: ["node_modules/.bin/prisma", "migrate", "deploy"]
+    command: ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/payments/catalog/seed-cli.js"]
     restart: "no"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -88,6 +88,10 @@ services:
     <<: [*restart, *logging]
     build: *api-build
     image: ${COMPOSE_PROJECT_NAME}-api:${IMAGE_TAG:-latest}
+    # Arrêt gracieux : sur SIGTERM, l'API draine ses requêtes HTTP puis attend la tâche BullMQ active, qui peut
+    # être en appel chez un fournisseur (SASPAY_TIMEOUT_MS vaut 15 s par défaut). Les 10 s de grâce par défaut de
+    # Docker couperaient ce drain par un SIGKILL : on laisse de la marge pour qu'il aille toujours au bout.
+    stop_grace_period: 30s
     # NODE_ENV=production partout à distance : cookies Secure, Swagger et routes de développement désactivés.
     environment:
       NODE_ENV: production
